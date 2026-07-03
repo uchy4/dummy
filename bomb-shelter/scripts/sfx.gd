@@ -7,21 +7,28 @@ extends Node
 const RATE := 22050
 const MAX_VOICES := 12
 
-var _explosion: AudioStreamWAV
+var _booms: Array[AudioStreamWAV] = []
 var _splat: AudioStreamWAV
 
 
 func _ready() -> void:
 	add_to_group(&"sfx")
-	_explosion = _make_explosion()
+	# One voice per Bomb.Type: NORMAL, BIG, CLUSTER, BOUNCY.
+	_booms = [
+		_make_boom(20260703, 0.9, 95.0, 28.0, 5.5, 3.5, 0.002, 0.0),
+		_make_boom(11223344, 1.4, 70.0, 20.0, 3.2, 2.0, 0.0025, 0.0),
+		_make_boom(55667788, 0.55, 160.0, 45.0, 9.0, 6.0, 0.009, 0.0),
+		_make_boom(99001122, 0.85, 110.0, 35.0, 6.0, 4.0, 0.001, 230.0),
+	]
 	_splat = _make_splat()
 
 
-## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale).
-func play_explosion(pos: Vector2, size_mult: float) -> void:
+## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale);
+## type indexes Bomb.Type so each kind has its own voice.
+func play_explosion(pos: Vector2, size_mult: float, type := 0) -> void:
 	var vol := clampf(-10.0 + size_mult * 5.0, -14.0, 2.0)
 	var pitch := randf_range(0.9, 1.1) / clampf(size_mult, 0.55, 1.7)
-	_play(_explosion, vol, pitch)
+	_play(_booms[clampi(type, 0, _booms.size() - 1)], vol, pitch)
 
 
 func play_splat(_pos: Vector2) -> void:
@@ -43,21 +50,30 @@ func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
 # ---------------------------------------------------------------- synthesis ---
 
 ## Boom: brown-noise burst + sub-bass sine sweep + sparse crackle tail.
-func _make_explosion() -> AudioStreamWAV:
-	var n := int(RATE * 0.9)
+## f_hi→f_lo is the sub sweep; noise/sub decay shape the body; crackle sets
+## the density of debris pops; boing_hz > 0 adds a wobbling springy overtone
+## (the bouncy bomb's rubbery voice).
+func _make_boom(sd: int, dur: float, f_hi: float, f_lo: float,
+		noise_decay: float, sub_decay: float, crackle: float,
+		boing_hz: float) -> AudioStreamWAV:
+	var n := int(RATE * dur)
 	var data := PackedByteArray()
 	data.resize(n * 2)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 20260703
+	rng.seed = sd
 	var brown := 0.0
 	var phase := 0.0
+	var boing_phase := 0.0
 	for i in n:
 		var t := float(i) / RATE
 		brown = clampf((brown + rng.randf_range(-1.0, 1.0) * 0.35) * 0.985, -1.0, 1.0)
-		var freq := lerpf(95.0, 28.0, minf(t * 2.0, 1.0))
+		var freq := lerpf(f_hi, f_lo, minf(t * 2.0, 1.0))
 		phase += TAU * freq / RATE
-		var s := brown * 1.15 * exp(-t * 5.5) + sin(phase) * 0.9 * exp(-t * 3.5)
-		if rng.randf() < 0.002 * exp(-t * 2.0):
+		var s := brown * 1.15 * exp(-t * noise_decay) + sin(phase) * 0.9 * exp(-t * sub_decay)
+		if boing_hz > 0.0:
+			boing_phase += TAU * boing_hz * (1.0 + 0.25 * sin(TAU * 7.0 * t)) / RATE
+			s += sin(boing_phase) * 0.45 * exp(-t * 4.5)
+		if rng.randf() < crackle * exp(-t * 2.0):
 			s += rng.randf_range(-0.8, 0.8)
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
 	return _wav(data)
