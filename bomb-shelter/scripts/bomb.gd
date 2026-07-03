@@ -27,6 +27,7 @@ var _body_radius := 9.0
 var _blast_mult := 1.0
 var _body_color := Color(0.13, 0.13, 0.16)
 var _exploded := false
+var _prev_vy := 0.0
 var _label: Label
 
 
@@ -96,6 +97,14 @@ func _process(_delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if _exploded:
 		return
+	# Deflect bounces sideways a little so a bomb never pogos straight up
+	# and down in place forever.
+	if _prev_vy > 120.0 and linear_velocity.y < -60.0:
+		var dev := absf(linear_velocity.y) * randf_range(0.15, 0.45)
+		linear_velocity.x += dev * (1.0 if randf() < 0.5 else -1.0)
+		angular_velocity += randf_range(-6.0, 6.0)
+	_prev_vy = linear_velocity.y
+
 	fuse -= delta
 	if fuse <= 0.0:
 		_explode()
