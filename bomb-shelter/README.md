@@ -52,6 +52,22 @@ your right. Tap the win screen for a rematch.
 
 Player count is the `num_players` export on the `Main` node (default 4).
 
+## Quick Settings (in-game tuning)
+
+Press **Esc** (or tap the **⚙ settings** button) any time — the game pauses
+and a panel opens. Changes apply the moment you resume and persist across
+rematches (R / Enter):
+
+- **Bombs per drop** — how many fall in each wave (1–6)
+- **Seconds between drops** — the starting drop interval
+- **Drop speed-up per second** — how quickly the rain intensifies over the match
+- **Blast size** — multiplier on explosion/kill/carve radius (0.5×–2.5×)
+- **Bomb types in the mix** — toggle which types spawn:
+  - **Normal** — the classic
+  - **Big** — heavyweight, ~1.6× blast, longer fuse, hits like a meteor
+  - **Cluster** — splits into 3 short-fuse bomblets that fly outward
+  - **Bouncy** — barely any friction and a rubber shell; ricochets into places you thought were safe
+
 ## How to play (the logic to test)
 
 - **Dirt blocks blasts.** An explosion raycasts to each player/bomb; if solid

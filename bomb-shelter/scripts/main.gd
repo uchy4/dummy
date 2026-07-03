@@ -18,6 +18,7 @@ const KEYMAPS: Array[Dictionary] = [
 @export_range(2, 4) var num_players := 4
 
 var game_over := false
+var settings_open := false
 var elapsed := 0.0
 var touch := false
 
@@ -77,6 +78,7 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(num_players, PLAYER_COLORS, touch)
 	hud.restart_requested.connect(_on_restart_requested)
+	hud.settings_pressed.connect(_toggle_settings)
 
 
 func _process(delta: float) -> void:
@@ -84,8 +86,12 @@ func _process(delta: float) -> void:
 		if Input.is_action_just_pressed(&"ui_accept") or Input.is_action_just_pressed(&"restart"):
 			_restart()
 		return
+	if Input.is_action_just_pressed(&"settings"):
+		_toggle_settings()
 	if Input.is_action_just_pressed(&"restart"):
 		_restart()
+		return
+	if settings_open:
 		return
 
 	elapsed += delta
@@ -158,6 +164,14 @@ func _on_restart_requested() -> void:
 		_restart()
 
 
+func _toggle_settings() -> void:
+	if game_over:
+		return
+	settings_open = not settings_open
+	hud.show_settings(settings_open)
+	get_tree().paused = settings_open
+
+
 func _restart() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
@@ -168,6 +182,7 @@ func _register_actions() -> void:
 		for dir in ["left", "right", "jump"]:
 			_add_action("p%d_%s" % [i + 1, dir], KEYMAPS[i][dir])
 	_add_action("restart", [KEY_R])
+	_add_action("settings", [KEY_ESCAPE])
 
 
 func _add_action(action: String, keys: Array) -> void:

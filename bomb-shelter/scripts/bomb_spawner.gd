@@ -1,11 +1,14 @@
 class_name BombSpawner
 extends Node
-## Drops bombs from the sky. A short grace period first, then the interval
-## ramps down over time. Some bombs aim near a player to keep the pressure on.
+## Drops waves of bombs from the sky. A short grace period first, then the
+## interval ramps down over time. Wave size, pacing, and which bomb types are
+## in the pool all come from Settings (tunable in-game). Some bombs aim near a
+## player to keep the pressure on.
 
 const GRACE := 5.0
 const SPAWN_Y := -80.0
 const AIM_AT_PLAYER_CHANCE := 0.35
+const MAX_LIVE_BOMBS := 90
 
 var terrain: Terrain
 var container: Node2D
@@ -17,15 +20,23 @@ var _next_spawn := GRACE
 func _physics_process(delta: float) -> void:
 	_elapsed += delta
 	if _elapsed >= _next_spawn:
-		_spawn()
+		_spawn_wave()
 		_next_spawn = _elapsed + _interval()
 
 
 func _interval() -> float:
-	return maxf(1.1, 3.4 - _elapsed * 0.022)
+	return maxf(0.5, Settings.drop_interval - _elapsed * Settings.drop_rampup)
 
 
-func _spawn() -> void:
+func _spawn_wave() -> void:
+	var live := get_tree().get_nodes_in_group(&"bombs").size()
+	for i in Settings.bombs_per_drop:
+		if live + i >= MAX_LIVE_BOMBS:
+			return
+		_spawn_one(i)
+
+
+func _spawn_one(index: int) -> void:
 	var min_x := 3.0 * Terrain.TILE
 	var max_x := (Terrain.W - 3.0) * Terrain.TILE
 	var x := randf_range(min_x, max_x)
@@ -40,7 +51,19 @@ func _spawn() -> void:
 			x = clampf(target.global_position.x + randf_range(-90.0, 90.0), min_x, max_x)
 
 	var b := Bomb.new()
+	b.type = _pick_type()
 	b.terrain = terrain
 	b.fuse = randf_range(3.4, 4.6)
-	b.position = Vector2(x, SPAWN_Y)
+	# Stagger wave members vertically so they don't spawn overlapping.
+	b.position = Vector2(x, SPAWN_Y - index * 40.0)
 	container.add_child(b)
+
+
+func _pick_type() -> Bomb.Type:
+	var pool: Array[int] = []
+	for t in Settings.type_enabled.size():
+		if Settings.type_enabled[t]:
+			pool.append(t)
+	if pool.is_empty():
+		return Bomb.Type.NORMAL
+	return pool.pick_random() as Bomb.Type

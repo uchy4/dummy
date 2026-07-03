@@ -4,6 +4,7 @@ extends CanvasLayer
 ## controls help, and the winner overlay.
 
 signal restart_requested
+signal settings_pressed
 
 var _rows: Array[Label] = []
 var _timer: Label
@@ -11,6 +12,7 @@ var _center: Label
 var _overlay: ColorRect
 var _win_title: Label
 var _win_sub: Label
+var _settings: PanelContainer
 var _touch := false
 var _touch_buttons: Array[TouchScreenButton] = []
 
@@ -55,7 +57,7 @@ func setup(count: int, colors: Array[Color], touch := false) -> void:
 	if touch:
 		help.text = "Push bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	else:
-		help.text = "P1 A/D + W    P2 arrows    P3 J/L + I    P4 F/H + T (or numpad 4/6/8)    R restart\nPush bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
+		help.text = "P1 A/D + W    P2 arrows    P3 J/L + I    P4 F/H + T (or numpad 4/6/8)    R restart    Esc settings\nPush bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)
 
 	_overlay = ColorRect.new()
@@ -77,6 +79,18 @@ func setup(count: int, colors: Array[Color], touch := false) -> void:
 	_win_sub = _make_label(20, Color(1, 1, 1, 0.9))
 	_win_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_win_sub)
+
+	var gear := Button.new()
+	gear.text = "⚙ settings"
+	gear.focus_mode = Control.FOCUS_NONE
+	gear.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	gear.offset_left = -180
+	gear.offset_right = -14
+	gear.offset_top = 44
+	gear.offset_bottom = 76
+	gear.pressed.connect(func() -> void: settings_pressed.emit())
+	add_child(gear)
+	_build_settings_panel()
 
 	if touch:
 		_build_touch_controls()
@@ -107,6 +121,88 @@ func show_winner(index: int, color: Color, time: float) -> void:
 func _on_overlay_input(ev: InputEvent) -> void:
 	if (ev is InputEventMouseButton or ev is InputEventScreenTouch) and ev.is_pressed():
 		restart_requested.emit()
+
+
+func show_settings(open: bool) -> void:
+	_settings.visible = open
+
+
+# The Quick Settings panel: live gameplay tuning while the game is paused.
+# Values write straight into Settings statics, so they apply the moment you
+# resume and survive rematches.
+func _build_settings_panel() -> void:
+	_settings = PanelContainer.new()
+	_settings.set_anchors_preset(Control.PRESET_CENTER)
+	_settings.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_settings.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_settings.visible = false
+	add_child(_settings)
+
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 20)
+	_settings.add_child(margin)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override(&"separation", 8)
+	margin.add_child(vbox)
+
+	var title := _make_label(22, Color.WHITE)
+	title.text = "QUICK SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_slider(vbox, "Bombs per drop", 1.0, 6.0, 1.0,
+		float(Settings.bombs_per_drop),
+		func(v: float) -> void: Settings.bombs_per_drop = int(v))
+	_add_slider(vbox, "Seconds between drops", 0.6, 6.0, 0.1,
+		Settings.drop_interval,
+		func(v: float) -> void: Settings.drop_interval = v)
+	_add_slider(vbox, "Drop speed-up per second", 0.0, 0.08, 0.005,
+		Settings.drop_rampup,
+		func(v: float) -> void: Settings.drop_rampup = v)
+	_add_slider(vbox, "Blast size", 0.5, 2.5, 0.05,
+		Settings.blast_scale,
+		func(v: float) -> void: Settings.blast_scale = v)
+
+	var types_label := _make_label(15, Color(1, 1, 1, 0.9))
+	types_label.text = "Bomb types in the mix:"
+	vbox.add_child(types_label)
+	var type_names := ["Normal", "Big (huge blast)", "Cluster (splits)", "Bouncy"]
+	var grid := GridContainer.new()
+	grid.columns = 2
+	vbox.add_child(grid)
+	for i in type_names.size():
+		var cb := CheckBox.new()
+		cb.text = type_names[i]
+		cb.button_pressed = Settings.type_enabled[i]
+		cb.focus_mode = Control.FOCUS_NONE
+		cb.toggled.connect(func(on: bool) -> void: Settings.type_enabled[i] = on)
+		grid.add_child(cb)
+
+	var resume := Button.new()
+	resume.text = "Resume"
+	resume.focus_mode = Control.FOCUS_NONE
+	resume.pressed.connect(func() -> void: settings_pressed.emit())
+	vbox.add_child(resume)
+
+
+func _add_slider(parent: Control, text: String, mn: float, mx: float,
+		step: float, value: float, setter: Callable) -> void:
+	var row_label := _make_label(15, Color(1, 1, 1, 0.9))
+	parent.add_child(row_label)
+	var s := HSlider.new()
+	s.min_value = mn
+	s.max_value = mx
+	s.step = step
+	s.custom_minimum_size = Vector2(340, 24)
+	s.focus_mode = Control.FOCUS_NONE
+	var update := func(v: float) -> void:
+		row_label.text = "%s:  %s" % [text, String.num(v, 2)]
+		setter.call(v)
+	s.value_changed.connect(update)
+	s.value = value
+	update.call(value)
+	parent.add_child(s)
 
 
 # On-screen controls for touch devices: left/right under the left thumb,
