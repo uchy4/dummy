@@ -123,6 +123,7 @@ func die() -> void:
 	velocity = Vector2.ZERO
 	hide()
 	_shape.set_deferred("disabled", true)
+	get_tree().call_group(&"sfx", &"play_splat", global_position)
 
 
 func _respawn() -> void:

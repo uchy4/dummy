@@ -76,6 +76,8 @@ func _ready() -> void:
 	spawner.container = world
 	world.add_child(spawner)
 
+	add_child(Sfx.new())
+
 	_build_finish()
 
 	hud = Hud.new()

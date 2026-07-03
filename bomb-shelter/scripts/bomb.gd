@@ -156,6 +156,8 @@ func _explode() -> void:
 	fx.position = global_position
 	get_parent().add_child.call_deferred(fx)
 	get_tree().call_group(&"camera", &"add_trauma", 0.25 if is_bomblet else 0.45)
+	get_tree().call_group(&"sfx", &"play_explosion", global_position,
+		_blast_mult * Settings.blast_scale)
 	queue_free()
 
 
