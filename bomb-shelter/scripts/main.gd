@@ -50,12 +50,16 @@ func _ready() -> void:
 
 	_build_backdrops()
 
+	_build_boundaries()
+
 	var spawns := terrain.surface_spawns(num_players)
+	var bounds := terrain.world_rect().grow_individual(80, 900, 80, 300)
 	for i in num_players:
 		var p := Player.new()
 		p.name = "Player%d" % (i + 1)
 		p.setup(i, PLAYER_COLORS[i])
 		p.respawn_point = terrain.shelter_spawn()
+		p.world_bounds = bounds
 		p.position = spawns[i]
 		world.add_child(p)
 		players.append(p)
@@ -79,6 +83,7 @@ func _ready() -> void:
 	hud.setup(num_players, PLAYER_COLORS, touch)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.settings_pressed.connect(_toggle_settings)
+	hud.reset_players_pressed.connect(_reset_players)
 
 
 func _process(delta: float) -> void:
@@ -128,6 +133,29 @@ func _build_backdrops() -> void:
 	cave.z_index = -15
 	cave.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	world.add_child(cave)
+
+
+# Invisible walls over the bedrock edge columns, reaching far above the
+# surface — the visible pillars stop a jump, these stop everything else.
+func _build_boundaries() -> void:
+	var wr := terrain.world_rect()
+	for x: float in [Terrain.TILE, wr.size.x - Terrain.TILE]:
+		var wall := StaticBody2D.new()
+		wall.collision_layer = 1
+		wall.collision_mask = 0
+		var cs := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = Vector2(2 * Terrain.TILE, 1400)
+		cs.shape = rs
+		wall.position = Vector2(x, terrain.surface_y() - 700)
+		wall.add_child(cs)
+		world.add_child(wall)
+
+
+func _reset_players() -> void:
+	var base := terrain.shelter_spawn()
+	for i in players.size():
+		players[i].teleport_to(base + Vector2((i - (players.size() - 1) / 2.0) * 24.0, 0))
 
 
 func _build_finish() -> void:

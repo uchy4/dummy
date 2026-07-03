@@ -5,6 +5,7 @@ extends CanvasLayer
 
 signal restart_requested
 signal settings_pressed
+signal reset_players_pressed
 
 var _rows: Array[Label] = []
 var _timer: Label
@@ -178,6 +179,12 @@ func _build_settings_panel() -> void:
 		cb.focus_mode = Control.FOCUS_NONE
 		cb.toggled.connect(func(on: bool) -> void: Settings.type_enabled[i] = on)
 		grid.add_child(cb)
+
+	var reset := Button.new()
+	reset.text = "Reset players to shelter"
+	reset.focus_mode = Control.FOCUS_NONE
+	reset.pressed.connect(func() -> void: reset_players_pressed.emit())
+	vbox.add_child(reset)
 
 	var resume := Button.new()
 	resume.text = "Resume"

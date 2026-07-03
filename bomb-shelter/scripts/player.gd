@@ -18,6 +18,8 @@ var deaths := 0
 var respawn_left := 0.0
 var respawn_point := Vector2.ZERO
 
+var world_bounds := Rect2(-100000, -100000, 200000, 200000)
+
 var _invuln_left := 0.0
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -86,6 +88,10 @@ func _physics_process(delta: float) -> void:
 		if rb:
 			rb.apply_central_impulse(-c.get_normal() * PUSH_FORCE * delta)
 
+	# Failsafe: anyone who escapes the map dies and respawns in the shelter.
+	if not world_bounds.has_point(global_position):
+		die()
+
 
 func take_blast(kick: Vector2, lethal: bool) -> void:
 	if not alive:
@@ -97,7 +103,20 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 	_coyote = 0.0
 
 
+## Move the player somewhere safe without a death penalty (Quick Settings
+## "reset" button). A dead player respawns almost immediately instead.
+func teleport_to(pos: Vector2) -> void:
+	global_position = pos
+	reset_physics_interpolation()
+	velocity = Vector2.ZERO
+	_invuln_left = INVULN_TIME
+	if not alive:
+		respawn_left = minf(respawn_left, 0.1)
+
+
 func die() -> void:
+	if not alive:
+		return
 	alive = false
 	deaths += 1
 	respawn_left = RESPAWN_TIME

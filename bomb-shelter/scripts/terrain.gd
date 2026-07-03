@@ -85,8 +85,9 @@ func _generate() -> void:
 	for y in range(SURFACE_ROW, H):
 		for x in W:
 			_gset(x, y, Cell.DIRT)
-	# Indestructible frame: side walls and floor.
-	for y in range(SURFACE_ROW, H):
+	# Indestructible frame: side walls and floor. The side walls rise above
+	# the surface so players can't hop off the edge of the map.
+	for y in range(SURFACE_ROW - 6, H):
 		for x in [0, 1, W - 2, W - 1]:
 			_gset(x, y, Cell.BEDROCK)
 	for y in range(H - 4, H):
