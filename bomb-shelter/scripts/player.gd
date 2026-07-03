@@ -125,8 +125,9 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and absf(velocity.x) > 20.0:
 		_walk_phase += velocity.x * delta * 0.055
 		swing_target = sin(_walk_phase) * 0.6
-		# One subtle crunch per stride (each half of the swing cycle).
-		var sgn := 1 if sin(_walk_phase) >= 0.0 else -1
+		# A crunch each time a foot plants: the swing reverses direction at
+		# its extremes, which is when the leading foot hits the ground.
+		var sgn := 1 if cos(_walk_phase) >= 0.0 else -1
 		if sgn != _step_sign:
 			_step_sign = sgn
 			get_tree().call_group(&"sfx", &"play_step", global_position)
