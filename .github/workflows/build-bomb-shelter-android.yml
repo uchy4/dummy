@@ -36,7 +36,10 @@ jobs:
           unzip -q templates.tpz -d /tmp/templates
           mv /tmp/templates/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
 
-      - name: Create debug keystore and editor settings
+      - name: Import project
+        run: godot --headless --path bomb-shelter --import || true
+
+      - name: Configure Android export (keystore + editor settings)
         run: |
           keytool -genkeypair -v -keystore "$HOME/debug.keystore" \
             -storepass android -keypass android -alias androiddebugkey \
@@ -54,21 +57,32 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
           cp "$HOME/.config/godot/editor_settings-4.4.tres" "$HOME/.config/godot/editor_settings-4.tres"
-        env:
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
-
-      - name: Import project
-        run: godot --headless --path bomb-shelter --import || true
+          # Also set the keystore directly in the preset - the most reliable
+          # thing headless export reads.
+          printf '\nkeystore/debug="%s"\nkeystore/debug_user="androiddebugkey"\nkeystore/debug_password="android"\n' \
+            "$HOME/debug.keystore" >> bomb-shelter/export_presets.cfg
+          tail -5 bomb-shelter/export_presets.cfg
 
       - name: Export debug APK
-        env:
-          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /home/runner/debug.keystore
-          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
-          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           mkdir -p build
-          godot --headless --path bomb-shelter --export-debug "Android" "$GITHUB_WORKSPACE/build/bomb-shelter.apk"
+          set +e
+          godot --headless --path bomb-shelter --export-debug "Android" \
+            "$GITHUB_WORKSPACE/build/bomb-shelter.apk" --verbose 2>&1 | tee /tmp/export.log
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -ne 0 ] || [ ! -f build/bomb-shelter.apk ]; then
+            echo "===== export failed (exit $code) — diagnostics ====="
+            echo "--- editor settings ---"
+            cat "$HOME/.config/godot/editor_settings-4.4.tres" || true
+            echo "--- export templates ---"
+            ls -la "$HOME/.local/share/godot/export_templates/"*/ | head -40 || true
+            echo "--- preset ---"
+            cat bomb-shelter/export_presets.cfg
+            echo "--- errors in log ---"
+            grep -iE "error|invalid|missing|keystore|template" /tmp/export.log | head -40 || true
+            exit 1
+          fi
           ls -la build
 
       - uses: actions/upload-artifact@v4
