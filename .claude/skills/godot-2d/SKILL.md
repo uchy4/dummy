@@ -153,5 +153,5 @@ move_and_slide()
 ## Version highlights relevant to 2D (4.5–4.7)
 
 - 4.5: chunked TileMap physics (big maps much faster); FoldableContainer for tools UI.
-- 4.6: faster 2D batching; Screen-Space everything unrelated—ignore; tracing profilers for perf work.
+- 4.6: faster 2D batching; tracing profilers (Tracy/Perfetto) for perf work.
 - 4.7: `DrawableTexture2D`; `VirtualJoystick` node for mobile touch input (official, replaces DIY joysticks); Control offset transforms help HUD animation without breaking containers; `tween_await()`.
