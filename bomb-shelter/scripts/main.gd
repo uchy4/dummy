@@ -19,6 +19,7 @@ const KEYMAPS: Array[Dictionary] = [
 
 var game_over := false
 var elapsed := 0.0
+var touch := false
 
 var world: Node2D
 var terrain: Terrain
@@ -34,6 +35,9 @@ func _ready() -> void:
 	# Main + HUD keep processing while the tree is paused (win screen);
 	# everything inside World freezes.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	touch = DisplayServer.is_touchscreen_available()
+	if touch:
+		num_players = 1  # phone: one player racing the bombs, on-screen buttons
 	world = Node2D.new()
 	world.name = "World"
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -71,17 +75,17 @@ func _ready() -> void:
 
 	hud = Hud.new()
 	add_child(hud)
-	hud.setup(num_players, PLAYER_COLORS)
+	hud.setup(num_players, PLAYER_COLORS, touch)
+	hud.restart_requested.connect(_on_restart_requested)
 
 
 func _process(delta: float) -> void:
 	if game_over:
 		if Input.is_action_just_pressed(&"ui_accept") or Input.is_action_just_pressed(&"restart"):
-			get_tree().paused = false
-			get_tree().reload_current_scene()
+			_restart()
 		return
 	if Input.is_action_just_pressed(&"restart"):
-		get_tree().reload_current_scene()
+		_restart()
 		return
 
 	elapsed += delta
@@ -147,6 +151,16 @@ func _on_finish_entered(body: Node2D) -> void:
 	game_over = true
 	hud.show_winner(p.index, PLAYER_COLORS[p.index], elapsed)
 	get_tree().paused = true
+
+
+func _on_restart_requested() -> void:
+	if game_over:
+		_restart()
+
+
+func _restart() -> void:
+	get_tree().paused = false
+	get_tree().reload_current_scene()
 
 
 func _register_actions() -> void:

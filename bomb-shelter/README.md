@@ -25,6 +25,19 @@ There are no art/audio assets to download — the terrain tiles, characters,
 bombs, and UI are all generated in code, so the project runs straight from a
 fresh clone.
 
+## Android
+
+Every push that touches `bomb-shelter/` runs a GitHub Actions workflow
+(`.github/workflows/build-bomb-shelter-android.yml`) that builds a debug APK
+on GitHub's runners and attaches it to a release. On your phone, open
+**github.com/uchy4/dummy/releases**, download `bomb-shelter.apk` from the
+latest *Bomb Shelter Android build*, and allow "install from unknown sources"
+when prompted.
+
+On a touchscreen the game switches to single-player automatically, with
+on-screen buttons: `<` / `>` to move under your left thumb, `^` to jump under
+your right. Tap the win screen for a rematch.
+
 ## Controls
 
 | Player | Move | Jump |
