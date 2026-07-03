@@ -23,6 +23,8 @@ var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 var _invuln_left := 0.0
 var _coyote := 0.0
 var _jump_buffer := 0.0
+var _walk_phase := 0.0
+var _swing := 0.0
 var _a_left: StringName
 var _a_right: StringName
 var _a_jump: StringName
@@ -81,6 +83,16 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
 	move_and_slide()
 
+	# Limb swing: legs/arms pump while walking, settle when idle or airborne.
+	var swing_target := 0.0
+	if is_on_floor() and absf(velocity.x) > 20.0:
+		_walk_phase += velocity.x * delta * 0.055
+		swing_target = sin(_walk_phase) * 0.6
+	elif not is_on_floor():
+		swing_target = 0.35  # arms/legs trail in the air
+	_swing = lerpf(_swing, swing_target, 0.35)
+	queue_redraw()
+
 	# Shove bombs we walk into.
 	for i in get_slide_collision_count():
 		var c := get_slide_collision(i)
@@ -97,7 +109,7 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 	if not alive:
 		return
 	if lethal and _invuln_left <= 0.0:
-		die()
+		die(kick)
 		return
 	velocity += kick
 	_coyote = 0.0
@@ -114,7 +126,7 @@ func teleport_to(pos: Vector2) -> void:
 		respawn_left = minf(respawn_left, 0.1)
 
 
-func die() -> void:
+func die(kick := Vector2.ZERO) -> void:
 	if not alive:
 		return
 	alive = false
@@ -124,6 +136,12 @@ func die() -> void:
 	hide()
 	_shape.set_deferred("disabled", true)
 	get_tree().call_group(&"sfx", &"play_splat", global_position)
+
+	var rd := Ragdoll.new()
+	rd.color = player_color
+	rd.impulse = kick.limit_length(700.0) if kick != Vector2.ZERO else Vector2(0, -220)
+	rd.position = global_position
+	get_parent().add_child.call_deferred(rd)
 
 
 func _respawn() -> void:
@@ -137,10 +155,25 @@ func _respawn() -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-9, -14, 18, 28), player_color.darkened(0.55))
-	draw_rect(Rect2(-8, -13, 16, 26), player_color)
-	draw_rect(Rect2(-8, -14, 16, 4), player_color.lightened(0.25))  # hard hat
-	draw_rect(Rect2(-5, -7, 3, 4), Color.WHITE)
-	draw_rect(Rect2(2, -7, 3, 4), Color.WHITE)
-	draw_rect(Rect2(-4, -6, 1, 2), Color.BLACK)
-	draw_rect(Rect2(3, -6, 1, 2), Color.BLACK)
+	var arm_c := player_color.darkened(0.15)
+	var leg_c := player_color.darkened(0.35)
+	# Far arm and far leg swing opposite the near ones.
+	draw_set_transform(Vector2(5, -6), _swing, Vector2.ONE)
+	draw_rect(Rect2(-2, 0, 4, 10), arm_c.darkened(0.2))
+	draw_set_transform(Vector2(3, 2), -_swing, Vector2.ONE)
+	draw_rect(Rect2(-2, 0, 4, 12), leg_c.darkened(0.2))
+	draw_set_transform(Vector2(-3, 2), _swing, Vector2.ONE)
+	draw_rect(Rect2(-2, 0, 4, 12), leg_c)
+	# Torso and head in body space.
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_rect(Rect2(-6, -7, 12, 10), player_color)
+	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
+	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
+	draw_rect(Rect2(-3, -12, 2, 3), Color.WHITE)
+	draw_rect(Rect2(1, -12, 2, 3), Color.WHITE)
+	draw_rect(Rect2(-2.5, -11, 1, 1.5), Color.BLACK)
+	draw_rect(Rect2(1.5, -11, 1, 1.5), Color.BLACK)
+	# Near arm drawn over the torso.
+	draw_set_transform(Vector2(-5, -6), -_swing, Vector2.ONE)
+	draw_rect(Rect2(-2, 0, 4, 10), arm_c)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
