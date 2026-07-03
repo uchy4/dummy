@@ -66,24 +66,50 @@ jobs:
       - name: Export debug APK
         run: |
           mkdir -p build
-          set +e
-          godot --headless --path bomb-shelter --export-debug "Android" \
-            "$GITHUB_WORKSPACE/build/bomb-shelter.apk" --verbose 2>&1 | tee /tmp/export.log
-          code=${PIPESTATUS[0]}
-          set -e
-          if [ "$code" -ne 0 ] || [ ! -f build/bomb-shelter.apk ]; then
-            echo "===== export failed (exit $code) — diagnostics ====="
-            echo "--- editor settings ---"
-            cat "$HOME/.config/godot/editor_settings-4.4.tres" || true
-            echo "--- export templates ---"
-            ls -la "$HOME/.local/share/godot/export_templates/"*/ | head -40 || true
-            echo "--- preset ---"
-            cat bomb-shelter/export_presets.cfg
-            echo "--- errors in log ---"
-            grep -iE "error|invalid|missing|keystore|template" /tmp/export.log | head -40 || true
-            exit 1
-          fi
-          ls -la build
+          try_export() {
+            rm -f build/bomb-shelter.apk
+            set +e
+            godot --headless --path bomb-shelter --export-debug "Android" \
+              "$GITHUB_WORKSPACE/build/bomb-shelter.apk" --verbose 2>&1 | tee /tmp/export.log | tail -30
+            set -e
+            [ -f build/bomb-shelter.apk ]
+          }
+
+          echo "::group::Attempt 1: Godot ${GODOT_VERSION}"
+          if try_export; then echo "::endgroup::"; ls -la build; exit 0; fi
+          echo "::endgroup::"
+
+          echo "::group::Attempt 2: enable ETC2/ASTC texture import (required for mobile)"
+          printf '\n[rendering]\n\ntextures/vram_compression/import_etc2_astc=true\n' >> bomb-shelter/project.godot
+          godot --headless --path bomb-shelter --import || true
+          if try_export; then echo "::endgroup::"; ls -la build; exit 0; fi
+          echo "::endgroup::"
+
+          echo "::group::Attempt 3: newer Godot (better export error reporting)"
+          for v in 4.6.1 4.6 4.5.2 4.5.1 4.5; do
+            if curl -fsIL -o /dev/null "https://github.com/godotengine/godot/releases/download/${v}-stable/Godot_v${v}-stable_linux.x86_64.zip"; then
+              NEWV="$v"; break
+            fi
+          done
+          echo "Using fallback Godot ${NEWV}"
+          curl -fL -o /tmp/godot-new.zip "https://github.com/godotengine/godot/releases/download/${NEWV}-stable/Godot_v${NEWV}-stable_linux.x86_64.zip"
+          unzip -q -o /tmp/godot-new.zip -d /tmp/godot-new
+          sudo mv "/tmp/godot-new/Godot_v${NEWV}-stable_linux.x86_64" /usr/local/bin/godot
+          curl -fL -o /tmp/templates-new.tpz "https://github.com/godotengine/godot/releases/download/${NEWV}-stable/Godot_v${NEWV}-stable_export_templates.tpz"
+          mkdir -p "$HOME/.local/share/godot/export_templates/${NEWV}.stable"
+          unzip -q -o /tmp/templates-new.tpz -d /tmp/templates-new
+          mv /tmp/templates-new/templates/* "$HOME/.local/share/godot/export_templates/${NEWV}.stable/"
+          MINOR="$(echo "$NEWV" | cut -d. -f1-2)"
+          cp "$HOME/.config/godot/editor_settings-4.4.tres" "$HOME/.config/godot/editor_settings-${MINOR}.tres"
+          godot --headless --path bomb-shelter --import || true
+          if try_export; then echo "::endgroup::"; ls -la build; exit 0; fi
+          echo "::endgroup::"
+
+          echo "===== all attempts failed — diagnostics ====="
+          java -version 2>&1 || true
+          ls "$ANDROID_HOME/build-tools/" || true
+          grep -iE "error|invalid|missing|keystore|template|sdk|java" /tmp/export.log | head -60 || true
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
