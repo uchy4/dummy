@@ -5,8 +5,10 @@ extends Node2D
 ## the match flow — grace countdown, win detection, pause + rematch.
 
 const GRACE := 5.0
+const MAX_PLAYERS := 8
+# P1 is purple: the old light blue vanished against the sky.
 const PLAYER_COLORS: Array[Color] = [
-	Color("4fc3f7"), Color("ef5350"), Color("9ccc65"), Color("ffca28"),
+	Color("9575ff"), Color("ef5350"), Color("9ccc65"), Color("ffca28"),
 ]
 const KEYMAPS: Array[Dictionary] = [
 	{"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W]},
@@ -26,6 +28,8 @@ var world: Node2D
 var terrain: Terrain
 var hud: Hud
 var players: Array[Player] = []
+var web_players := {}  # NetHub client id -> Player
+var _bounds := Rect2()
 
 
 func _enter_tree() -> void:
@@ -52,14 +56,17 @@ func _ready() -> void:
 
 	_build_boundaries()
 
+	if Settings.player_colors.size() < KEYMAPS.size():
+		Settings.player_colors = PLAYER_COLORS.duplicate()
+
 	var spawns := terrain.surface_spawns(num_players)
-	var bounds := terrain.world_rect().grow_individual(80, 900, 80, 300)
+	_bounds = terrain.world_rect().grow_individual(80, 900, 80, 300)
 	for i in num_players:
 		var p := Player.new()
 		p.name = "Player%d" % (i + 1)
-		p.setup(i, PLAYER_COLORS[i])
+		p.setup(i, Settings.player_colors[i])
 		p.respawn_point = terrain.shelter_spawn()
-		p.world_bounds = bounds
+		p.world_bounds = _bounds
 		p.position = spawns[i]
 		world.add_child(p)
 		players.append(p)
@@ -82,10 +89,14 @@ func _ready() -> void:
 
 	hud = Hud.new()
 	add_child(hud)
-	hud.setup(num_players, PLAYER_COLORS, touch)
+	var hud_colors: Array[Color] = []
+	for p in players:
+		hud_colors.append(p.player_color)
+	hud.setup(hud_colors, touch)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.settings_pressed.connect(_toggle_settings)
 	hud.reset_players_pressed.connect(_reset_players)
+	hud.player_color_changed.connect(_on_player_color_changed)
 
 
 func _process(delta: float) -> void:
@@ -98,6 +109,7 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed(&"restart"):
 		_restart()
 		return
+	_sync_web_players()
 	if settings_open:
 		return
 
@@ -106,9 +118,9 @@ func _process(delta: float) -> void:
 	for i in players.size():
 		var p := players[i]
 		if p.alive:
-			hud.set_player_status(i, "P%d   deaths %d" % [i + 1, p.deaths])
+			hud.set_player_status(i, "%s   deaths %d" % [p.display_name, p.deaths])
 		else:
-			hud.set_player_status(i, "P%d   respawn %.1f" % [i + 1, maxf(p.respawn_left, 0.0)])
+			hud.set_player_status(i, "%s   respawn %.1f" % [p.display_name, maxf(p.respawn_left, 0.0)])
 
 	if elapsed < GRACE:
 		hud.set_center("First bomb in %d — take cover!" % ceili(GRACE - elapsed))
@@ -185,8 +197,43 @@ func _on_finish_entered(body: Node2D) -> void:
 	if game_over or p == null or not p.alive:
 		return
 	game_over = true
-	hud.show_winner(p.index, PLAYER_COLORS[p.index], elapsed)
+	hud.show_winner(p.display_name, p.player_color, elapsed)
 	get_tree().paused = true
+
+
+func _on_player_color_changed(i: int, c: Color) -> void:
+	if i < players.size():
+		players[i].set_color(c)
+		hud.set_row_color(i, c)
+	if i < Settings.player_colors.size():
+		Settings.player_colors[i] = c
+
+
+## Spawn a Player for every joined web controller and feed it live input.
+func _sync_web_players() -> void:
+	for id in NetHub.clients:
+		var c: Dictionary = NetHub.clients[id]
+		if not c.joined:
+			continue
+		if not web_players.has(id):
+			if players.size() >= MAX_PLAYERS:
+				continue
+			var p := Player.new()
+			p.name = "WebPlayer%d" % id
+			p.setup_remote(players.size(), str(c.name), c.color)
+			p.respawn_point = terrain.shelter_spawn()
+			p.world_bounds = _bounds
+			p.position = terrain.shelter_spawn() + Vector2(randf_range(-30.0, 30.0), 0.0)
+			world.add_child(p)
+			players.append(p)
+			web_players[id] = p
+			hud.add_player_row(c.color)
+		var p: Player = web_players[id]
+		p.remote_axis = c.axis if c.connected else 0.0
+		p.remote_jump = c.jump and c.connected
+		if not p.player_color.is_equal_approx(c.color):
+			p.set_color(c.color)
+			hud.set_row_color(p.index, c.color)
 
 
 func _on_restart_requested() -> void:

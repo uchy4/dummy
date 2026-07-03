@@ -9,3 +9,7 @@ static var blast_scale := 1.0     ## multiplier on blast/kill/carve radius
 
 ## Which bomb types spawn, indexed by Bomb.Type: NORMAL, BIG, CLUSTER, BOUNCY.
 static var type_enabled: Array[bool] = [true, true, true, true]
+
+## Local players' chosen colors (set from the Quick Settings pickers).
+## Filled with the defaults by Main on first run.
+static var player_colors: Array[Color] = []

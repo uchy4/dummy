@@ -6,29 +6,32 @@ extends CanvasLayer
 signal restart_requested
 signal settings_pressed
 signal reset_players_pressed
+signal player_color_changed(index: int, color: Color)
 
 var _rows: Array[Label] = []
+var _rows_box: VBoxContainer
 var _timer: Label
 var _center: Label
 var _overlay: ColorRect
 var _win_title: Label
 var _win_sub: Label
 var _settings: PanelContainer
+var _qr_overlay: Control
+var _qr_texture: TextureRect
+var _qr_url: Label
 var _touch := false
 var _touch_buttons: Array[TouchScreenButton] = []
 
 
-func setup(count: int, colors: Array[Color], touch := false) -> void:
+func setup(colors: Array[Color], touch := false) -> void:
 	layer = 10
 	_touch = touch
 
-	var rows := VBoxContainer.new()
-	rows.position = Vector2(14, 12)
-	add_child(rows)
-	for i in count:
-		var l := _make_label(18, colors[i])
-		rows.add_child(l)
-		_rows.append(l)
+	_rows_box = VBoxContainer.new()
+	_rows_box.position = Vector2(14, 12)
+	add_child(_rows_box)
+	for c in colors:
+		add_player_row(c)
 
 	_timer = _make_label(18, Color.WHITE)
 	_timer.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -97,8 +100,20 @@ func setup(count: int, colors: Array[Color], touch := false) -> void:
 		_build_touch_controls()
 
 
+func add_player_row(color: Color) -> void:
+	var l := _make_label(18, color)
+	_rows_box.add_child(l)
+	_rows.append(l)
+
+
+func set_row_color(i: int, color: Color) -> void:
+	if i < _rows.size():
+		_rows[i].add_theme_color_override(&"font_color", color)
+
+
 func set_player_status(i: int, text: String) -> void:
-	_rows[i].text = text
+	if i < _rows.size():
+		_rows[i].text = text
 
 
 func set_timer(t: float) -> void:
@@ -110,8 +125,8 @@ func set_center(text: String) -> void:
 	_center.visible = not text.is_empty()
 
 
-func show_winner(index: int, color: Color, time: float) -> void:
-	_win_title.text = "PLAYER %d WINS!" % (index + 1)
+func show_winner(winner_name: String, color: Color, time: float) -> void:
+	_win_title.text = "%s WINS!" % winner_name.to_upper()
 	_win_title.add_theme_color_override(&"font_color", color)
 	var again := "tap anywhere for a rematch" if _touch else "press Enter for a rematch"
 	_win_sub.text = "Reached the finish line in %d:%04.1f  —  %s" \
@@ -180,17 +195,94 @@ func _build_settings_panel() -> void:
 		cb.toggled.connect(func(on: bool) -> void: Settings.type_enabled[i] = on)
 		grid.add_child(cb)
 
+	var colors_label := _make_label(15, Color(1, 1, 1, 0.9))
+	colors_label.text = "Player colors:"
+	vbox.add_child(colors_label)
+	var colors_row := HBoxContainer.new()
+	colors_row.add_theme_constant_override(&"separation", 10)
+	vbox.add_child(colors_row)
+	for i in Settings.player_colors.size():
+		var box := VBoxContainer.new()
+		var tag := _make_label(13, Color(1, 1, 1, 0.8))
+		tag.text = "P%d" % (i + 1)
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(tag)
+		var picker := ColorPickerButton.new()
+		picker.color = Settings.player_colors[i]
+		picker.custom_minimum_size = Vector2(52, 34)
+		picker.focus_mode = Control.FOCUS_NONE
+		picker.color_changed.connect(func(c: Color) -> void: player_color_changed.emit(i, c))
+		box.add_child(picker)
+		colors_row.add_child(box)
+
 	var reset := Button.new()
 	reset.text = "Reset players to shelter"
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.pressed.connect(func() -> void: reset_players_pressed.emit())
 	vbox.add_child(reset)
 
+	var qr := Button.new()
+	qr.text = "Show web-join QR  (friends join from their phone)"
+	qr.focus_mode = Control.FOCUS_NONE
+	qr.pressed.connect(_show_qr)
+	vbox.add_child(qr)
+
 	var resume := Button.new()
 	resume.text = "Resume"
 	resume.focus_mode = Control.FOCUS_NONE
 	resume.pressed.connect(func() -> void: settings_pressed.emit())
 	vbox.add_child(resume)
+
+
+# Fullscreen QR overlay: scan with a phone on the same Wi-Fi to open the
+# controller page and join the match.
+func _show_qr() -> void:
+	if _qr_overlay == null:
+		_build_qr_overlay()
+	var url: String = NetHub.join_url()
+	_qr_texture.texture = ImageTexture.create_from_image(Qr.make_image(url))
+	_qr_url.text = url + "\n(phone must be on the same Wi-Fi)"
+	_qr_overlay.visible = true
+
+
+func _build_qr_overlay() -> void:
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.8)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(dim)
+	_qr_overlay = dim
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override(&"separation", 12)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_child(vbox)
+
+	var title := _make_label(26, Color.WHITE)
+	title.text = "SCAN TO JOIN"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var frame := PanelContainer.new()
+	vbox.add_child(frame)
+	_qr_texture = TextureRect.new()
+	_qr_texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_qr_texture.custom_minimum_size = Vector2(300, 300)
+	_qr_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_qr_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	frame.add_child(_qr_texture)
+
+	_qr_url = _make_label(18, Color(1, 1, 1, 0.9))
+	_qr_url.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_qr_url)
+
+	var close := Button.new()
+	close.text = "Close"
+	close.focus_mode = Control.FOCUS_NONE
+	close.pressed.connect(func() -> void: _qr_overlay.visible = false)
+	vbox.add_child(close)
 
 
 func _add_slider(parent: Control, text: String, mn: float, mx: float,

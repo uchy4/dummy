@@ -9,6 +9,8 @@ const MAX_VOICES := 12
 
 var _booms: Array[AudioStreamWAV] = []
 var _splat: AudioStreamWAV
+var _jump_s: AudioStreamWAV
+var _step_s: AudioStreamWAV
 
 
 func _ready() -> void:
@@ -21,6 +23,8 @@ func _ready() -> void:
 		_make_boom(99001122, 0.85, 110.0, 35.0, 6.0, 4.0, 0.001, 230.0),
 	]
 	_splat = _make_splat()
+	_jump_s = _make_jump()
+	_step_s = _make_step()
 
 
 ## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale);
@@ -33,6 +37,19 @@ func play_explosion(pos: Vector2, size_mult: float, type := 0) -> void:
 
 func play_splat(_pos: Vector2) -> void:
 	_play(_splat, -2.0, randf_range(0.85, 1.25))
+
+
+func play_jump(_pos: Vector2) -> void:
+	_play(_jump_s, -11.0, randf_range(0.95, 1.15))
+
+
+## Subtle dirt crunch per stride; a slowed, louder variant doubles as landing.
+func play_step(_pos: Vector2) -> void:
+	_play(_step_s, -18.0, randf_range(0.85, 1.3))
+
+
+func play_land(_pos: Vector2) -> void:
+	_play(_step_s, -10.0, randf_range(0.55, 0.75))
 
 
 func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
@@ -100,6 +117,43 @@ func _make_splat() -> AudioStreamWAV:
 		var gloop := sin(phase) * 0.6 * exp(-t * 12.0)
 		var s := clampf(lp * 1.7 * env + gloop, -1.0, 1.0)
 		data.encode_s16(i * 2, int(s * 32000.0))
+	return _wav(data)
+
+
+## Hop: quick rising sine chirp with a whisper of noise.
+func _make_jump() -> AudioStreamWAV:
+	var n := int(RATE * 0.18)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var freq := lerpf(170.0, 430.0, minf(t * 7.0, 1.0))
+		phase += TAU * freq / RATE
+		var s := sin(phase) * 0.7 * exp(-t * 14.0) \
+			+ rng.randf_range(-1.0, 1.0) * 0.12 * exp(-t * 26.0)
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Footstep: a very short high-frequency dirt crunch (differentiated noise).
+func _make_step() -> AudioStreamWAV:
+	var n := int(RATE * 0.07)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 31337
+	var prev := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var noise := rng.randf_range(-1.0, 1.0)
+		var s := (noise - prev) * 0.85 * exp(-t * 90.0)
+		prev = noise
+		if rng.randf() < 0.05:
+			s += rng.randf_range(-0.5, 0.5) * exp(-t * 60.0)
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
 	return _wav(data)
 
 

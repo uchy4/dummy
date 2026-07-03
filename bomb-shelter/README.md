@@ -68,6 +68,15 @@ rematches (R / Enter):
   - **Cluster** — splits into 3 short-fuse bomblets that fly outward
   - **Bouncy** — barely any friction and a rubber shell; ricochets into places you thought were safe
 
+## Web join (play from your phone)
+
+Open **Quick Settings → Show web-join QR**. The game hosts a tiny web server
+on the local network; anyone on the **same Wi-Fi** scans the QR (or types the
+shown URL), gets a controller page in their phone browser, picks a name and
+color, and joins the match live — spawning in the shelter. Up to 8 players
+total. Local players can change their colors from the pickers in Quick
+Settings; web players change theirs from their phone.
+
 ## How to play (the logic to test)
 
 - **Dirt blocks blasts.** An explosion raycasts to each player/bomb; if solid

@@ -13,10 +13,16 @@ const INVULN_TIME := 1.5
 
 var index := 0
 var player_color := Color.WHITE
+var display_name := "P?"
 var alive := true
 var deaths := 0
 var respawn_left := 0.0
 var respawn_point := Vector2.ZERO
+
+## Web-joined players are driven by NetHub state instead of InputMap actions.
+var remote := false
+var remote_axis := 0.0
+var remote_jump := false
 
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
@@ -25,6 +31,10 @@ var _coyote := 0.0
 var _jump_buffer := 0.0
 var _walk_phase := 0.0
 var _swing := 0.0
+var _prev_jump_held := false
+var _was_on_floor := true
+var _fall_speed := 0.0
+var _step_sign := 0
 var _a_left: StringName
 var _a_right: StringName
 var _a_jump: StringName
@@ -36,9 +46,22 @@ var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 func setup(i: int, color: Color) -> void:
 	index = i
 	player_color = color
+	display_name = "P%d" % (i + 1)
 	_a_left = StringName("p%d_left" % (i + 1))
 	_a_right = StringName("p%d_right" % (i + 1))
 	_a_jump = StringName("p%d_jump" % (i + 1))
+
+
+func setup_remote(i: int, p_name: String, color: Color) -> void:
+	index = i
+	remote = true
+	display_name = p_name
+	player_color = color
+
+
+func set_color(c: Color) -> void:
+	player_color = c
+	queue_redraw()
 
 
 func _ready() -> void:
@@ -68,26 +91,45 @@ func _physics_process(delta: float) -> void:
 		if _invuln_left <= 0.0:
 			modulate.a = 1.0
 
+	var jump_held := remote_jump if remote else Input.is_action_pressed(_a_jump)
+	var jump_pressed := jump_held and not _prev_jump_held
+	var jump_released := not jump_held and _prev_jump_held
+	_prev_jump_held = jump_held
+	var dir := remote_axis if remote else Input.get_axis(_a_left, _a_right)
+
 	velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
 	_coyote = 0.15 if is_on_floor() else _coyote - delta
-	_jump_buffer = 0.1 if Input.is_action_just_pressed(_a_jump) else _jump_buffer - delta
+	_jump_buffer = 0.1 if jump_pressed else _jump_buffer - delta
 
 	if _jump_buffer > 0.0 and _coyote > 0.0:
 		velocity.y = JUMP_VELOCITY
 		_jump_buffer = 0.0
 		_coyote = 0.0
-	if Input.is_action_just_released(_a_jump) and velocity.y < 0.0:
+		get_tree().call_group(&"sfx", &"play_jump", global_position)
+		_puff(4)
+	if jump_released and velocity.y < 0.0:
 		velocity.y *= 0.55  # variable jump height
 
-	var dir := Input.get_axis(_a_left, _a_right)
 	velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
+	_fall_speed = velocity.y
 	move_and_slide()
+
+	# Landing: was airborne, now grounded, was falling with real speed.
+	if is_on_floor() and not _was_on_floor and _fall_speed > 220.0:
+		get_tree().call_group(&"sfx", &"play_land", global_position)
+		_puff(8)
+	_was_on_floor = is_on_floor()
 
 	# Limb swing: legs/arms pump while walking, settle when idle or airborne.
 	var swing_target := 0.0
 	if is_on_floor() and absf(velocity.x) > 20.0:
 		_walk_phase += velocity.x * delta * 0.055
 		swing_target = sin(_walk_phase) * 0.6
+		# One subtle crunch per stride (each half of the swing cycle).
+		var sgn := 1 if sin(_walk_phase) >= 0.0 else -1
+		if sgn != _step_sign:
+			_step_sign = sgn
+			get_tree().call_group(&"sfx", &"play_step", global_position)
 	elif not is_on_floor():
 		swing_target = 0.35  # arms/legs trail in the air
 	_swing = lerpf(_swing, swing_target, 0.35)
@@ -154,18 +196,31 @@ func _respawn() -> void:
 	_shape.set_deferred("disabled", false)
 
 
+func _puff(amount: int) -> void:
+	var d := DustPuff.new()
+	d.amount = amount
+	d.position = global_position + Vector2(0, 12)
+	get_parent().add_child.call_deferred(d)
+
+
+func _limb(anchor: Vector2, angle: float, length: float, col: Color) -> void:
+	draw_set_transform(anchor, angle, Vector2.ONE)
+	draw_rect(Rect2(-3, -1, 6, length + 2), Color.BLACK)  # outline
+	draw_rect(Rect2(-2, 0, 4, length), col)
+
+
 func _draw() -> void:
 	var arm_c := player_color.darkened(0.15)
 	var leg_c := player_color.darkened(0.35)
 	# Far arm and far leg swing opposite the near ones.
-	draw_set_transform(Vector2(5, -6), _swing, Vector2.ONE)
-	draw_rect(Rect2(-2, 0, 4, 10), arm_c.darkened(0.2))
-	draw_set_transform(Vector2(3, 2), -_swing, Vector2.ONE)
-	draw_rect(Rect2(-2, 0, 4, 12), leg_c.darkened(0.2))
-	draw_set_transform(Vector2(-3, 2), _swing, Vector2.ONE)
-	draw_rect(Rect2(-2, 0, 4, 12), leg_c)
-	# Torso and head in body space.
+	_limb(Vector2(5, -6), _swing, 10, arm_c.darkened(0.2))
+	_limb(Vector2(3, 2), -_swing, 12, leg_c.darkened(0.2))
+	_limb(Vector2(-3, 2), _swing, 12, leg_c)
+	# Torso and head in body space, black silhouette first.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
+	draw_rect(Rect2(-6, -16, 12, 11), Color.BLACK)
+	draw_rect(Rect2(-7, -18, 14, 6), Color.BLACK)
 	draw_rect(Rect2(-6, -7, 12, 10), player_color)
 	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
 	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
@@ -174,6 +229,5 @@ func _draw() -> void:
 	draw_rect(Rect2(-2.5, -11, 1, 1.5), Color.BLACK)
 	draw_rect(Rect2(1.5, -11, 1, 1.5), Color.BLACK)
 	# Near arm drawn over the torso.
-	draw_set_transform(Vector2(-5, -6), -_swing, Vector2.ONE)
-	draw_rect(Rect2(-2, 0, 4, 10), arm_c)
+	_limb(Vector2(-5, -6), -_swing, 10, arm_c)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

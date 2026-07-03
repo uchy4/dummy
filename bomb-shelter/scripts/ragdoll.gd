@@ -60,6 +60,7 @@ func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
 	rs.size = size
 	cs.shape = rs
 	b.add_child(cs)
+	b.add_child(_rect_poly(size + Vector2(2, 2), Color.BLACK))  # outline
 	b.add_child(_rect_poly(size, col))
 
 	add_child(b)
