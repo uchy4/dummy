@@ -9,10 +9,11 @@ const W := 100          # the "100 feet wide" strip: 1 cell ~ 1 foot
 const H := 120
 const SURFACE_ROW := 20 # first solid row; everything above is sky
 
+const CRUST_ROWS := 10  # solid rows under the grass: only bombs open the way down
 const SHELTER_HALF_W := 7
-const SHELTER_TOP := 23
-const SHELTER_H := 7    # rows 23..29 open, floor at row 30
-const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 117
+const SHELTER_TOP := SURFACE_ROW + CRUST_ROWS  # buried just below the crust
+const SHELTER_H := 7
+const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS }
@@ -98,13 +99,12 @@ func _generate() -> void:
 			_gset(x, y, Cell.BEDROCK)
 
 	var cx := W / 2
-	# The starting shelter, with an open entrance shaft from the surface.
+	# The shelter is buried under the crust — bombs must excavate the way in.
 	_carve_rect(Rect2i(cx - SHELTER_HALF_W, SHELTER_TOP, SHELTER_HALF_W * 2, SHELTER_H))
-	_carve_rect(Rect2i(cx - 1, SURFACE_ROW, 3, SHELTER_TOP - SURFACE_ROW + 1))
 
 	# Cavern bands going down. Every room is reached by a tunnel from above that
 	# stops PLUG_ROWS short — a dead end that needs a bomb to open.
-	var bands := [[34, 48], [54, 68], [74, 88], [92, 104]]
+	var bands := [[41, 52], [58, 70], [76, 88], [92, 104]]
 	var all_rooms: Array[Dictionary] = []
 	var prev_centers: Array[Vector2i] = [Vector2i(cx, SHELTER_TOP + 4)]
 	for band: Array in bands:
@@ -128,13 +128,13 @@ func _generate() -> void:
 	for c in prev_centers:
 		_carve_tunnel(c, Vector2i(c.x, FINISH_TOP))
 
-	# A couple of open surface shafts away from the shelter — easy ways to get
-	# bombs (and yourself) underground, but they end in dirt.
+	# A couple of buried shafts away from the shelter — useful drops once the
+	# crust above them is blown open, but they start below it and end in dirt.
 	for i in 2:
 		var sx := rng.randi_range(8, W - 8)
 		if absi(sx - cx) < 14:
 			sx = cx + 20 * (1 if rng.randf() < 0.5 else -1)
-		_carve_rect(Rect2i(sx - 1, SURFACE_ROW, 3, rng.randi_range(24, 32)))
+		_carve_rect(Rect2i(sx - 1, SURFACE_ROW + CRUST_ROWS, 3, rng.randi_range(20, 28)))
 
 	# Decoy side tunnels that just stop in the dirt.
 	for i in 4:
@@ -143,7 +143,7 @@ func _generate() -> void:
 		var dir := 1.0 if rng.randf() < 0.5 else -1.0
 		for step in rng.randi_range(7, 13):
 			p.x = clampf(p.x + dir, 4, W - 5)
-			p.y = clampf(p.y + rng.randf_range(-0.4, 0.8), SURFACE_ROW + 3, H - 6)
+			p.y = clampf(p.y + rng.randf_range(-0.4, 0.8), SURFACE_ROW + CRUST_ROWS + 1, H - 6)
 			_carve_disk(Vector2i(p), 1)
 
 	# Grass on every exposed surface cell.
@@ -187,8 +187,10 @@ func _carve_disk(c: Vector2i, r: int) -> void:
 
 
 func _carve_cell(x: int, y: int) -> void:
-	if y < SURFACE_ROW:
-		return  # never carve into the sky
+	# Generation never touches the sky or the crust — the top CRUST_ROWS of
+	# ground stay solid until bombs excavate them at runtime.
+	if y < SURFACE_ROW + CRUST_ROWS:
+		return
 	if _gget(x, y) != Cell.BEDROCK:
 		_gset(x, y, Cell.EMPTY)
 
