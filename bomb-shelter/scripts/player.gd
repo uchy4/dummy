@@ -30,6 +30,12 @@ var remote_axis := 0.0
 var remote_jump := false
 var remote_kick := false
 
+## Puppet: a display-only mirror on a LAN-join client. No physics, no input —
+## position and state come from host snapshots; drawing and the 3D layer work
+## as usual.
+var puppet := false
+var puppet_on_floor := true
+
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
 var _invuln_left := 0.0
@@ -89,6 +95,10 @@ func is_striped() -> bool:
 func _ready() -> void:
 	add_to_group(&"players")
 	z_index = 5
+	if puppet:
+		collision_layer = 0
+		collision_mask = 0
+		return
 	collision_layer = 2
 	collision_mask = 1 | 2 | 4  # terrain, other players, bombs
 	floor_snap_length = 6.0
@@ -100,7 +110,14 @@ func _ready() -> void:
 	add_child(_shape)
 
 
+## True when standing on ground; snapshot-driven for puppets.
+func on_ground() -> bool:
+	return puppet_on_floor if puppet else is_on_floor()
+
+
 func _physics_process(delta: float) -> void:
+	if puppet:
+		return
 	if not alive:
 		if not Settings.one_life:
 			respawn_left -= delta

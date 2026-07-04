@@ -85,6 +85,21 @@ rematches (R / Enter):
   - **Cluster** — splits into 3 short-fuse bomblets that fly outward
   - **Bouncy** — barely any friction and a rubber shell; ricochets into places you thought were safe
 
+## Two APKs, and native LAN play
+
+CI publishes **two flavors that install side by side**:
+`bomb-shelter-2d.apk` (classic flat renderer, package
+`com.uchy4.bombshelter`) and `bomb-shelter-3d.apk` (KayKit 2.5D, package
+`com.uchy4.bombshelter3d`). Each is locked to its renderer.
+
+Both boot into a **menu**: **HOST GAME** starts a match on this device
+(and broadcasts a UDP discovery beacon on the LAN), while the **Join over
+local Wi-Fi** list shows any hosted games it hears — tap one to join as a
+full native player, rendered in whichever flavor you're running. The
+native client mirrors the host's match via the same WebSocket state
+stream the browser client uses, driving puppet entities so both
+renderers work unchanged. 2D and 3D flavors can play together freely.
+
 ## Web join (play from your phone)
 
 Open **Quick Settings → Show web-join QR**. The game hosts a tiny web server

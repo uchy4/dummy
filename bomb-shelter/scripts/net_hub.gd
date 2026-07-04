@@ -16,10 +16,18 @@ const PALETTE: Array[String] = [
 	"4dd0e1", "ff6bcb", "a1887f", "eceff1", "26a69a",
 ]
 
+const BEACON_PORT := 8930
+
 var http_port := 0
 var ws_port := 0
+## When true (hosting), broadcast a discovery beacon so other phones'
+## "Join LAN game" screens can find this match.
+var advertising := false
 ## id -> {ws, joined, connected, name, color, axis, jump}
 var clients := {}
+
+var _beacon := PacketPeerUDP.new()
+var _beacon_t := 0.0
 
 var _http := TCPServer.new()
 var _wss := TCPServer.new()
@@ -246,6 +254,7 @@ func _ready() -> void:
 		if _wss.listen(p) == OK:
 			ws_port = p
 			break
+	_beacon.set_broadcast_enabled(true)
 
 
 func join_url() -> String:
@@ -269,6 +278,19 @@ func lan_ip() -> String:
 
 
 func _process(delta: float) -> void:
+	# --- LAN discovery beacon (hosting only) ---
+	if advertising:
+		_beacon_t -= delta
+		if _beacon_t <= 0.0:
+			_beacon_t = 1.0
+			var label := OS.get_model_name()
+			if label.is_empty() or label == "GenericDevice":
+				label = "Host"
+			_beacon.set_dest_address("255.255.255.255", BEACON_PORT)
+			_beacon.put_packet(JSON.stringify({
+				"g": "bombshelter", "n": label, "ws": ws_port, "http": http_port,
+			}).to_utf8_buffer())
+
 	# --- plain HTTP: serve the controller page ---
 	while _http.is_connection_available():
 		_pending.append({"tcp": _http.take_connection(), "buf": "", "age": 0.0, "sent": false})

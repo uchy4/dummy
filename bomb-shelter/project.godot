@@ -8,7 +8,7 @@ config_version=5
 
 config/name="Bomb Shelter"
 config/description="Bombs fall from the sky. Blast your way down through dead-end caverns to the finish line."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.4")
 config/icon="res://icon.svg"
 

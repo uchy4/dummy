@@ -4,10 +4,18 @@ extends Area2D
 ## one-time protection from a lethal blast. Unshielded explosions destroy
 ## unopened chests.
 
+## Puppet: display-only mirror on a LAN-join client (host handles pickups).
+var puppet := false
+
+
 func _ready() -> void:
 	add_to_group(&"chests")
 	z_index = 4
 	collision_layer = 0
+	if puppet:
+		collision_mask = 0
+		monitoring = false
+		return
 	collision_mask = 2
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()

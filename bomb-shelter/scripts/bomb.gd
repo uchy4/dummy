@@ -23,6 +23,10 @@ var is_bomblet := false
 var fuse := 4.0
 var terrain: Terrain
 
+## Puppet: display-only mirror on a LAN-join client. Frozen, no fuse logic —
+## the host streams position and fuse.
+var puppet := false
+
 var _body_radius := 9.0
 var _blast_mult := 1.0
 var _body_color := Color(0.13, 0.13, 0.16)
@@ -61,6 +65,10 @@ func _ready() -> void:
 			pm.bounce = 0.85
 			pm.friction = 0.4
 	physics_material_override = pm
+	if puppet:
+		freeze = true
+		collision_layer = 0
+		collision_mask = 0
 
 	var cs := CollisionShape2D.new()
 	var shape := CircleShape2D.new()
@@ -98,7 +106,7 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if _exploded:
+	if _exploded or puppet:
 		return
 	# Deflect bounces sideways a little so a bomb never pogos straight up
 	# and down in place forever.

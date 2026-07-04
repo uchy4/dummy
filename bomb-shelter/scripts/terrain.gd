@@ -30,10 +30,27 @@ var _grid := PackedByteArray()
 var _src_id := 0
 
 
+## Client mode: no generation — the grid arrives from the host over the
+## network via load_from_string() and carve events.
+var client_mode := false
+
+
 func _ready() -> void:
 	rng.randomize()
 	_build_tileset()
+	if client_mode:
+		return
 	_generate()
+	_paint_all()
+
+
+## Fill the grid from the wire format (one digit per cell, row-major).
+func load_from_string(s: String) -> void:
+	_grid.resize(W * H)
+	_grid.fill(Cell.EMPTY)
+	for i in mini(s.length(), _grid.size()):
+		_grid[i] = s.unicode_at(i) - 48
+	clear()
 	_paint_all()
 
 

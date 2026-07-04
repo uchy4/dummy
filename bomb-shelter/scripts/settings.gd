@@ -28,3 +28,8 @@ static var kick_player_power := 280.0
 ## Local players' chosen colors (set from the Quick Settings pickers).
 ## Filled with the defaults by Main on first run.
 static var player_colors: Array[Color] = []
+
+## LAN join handoff from the menu to the client scene.
+static var join_ip := ""
+static var join_ws_port := 0
+static var join_name := "Guest"

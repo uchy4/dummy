@@ -36,13 +36,19 @@ var _snap_tick := 0
 
 
 func _enter_tree() -> void:
-	_register_actions()
+	register_actions()
 
 
 func _ready() -> void:
 	# Main + HUD keep processing while the tree is paused (win screen);
 	# everything inside World freezes.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Flavor APKs lock the renderer: the 2D and 3D builds install side by side.
+	if OS.has_feature("mode3d"):
+		Settings.mode_3d = true
+	elif OS.has_feature("mode2d"):
+		Settings.mode_3d = false
+	NetHub.advertising = true  # hosting: discoverable on the local network
 	touch = DisplayServer.is_touchscreen_available()
 	if touch:
 		num_players = 1  # phone: one player racing the bombs, on-screen buttons
@@ -454,7 +460,7 @@ func _restart() -> void:
 	get_tree().reload_current_scene()
 
 
-func _register_actions() -> void:
+static func register_actions() -> void:
 	for i in KEYMAPS.size():
 		for dir in ["left", "right", "jump", "kick"]:
 			_add_action("p%d_%s" % [i + 1, dir], KEYMAPS[i][dir])
@@ -462,7 +468,7 @@ func _register_actions() -> void:
 	_add_action("settings", [KEY_ESCAPE])
 
 
-func _add_action(action: String, keys: Array) -> void:
+static func _add_action(action: String, keys: Array) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action)

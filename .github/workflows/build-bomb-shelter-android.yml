@@ -71,39 +71,54 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
           cp "$HOME/.config/godot/editor_settings-4.4.tres" "$HOME/.config/godot/editor_settings-4.tres"
-          # Also set the keystore directly in the preset - the most reliable
+          # Also set the keystore directly in BOTH presets - the most reliable
           # thing headless export reads.
-          printf '\nkeystore/debug="%s"\nkeystore/debug_user="androiddebugkey"\nkeystore/debug_password="android"\n' \
-            "$HOME/debug.keystore" >> bomb-shelter/export_presets.cfg
-          tail -5 bomb-shelter/export_presets.cfg
+          python3 - <<'PYEOF'
+          import os
+          p = 'bomb-shelter/export_presets.cfg'
+          s = open(p).read()
+          block = ('\nkeystore/debug="%s/debug.keystore"'
+                   '\nkeystore/debug_user="androiddebugkey"'
+                   '\nkeystore/debug_password="android"\n') % os.environ['HOME']
+          for sect in ('[preset.0.options]', '[preset.1.options]'):
+              s = s.replace(sect, sect + block)
+          open(p, 'w').write(s)
+          print('keystore injected into both presets')
+          PYEOF
 
-      - name: Export debug APK
+      - name: Export debug APKs (2D and 3D flavors)
         run: |
           mkdir -p build
-          set +e
-          godot --headless --path bomb-shelter --export-debug "Android" \
-            "$GITHUB_WORKSPACE/build/bomb-shelter.apk" 2>&1 | tee /tmp/export.log | tail -30
-          set -e
-          if [ ! -f build/bomb-shelter.apk ]; then
-            echo "===== export failed — diagnostics ====="
-            grep -iE "error|invalid|missing|keystore|template|sdk|java" /tmp/export.log | head -60 || true
-            exit 1
-          fi
+          for PRESET in Android Android3D; do
+            case "$PRESET" in
+              Android) OUT="bomb-shelter-2d.apk" ;;
+              *) OUT="bomb-shelter-3d.apk" ;;
+            esac
+            set +e
+            godot --headless --path bomb-shelter --export-debug "$PRESET" \
+              "$GITHUB_WORKSPACE/build/$OUT" 2>&1 | tee /tmp/export.log | tail -20
+            set -e
+            if [ ! -f "build/$OUT" ]; then
+              echo "===== export failed for $PRESET — diagnostics ====="
+              grep -iE "error|invalid|missing|keystore|template|sdk|java" /tmp/export.log | head -60 || true
+              exit 1
+            fi
+          done
           ls -la build
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bomb-shelter-apk
-          path: build/bomb-shelter.apk
+          name: bomb-shelter-apks
+          path: build/*.apk
 
-      - name: Publish release with APK
+      - name: Publish release with both APKs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="bomb-shelter-build-${{ github.run_number }}"
-          gh release create "$TAG" build/bomb-shelter.apk \
+          gh release create "$TAG" build/bomb-shelter-2d.apk build/bomb-shelter-3d.apk \
             --target "${{ github.sha }}" \
             --title "Bomb Shelter Android build #${{ github.run_number }}" \
-            --notes "Debug APK built from \`${{ github.ref_name }}\` @ ${{ github.sha }}.
+            --notes "Debug APKs built from \`${{ github.ref_name }}\` @ ${{ github.sha }}.
 
-          **Install on Android:** download \`bomb-shelter.apk\` below, open it, and allow installing from unknown sources when prompted. Single-player with touch controls on phones; 2-4 players on keyboard on desktop."
+          Two flavors that install side by side: \`bomb-shelter-2d.apk\` (classic flat look) and \`bomb-shelter-3d.apk\` (KayKit 2.5D). Both can host a match over local Wi-Fi and join one another's games from the menu; phones without the app join from a browser via the QR code."

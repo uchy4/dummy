@@ -1,0 +1,128 @@
+class_name Menu
+extends Control
+## Boot menu: host a match on this device, or discover and join a game
+## being hosted on the local Wi-Fi (host phones broadcast a UDP beacon).
+
+const STALE := 4.0
+
+var _games := {}  # ip -> {name, ws, http, seen}
+var _udp := PacketPeerUDP.new()
+var _scan_ok := false
+var _name_edit: LineEdit
+var _list: VBoxContainer
+var _scan_label: Label
+var _refresh := 0.0
+
+
+func _ready() -> void:
+	NetHub.advertising = false
+	Main.register_actions()
+	_build_ui()
+	_scan_ok = _udp.bind(NetHub.BEACON_PORT) == OK
+	if not _scan_ok:
+		_scan_label.text = "LAN scan unavailable (port in use)"
+	if OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
+		call_deferred("_host")
+
+
+func _process(delta: float) -> void:
+	if _scan_ok:
+		while _udp.get_available_packet_count() > 0:
+			var ip := _udp.get_packet_ip()
+			var msg: Variant = JSON.parse_string(_udp.get_packet().get_string_from_utf8())
+			if msg is Dictionary and str(msg.get("g", "")) == "bombshelter":
+				_games[ip] = {
+					"name": str(msg.get("n", "Host")), "ws": int(msg.get("ws", 0)),
+					"http": int(msg.get("http", 0)), "seen": 0.0,
+				}
+	for ip in _games.keys():
+		_games[ip].seen += delta
+		if _games[ip].seen > STALE:
+			_games.erase(ip)
+	_refresh -= delta
+	if _refresh <= 0.0:
+		_refresh = 0.5
+		_rebuild_list()
+
+
+func _build_ui() -> void:
+	var bg := ColorRect.new()
+	bg.color = Color("17100a")
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override(&"separation", 14)
+	box.custom_minimum_size = Vector2(420, 0)
+	center.add_child(box)
+
+	var title := Label.new()
+	title.text = "BOMB SHELTER"
+	title.add_theme_font_size_override(&"font_size", 42)
+	title.add_theme_color_override(&"font_color", Color("ffca28"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "Your name (for joining)"
+	_name_edit.text = Settings.join_name
+	_name_edit.max_length = 10
+	box.add_child(_name_edit)
+
+	var host := Button.new()
+	host.text = "HOST GAME"
+	host.add_theme_font_size_override(&"font_size", 24)
+	host.pressed.connect(_host)
+	box.add_child(host)
+
+	var join_title := Label.new()
+	join_title.text = "Join over local Wi-Fi:"
+	join_title.add_theme_font_size_override(&"font_size", 18)
+	box.add_child(join_title)
+
+	_scan_label = Label.new()
+	_scan_label.text = "searching for hosted games…"
+	_scan_label.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.6))
+	box.add_child(_scan_label)
+
+	_list = VBoxContainer.new()
+	_list.add_theme_constant_override(&"separation", 8)
+	box.add_child(_list)
+
+	var hint := Label.new()
+	hint.text = "Phones without the app can join from a browser:\nhost a game, then Quick Settings > Show web-join QR."
+	hint.add_theme_font_size_override(&"font_size", 13)
+	hint.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.45))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(hint)
+
+
+func _rebuild_list() -> void:
+	for child in _list.get_children():
+		child.queue_free()
+	if _scan_ok:
+		_scan_label.visible = _games.is_empty()
+	for ip in _games:
+		var g: Dictionary = _games[ip]
+		var b := Button.new()
+		b.text = "JOIN  %s  (%s)" % [g.name, ip]
+		b.add_theme_font_size_override(&"font_size", 20)
+		b.pressed.connect(_join.bind(str(ip), int(g.ws)))
+		_list.add_child(b)
+
+
+func _host() -> void:
+	NetHub.advertising = true
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
+func _join(ip: String, ws_port: int) -> void:
+	Settings.join_ip = ip
+	Settings.join_ws_port = ws_port
+	Settings.join_name = _name_edit.text.strip_edges()
+	if Settings.join_name.is_empty():
+		Settings.join_name = "Guest"
+	get_tree().change_scene_to_file("res://scenes/client.tscn")

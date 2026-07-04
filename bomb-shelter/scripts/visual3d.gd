@@ -226,13 +226,13 @@ func _sync_players(delta: float) -> void:
 		var model := vis.get_node("Model") as Node3D
 		var target_yaw := PI / 2.0 * float(p._facing)
 		model.rotation.y = lerp_angle(model.rotation.y, target_yaw, minf(12.0 * delta, 1.0))
-		var moving := absf(p.velocity.x) > 20.0 and p.is_on_floor()
+		var moving := absf(p.velocity.x) > 20.0 and p.on_ground()
 		var bob := absf(sin(_time * 11.0)) * 0.09 if moving else 0.0
 		model.position.y = -CHAR_HEIGHT / 2.0 + bob
 		var lean := 0.0
 		if moving:
 			lean = -0.1 * float(p._facing)
-		elif not p.is_on_floor():
+		elif not p.on_ground():
 			lean = 0.14 * float(p._facing)
 		model.rotation.z = lerpf(model.rotation.z, lean, minf(10.0 * delta, 1.0))
 		var armor_ring := vis.get_node("ArmorRing") as Node3D
