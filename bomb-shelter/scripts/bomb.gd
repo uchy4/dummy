@@ -28,6 +28,7 @@ var _blast_mult := 1.0
 var _body_color := Color(0.13, 0.13, 0.16)
 var _exploded := false
 var _prev_vy := 0.0
+var _tick_timer := 0.0
 var _label: Label
 
 
@@ -78,6 +79,8 @@ func _ready() -> void:
 
 
 func ignite(new_fuse: float) -> void:
+	if new_fuse < fuse - 0.2:
+		get_tree().call_group(&"sfx", &"play_snap", global_position)
 	fuse = minf(fuse, new_fuse)
 
 
@@ -106,6 +109,12 @@ func _physics_process(delta: float) -> void:
 	_prev_vy = linear_velocity.y
 
 	fuse -= delta
+	# Audible countdown that accelerates over the last 1.5 seconds.
+	if fuse > 0.0 and fuse < 1.5:
+		_tick_timer -= delta
+		if _tick_timer <= 0.0:
+			_tick_timer = clampf(fuse * 0.22, 0.06, 0.3)
+			get_tree().call_group(&"sfx", &"play_tick", global_position)
 	if fuse <= 0.0:
 		_explode()
 
@@ -145,6 +154,19 @@ func _explode() -> void:
 		var falloff := 1.0 - d / blast
 		bomb.apply_central_impulse(dir * BOMB_IMPULSE * (0.5 + falloff) * bomb.mass)
 		bomb.ignite(randf_range(0.25, 0.7))  # its death sets their fuse off
+
+	# Blasts toss settled ragdolls around too.
+	for rp in get_tree().get_nodes_in_group(&"ragdoll_parts"):
+		var part := rp as RigidBody2D
+		if part == null or not is_instance_valid(part):
+			continue
+		var d := global_position.distance_to(part.global_position)
+		if d > blast or _blocked(space, part.global_position):
+			continue
+		var dir := global_position.direction_to(part.global_position)
+		if dir == Vector2.ZERO:
+			dir = Vector2.UP
+		part.apply_central_impulse(dir * BOMB_IMPULSE * (0.6 + (1.0 - d / blast)) * part.mass)
 
 	# Untyped on purpose: naming Chest here would create a Bomb -> Chest ->
 	# Player -> Bomb class-loading cycle.

@@ -61,6 +61,7 @@ func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
 	pm.friction = 0.6
 	b.physics_material_override = pm
 
+	b.add_to_group(&"ragdoll_parts")
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
 	rs.size = size

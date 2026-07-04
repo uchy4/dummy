@@ -259,6 +259,7 @@ func _check_elimination() -> void:
 		game_over = true
 		hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
 		NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})
+		get_tree().call_group(&"sfx", &"play_womp", Vector2.ZERO)
 		get_tree().paused = true
 
 
@@ -266,6 +267,7 @@ func _declare_winner(p: Player, reason: String) -> void:
 	game_over = true
 	hud.show_winner(p.display_name, p.player_color, elapsed, reason)
 	NetHub.broadcast({"t": "win", "n": p.display_name, "c": p.player_color.to_html(false)})
+	get_tree().call_group(&"sfx", &"play_fanfare", Vector2.ZERO)
 	get_tree().paused = true
 
 

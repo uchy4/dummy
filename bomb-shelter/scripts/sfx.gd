@@ -13,6 +13,10 @@ var _jump_s: AudioStreamWAV
 var _step_s: AudioStreamWAV
 var _pickup_s: AudioStreamWAV
 var _clank_s: AudioStreamWAV
+var _tick_s: AudioStreamWAV
+var _snap_s: AudioStreamWAV
+var _fanfare_s: AudioStreamWAV
+var _womp_s: AudioStreamWAV
 
 
 func _ready() -> void:
@@ -29,6 +33,10 @@ func _ready() -> void:
 	_step_s = _make_step()
 	_pickup_s = _make_pickup()
 	_clank_s = _make_clank()
+	_tick_s = _make_tick()
+	_snap_s = _make_snap()
+	_fanfare_s = _make_fanfare()
+	_womp_s = _make_womp()
 
 
 ## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale);
@@ -68,6 +76,27 @@ func play_pickup(_pos: Vector2) -> void:
 
 func play_armor_break(_pos: Vector2) -> void:
 	_play(_clank_s, -4.0, randf_range(0.9, 1.05))
+
+
+## Accelerating countdown blip in a bomb's final 1.5 seconds. Low priority:
+## skipped when the mixer is busy so booms always win.
+func play_tick(_pos: Vector2) -> void:
+	if get_child_count() >= 10:
+		return
+	_play(_tick_s, -16.0, randf_range(0.97, 1.03))
+
+
+## The crack of a blast lighting another bomb's fuse.
+func play_snap(_pos: Vector2) -> void:
+	_play(_snap_s, -9.0, randf_range(0.9, 1.15))
+
+
+func play_fanfare(_pos: Vector2) -> void:
+	_play(_fanfare_s, -5.0, 1.0)
+
+
+func play_womp(_pos: Vector2) -> void:
+	_play(_womp_s, -5.0, 1.0)
 
 
 func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
@@ -214,6 +243,80 @@ func _make_clank() -> AudioStreamWAV:
 		p3 += TAU * 1372.0 / RATE
 		var s := (sin(p1) * 0.4 + sin(p2) * 0.3 + sin(p3) * 0.2) * exp(-t * 9.0)
 		s += rng.randf_range(-1.0, 1.0) * 0.5 * exp(-t * 40.0)
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Countdown blip: a 40 ms high sine ping.
+func _make_tick() -> AudioStreamWAV:
+	var n := int(RATE * 0.04)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		phase += TAU * 2100.0 / RATE
+		var s := sin(phase) * minf(t * 400.0, 1.0) * exp(-t * 80.0) * 0.8
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Chain-ignite: a short electric crack.
+func _make_snap() -> AudioStreamWAV:
+	var n := int(RATE * 0.07)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 616161
+	var prev := 0.0
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var noise := rng.randf_range(-1.0, 1.0)
+		phase += TAU * 950.0 / RATE
+		var s := (noise - prev) * 0.9 * exp(-t * 110.0) + sin(phase) * 0.3 * exp(-t * 50.0)
+		prev = noise
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Win fanfare: rising C-E-G-C arpeggio with a sustained final note.
+func _make_fanfare() -> AudioStreamWAV:
+	var notes := [523.25, 659.25, 784.0, 1046.5]
+	var starts := [0.0, 0.16, 0.32, 0.48]
+	var n := int(RATE * 1.1)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var idx := 0
+		for k in starts.size():
+			if t >= starts[k]:
+				idx = k
+		var since := t - starts[idx]
+		var last := idx == notes.size() - 1
+		phase += TAU * notes[idx] / RATE
+		var env := minf(since * 250.0, 1.0) * exp(-since * (3.0 if last else 9.0))
+		var s := (sin(phase) + 0.25 * sin(phase * 2.0) + 0.12 * sin(phase * 3.0)) * 0.45 * env
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Draw: two sad descending notes.
+func _make_womp() -> AudioStreamWAV:
+	var n := int(RATE * 0.7)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var freq := 349.23 if t < 0.3 else 233.08
+		freq *= 1.0 + 0.015 * sin(TAU * 5.5 * t)
+		phase += TAU * freq / RATE
+		var since := t if t < 0.3 else t - 0.3
+		var env := minf(since * 200.0, 1.0) * exp(-since * 6.0)
+		var s := (sin(phase) + 0.2 * sin(phase * 2.0)) * 0.5 * env
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
 	return _wav(data)
 
