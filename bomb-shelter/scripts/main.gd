@@ -93,6 +93,11 @@ func _ready() -> void:
 
 	add_child(Sfx.new())
 
+	for pos in terrain.chest_positions():
+		var ch := Chest.new()
+		ch.position = pos
+		world.add_child(ch)
+
 	_build_finish()
 
 	hud = Hud.new()
@@ -127,7 +132,8 @@ func _process(delta: float) -> void:
 	for i in players.size():
 		var p := players[i]
 		if p.alive:
-			hud.set_player_status(i, "%s   deaths %d" % [p.display_name, p.deaths])
+			var suffix := "   ARMOR" if p.armor else ""
+			hud.set_player_status(i, "%s   deaths %d%s" % [p.display_name, p.deaths, suffix])
 		else:
 			hud.set_player_status(i, "%s   respawn %.1f" % [p.display_name, maxf(p.respawn_left, 0.0)])
 
@@ -265,7 +271,8 @@ func _net_service() -> void:
 	var ps := []
 	for p in players:
 		ps.append([int(p.global_position.x), int(p.global_position.y),
-			1 if p.alive else 0, int(maxf(p.respawn_left, 0.0) * 10.0), p.deaths])
+			1 if p.alive else 0, int(maxf(p.respawn_left, 0.0) * 10.0), p.deaths,
+			1 if p.armor else 0])
 	var bs := []
 	for b in get_tree().get_nodes_in_group(&"bombs"):
 		var bomb := b as Bomb
@@ -273,7 +280,10 @@ func _net_service() -> void:
 			continue
 		bs.append([int(bomb.global_position.x), int(bomb.global_position.y),
 			int(bomb.type), int(maxf(bomb.fuse, 0.0) * 10.0), int(bomb._body_radius)])
-	NetHub.broadcast({"t": "s", "p": ps, "b": bs})
+	var cs := []
+	for ch in get_tree().get_nodes_in_group(&"chests"):
+		cs.append([int(ch.global_position.x), int(ch.global_position.y)])
+	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs})
 
 
 func _pair_key(a: Color, b: Color) -> String:

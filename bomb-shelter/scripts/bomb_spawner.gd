@@ -24,13 +24,20 @@ func _physics_process(delta: float) -> void:
 		_next_spawn = _elapsed + _interval()
 
 
+## 0 at match start, 1 once ramp_time has elapsed: the difficulty dial.
+func _difficulty() -> float:
+	return clampf((_elapsed - GRACE) / maxf(Settings.ramp_time, 1.0), 0.0, 1.0)
+
+
 func _interval() -> float:
-	return maxf(0.5, Settings.drop_interval - _elapsed * Settings.drop_rampup)
+	var floor_interval := maxf(0.5, Settings.drop_interval * 0.18)
+	return lerpf(Settings.drop_interval, floor_interval, _difficulty())
 
 
 func _spawn_wave() -> void:
 	var live := get_tree().get_nodes_in_group(&"bombs").size()
-	for i in Settings.bombs_per_drop:
+	var count := maxi(1, roundi(lerpf(1.0, float(Settings.bombs_per_drop), _difficulty())))
+	for i in count:
 		if live + i >= MAX_LIVE_BOMBS:
 			return
 		_spawn_one(i)

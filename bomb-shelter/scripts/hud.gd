@@ -167,15 +167,15 @@ func _build_settings_panel() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
-	_add_slider(vbox, "Bombs per drop", 1.0, 6.0, 1.0,
+	_add_slider(vbox, "Bombs per drop (at max difficulty)", 1.0, 6.0, 1.0,
 		float(Settings.bombs_per_drop),
 		func(v: float) -> void: Settings.bombs_per_drop = int(v))
-	_add_slider(vbox, "Seconds between drops", 0.6, 6.0, 0.1,
+	_add_slider(vbox, "Seconds between drops (start)", 0.6, 6.0, 0.1,
 		Settings.drop_interval,
 		func(v: float) -> void: Settings.drop_interval = v)
-	_add_slider(vbox, "Drop speed-up per second", 0.0, 0.08, 0.005,
-		Settings.drop_rampup,
-		func(v: float) -> void: Settings.drop_rampup = v)
+	_add_slider(vbox, "Ramp-up time to max (seconds)", 30.0, 300.0, 5.0,
+		Settings.ramp_time,
+		func(v: float) -> void: Settings.ramp_time = v)
 	_add_slider(vbox, "Blast size", 0.5, 2.5, 0.05,
 		Settings.blast_scale,
 		func(v: float) -> void: Settings.blast_scale = v)

@@ -146,6 +146,12 @@ func _explode() -> void:
 		bomb.apply_central_impulse(dir * BOMB_IMPULSE * (0.5 + falloff) * bomb.mass)
 		bomb.ignite(randf_range(0.25, 0.7))  # its death sets their fuse off
 
+	for ch in get_tree().get_nodes_in_group(&"chests"):
+		var chest := ch as Chest
+		if chest and global_position.distance_to(chest.global_position) <= blast \
+				and not _blocked(space, chest.global_position):
+			chest.blast_destroy()
+
 	if terrain:
 		terrain.carve_circle(global_position, carve)
 

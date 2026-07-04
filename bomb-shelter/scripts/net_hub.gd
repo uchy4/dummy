@@ -158,11 +158,13 @@ function lerpP(i){if(!sc)return null;var cur=sc.p[i];if(!cur)return null;
  if(!sp||!sp.p[i])return{x:cur[0],y:cur[1]};
  var dt=tc-tp;var a=dt>0?Math.min((performance.now()-tc)/dt,1.3):1;
  return{x:sp.p[i][0]+(cur[0]-sp.p[i][0])*a,y:sp.p[i][1]+(cur[1]-sp.p[i][1])*a};}
-function drawGuy(x,y,col,col2){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
+function drawGuy(x,y,col,col2,armor){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
  ctx.fillStyle=shade(col,0.6);ctx.fillRect(x-5,y+3,4,11);ctx.fillRect(x+1,y+3,4,11);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
  if(col2&&col2!==col){ctx.fillStyle=col2;
   ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
+ if(armor){ctx.fillStyle="#d1d9e6";ctx.fillRect(x-6,y-7,12,4);
+  ctx.fillStyle="#99a2b3";ctx.fillRect(x-6,y-3.2,12,1.2);}
  ctx.fillStyle=shade(col,1.35);ctx.fillRect(x-5,y-15,10,9);
  ctx.fillStyle=shade(col,1.15);ctx.fillRect(x-6,y-17,12,4);
  ctx.fillStyle="#fff";ctx.fillRect(x-3,y-12,2,3);ctx.fillRect(x+1,y-12,2,3);}
@@ -185,6 +187,12 @@ function render(){requestAnimationFrame(render);
  for(var fx=3*TS,k=0;fx<(W-3)*TS;fx+=8,k++){
   ctx.fillStyle=(k%2===0)?"#ffd54f":"#1a1a1a";ctx.fillRect(fx,FIN,8,14);}
  var now=performance.now();
+ if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
+  ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
+  ctx.fillStyle="#6d4c2f";ctx.fillRect(q[0]-9,q[1]-1,18,8);
+  ctx.fillStyle="#8a6238";ctx.fillRect(q[0]-9,q[1]-7,18,6);
+  ctx.fillStyle="#caa64a";ctx.fillRect(q[0]-9,q[1]-2,18,2);
+  ctx.fillStyle="#e8c35c";ctx.fillRect(q[0]-2,q[1]-3,4,5);}
  if(sc)for(var i=0;i<sc.b.length;i++){var b=sc.b[i];
   ctx.fillStyle="rgba(0,0,0,.5)";ctx.beginPath();ctx.arc(b[0],b[1],b[4]+1.5,0,7);ctx.fill();
   var blink=b[3]<12&&(now/100|0)%2===0;
@@ -196,7 +204,7 @@ function render(){requestAnimationFrame(render);
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
   var pos=lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
   var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;
-  drawGuy(pos.x,pos.y,col,col2);
+  drawGuy(pos.x,pos.y,col,col2,p[5]===1);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;

@@ -11,6 +11,8 @@ var _booms: Array[AudioStreamWAV] = []
 var _splat: AudioStreamWAV
 var _jump_s: AudioStreamWAV
 var _step_s: AudioStreamWAV
+var _pickup_s: AudioStreamWAV
+var _clank_s: AudioStreamWAV
 
 
 func _ready() -> void:
@@ -25,6 +27,8 @@ func _ready() -> void:
 	_splat = _make_splat()
 	_jump_s = _make_jump()
 	_step_s = _make_step()
+	_pickup_s = _make_pickup()
+	_clank_s = _make_clank()
 
 
 ## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale);
@@ -56,6 +60,14 @@ func play_step(_pos: Vector2) -> void:
 
 func play_land(_pos: Vector2) -> void:
 	_play(_step_s, -13.0, randf_range(0.55, 0.75))
+
+
+func play_pickup(_pos: Vector2) -> void:
+	_play(_pickup_s, -8.0, randf_range(0.98, 1.05))
+
+
+func play_armor_break(_pos: Vector2) -> void:
+	_play(_clank_s, -4.0, randf_range(0.9, 1.05))
 
 
 func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
@@ -163,6 +175,45 @@ func _make_step() -> AudioStreamWAV:
 		lp += (raw - lp) * 0.45
 		var grit := raw - lp
 		var s := (lp * 0.85 + grit * 0.65) * exp(-t * 22.0)
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Armor pickup: a bright two-note chime (C6 then G6).
+func _make_pickup() -> AudioStreamWAV:
+	var n := int(RATE * 0.32)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var freq := 1046.5 if t < 0.12 else 1568.0
+		phase += TAU * freq / RATE
+		var env := minf(t * 60.0, 1.0) * exp(-t * 7.0)
+		if t >= 0.12:
+			env = exp(-(t - 0.12) * 6.0)
+		var s := sin(phase) * 0.55 * env + sin(phase * 2.0) * 0.12 * env
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
+	return _wav(data)
+
+
+## Armor break: metallic clank — detuned partials plus a noise crack.
+func _make_clank() -> AudioStreamWAV:
+	var n := int(RATE * 0.35)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 909090
+	var p1 := 0.0
+	var p2 := 0.0
+	var p3 := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		p1 += TAU * 812.0 / RATE
+		p2 += TAU * 1087.0 / RATE
+		p3 += TAU * 1372.0 / RATE
+		var s := (sin(p1) * 0.4 + sin(p2) * 0.3 + sin(p3) * 0.2) * exp(-t * 9.0)
+		s += rng.randf_range(-1.0, 1.0) * 0.5 * exp(-t * 40.0)
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
 	return _wav(data)
 

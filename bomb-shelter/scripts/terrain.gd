@@ -24,6 +24,7 @@ signal carved(world_pos: Vector2, radius: float)
 
 var rng := RandomNumberGenerator.new()
 var room_count := 0
+var chest_cells: Array[Vector2i] = []  # dead-end pockets where chests may spawn
 
 var _grid := PackedByteArray()
 var _src_id := 0
@@ -145,6 +146,7 @@ func _generate() -> void:
 			p.x = clampf(p.x + dir, 4, W - 5)
 			p.y = clampf(p.y + rng.randf_range(-0.4, 0.8), SURFACE_ROW + CRUST_ROWS + 1, H - 6)
 			_carve_disk(Vector2i(p), 1)
+		chest_cells.append(Vector2i(p))
 
 	# Grass on every exposed surface cell.
 	for x in W:
@@ -162,6 +164,7 @@ func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
 		p.x = clampf(p.x + clampf(dx + rng.randf_range(-0.8, 0.8), -1.0, 1.0), 4, W - 5)
 	# Widen the dead end into a pocket a bomb can sit in.
 	_carve_disk(Vector2i(p), 2)
+	chest_cells.append(Vector2i(p))
 
 
 func _carve_rect(r: Rect2i) -> void:
@@ -266,6 +269,23 @@ func surface_spawns(n: int) -> Array[Vector2]:
 
 func shelter_spawn() -> Vector2:
 	return Vector2((W / 2 + 0.5) * TILE, (SHELTER_TOP + SHELTER_H) * TILE - 16.0)
+
+
+## A rare few of the dead-end pockets get an armor chest, resting on the
+## pocket floor.
+func chest_positions() -> Array[Vector2]:
+	var cells := chest_cells.duplicate()
+	cells.shuffle()
+	var count := rng.randi_range(3, 5)
+	var out: Array[Vector2] = []
+	for c in cells:
+		if out.size() >= count:
+			break
+		var y := c.y
+		while y < H - 2 and _gget(c.x, y + 1) == Cell.EMPTY:
+			y += 1
+		out.append(Vector2((c.x + 0.5) * TILE, (y + 1) * TILE - 8.0))
+	return out
 
 
 ## The gold strip resting on the bedrock floor of the finish hall.

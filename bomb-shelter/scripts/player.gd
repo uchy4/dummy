@@ -19,6 +19,7 @@ var player_color := Color.WHITE
 var color2 := Color.WHITE  ## second stripe color; equals player_color when solid
 var display_name := "P?"
 var alive := true
+var armor := false  ## one-time protection from a lethal blast (from chests)
 var deaths := 0
 var respawn_left := 0.0
 var respawn_point := Vector2.ZERO
@@ -206,10 +207,24 @@ func _do_kick() -> void:
 		_puff(3)
 
 
+func give_armor() -> void:
+	armor = true
+	queue_redraw()
+
+
 func take_blast(kick: Vector2, lethal: bool) -> void:
 	if not alive:
 		return
 	if lethal and _invuln_left <= 0.0:
+		if armor:
+			# The armor eats the blast: hurled but alive, briefly untouchable.
+			armor = false
+			_invuln_left = 1.2
+			velocity += kick
+			_coyote = 0.0
+			get_tree().call_group(&"sfx", &"play_armor_break", global_position)
+			queue_redraw()
+			return
 		die(kick)
 		return
 	velocity += kick
@@ -231,6 +246,7 @@ func die(kick := Vector2.ZERO) -> void:
 	if not alive:
 		return
 	alive = false
+	armor = false
 	deaths += 1
 	respawn_left = RESPAWN_TIME
 	velocity = Vector2.ZERO
@@ -285,6 +301,9 @@ func _draw() -> void:
 	if is_striped():
 		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
 		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
+	if armor:
+		draw_rect(Rect2(-6, -7, 12, 4), Color(0.82, 0.85, 0.9))   # chestplate
+		draw_rect(Rect2(-6, -3.2, 12, 1.2), Color(0.6, 0.63, 0.7))
 	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
 	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
 	var fx := _facing * 1.0
