@@ -57,6 +57,18 @@ Settings. Touch and web players get a KICK button next to jump.
 
 Player count is the `num_players` export on the `Main` node (default 4).
 
+## 2.5D graphics (KayKit)
+
+The game renders in **2.5D by default**: the exact same 2D simulation runs
+underneath (physics, bots, web join — all unchanged), drawn with
+[KayKit](https://kaylousberg.com/) assets — BlockBits voxel terrain via
+MultiMesh, Adventurers characters (Knight, Barbarian, Mage, Rogue, Ranger,
+Rogue Hooded — one per player slot) with team rings, name tags and
+procedural run/jump motion, bomb spheres with 3D fuse labels, blast lights,
+and a gold block finish line. A Quick Settings checkbox switches back to
+the classic flat 2D look (applies on restart). Both asset packs are CC0 —
+licenses in `assets/kaykit/`.
+
 ## Quick Settings (in-game tuning)
 
 Press **Esc** (or tap the **⚙ settings** button) any time — the game pauses

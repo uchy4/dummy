@@ -10,6 +10,10 @@ static var blast_scale := 1.0     ## multiplier on blast/kill/carve radius
 ## Which bomb types spawn, indexed by Bomb.Type: NORMAL, BIG, CLUSTER, BOUNCY.
 static var type_enabled: Array[bool] = [true, true, true, true]
 
+## 2.5D rendering: the 2D sim runs unchanged, drawn with KayKit 3D assets.
+## Applies on restart. Untick for the classic flat look.
+static var mode_3d := true
+
 ## Hard AI opponents, spawned at match start (change applies on restart).
 static var bot_count := 0
 

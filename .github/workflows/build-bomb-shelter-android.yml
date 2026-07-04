@@ -39,17 +39,19 @@ jobs:
       - name: Import project
         run: godot --headless --path bomb-shelter --import || true
 
-      - name: Headless smoke test (boot the game, fail on script errors)
+      - name: Headless smoke test (boot the game in 2D and 2.5D, fail on script errors)
         env:
           BOMB_SHELTER_SMOKE: "1"
         run: |
-          timeout 15 godot --headless --path bomb-shelter 2>&1 | tee /tmp/smoke.log || true
-          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" /tmp/smoke.log; then
-            echo "===== SMOKE TEST FAILED — script errors at runtime ====="
-            grep -nE "SCRIPT ERROR|Parse Error|Compile Error|ERROR|   at:" /tmp/smoke.log | head -80
-            exit 1
-          fi
-          echo "Smoke test passed - game boots without script errors."
+          for MODE in 0 1; do
+            BOMB_SHELTER_SMOKE_3D=$MODE timeout 15 godot --headless --path bomb-shelter 2>&1 | tee "/tmp/smoke_$MODE.log" || true
+            if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" "/tmp/smoke_$MODE.log"; then
+              echo "===== SMOKE TEST FAILED (mode_3d=$MODE) — script errors at runtime ====="
+              grep -nE "SCRIPT ERROR|Parse Error|Compile Error|ERROR|   at:" "/tmp/smoke_$MODE.log" | head -80
+              exit 1
+            fi
+            echo "Smoke test passed for mode_3d=$MODE."
+          done
 
       - name: Configure Android export (keystore + editor settings)
         run: |

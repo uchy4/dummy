@@ -69,6 +69,11 @@ func _ready() -> void:
 
 	if OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
 		Settings.bot_count = maxi(Settings.bot_count, 3)  # CI exercises bot AI
+	match OS.get_environment("BOMB_SHELTER_SMOKE_3D"):
+		"1":
+			Settings.mode_3d = true
+		"0":
+			Settings.mode_3d = false
 	var bot_count := clampi(Settings.bot_count, 0, MAX_PLAYERS - num_players)
 	var spawns := terrain.surface_spawns(num_players + bot_count)
 	_bounds = terrain.world_rect().grow_individual(80, 900, 80, 300)
@@ -132,6 +137,16 @@ func _ready() -> void:
 	hud.settings_pressed.connect(_toggle_settings)
 	hud.reset_players_pressed.connect(_reset_players)
 	hud.player_color_changed.connect(_on_player_color_changed)
+
+	if Settings.mode_3d:
+		# 2.5D: hide the 2D canvas (the sim keeps running invisibly) and
+		# mirror everything with the KayKit 3D presentation layer.
+		world.visible = false
+		var v3 := Visual3D.new()
+		v3.name = "Visual3D"
+		v3.terrain = terrain
+		v3.process_mode = Node.PROCESS_MODE_PAUSABLE
+		add_child(v3)
 
 
 func _process(delta: float) -> void:
