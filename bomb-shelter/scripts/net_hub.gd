@@ -39,6 +39,7 @@ input[type=text]{font-size:18px;padding:10px;border-radius:8px;border:1px solid 
 .sw.sel{border-color:#fff}
 .sw.dis{opacity:.22}
 button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ffca28;color:#000;font-weight:bold}
+#joinfs{background:#2a2118;color:#eee;border:1px solid #5a4a2e;font-size:17px}
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
 #game{display:none;position:fixed;inset:0}
 canvas{position:absolute;inset:0;width:100%;height:100%}
@@ -48,14 +49,16 @@ display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba
 .pad.on{background:rgba(255,255,255,.35)}
 #left{left:16px}#right{left:116px}#jump{right:16px}#kick{right:116px;font-size:26px}
 #colorbtn{position:absolute;top:8px;right:10px;width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
-#fs{position:absolute;top:8px;right:58px;width:38px;height:38px;border-radius:8px;
-background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
-display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff}
+#fs{position:absolute;top:8px;right:58px;width:44px;height:44px;border-radius:10px;
+background:rgba(0,0,0,.45);border:2px solid rgba(255,255,255,.7);
+display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff}
 </style></head><body>
 <div id="join"><h1>BOMB SHELTER</h1>
 <input id="name" type="text" maxlength="10" placeholder="Your name">
 <div id="swatches"></div>
-<button onclick="doJoin()">JOIN GAME</button><div id="status">connecting…</div></div>
+<button onclick="doJoin()">JOIN GAME</button>
+<button id="joinfs" onclick="goFS()">&#x26F6; Fullscreen</button>
+<div id="status">connecting…</div></div>
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
@@ -109,7 +112,11 @@ function updateBtn(){var me=(you>=0&&roster[you])?roster[you]:null;
 function sendJoin(){var o=selOpt();
  ws.send(JSON.stringify({t:"join",n:document.getElementById("name").value||"web",
  c:"#"+o[0],c2:"#"+(o[1]||o[0])}));}
-function doJoin(){if(!ws||ws.readyState!==1)return;joined=true;sendJoin();
+function goFS(){try{var d=document;
+ if(!(d.fullscreenElement||d.webkitFullscreenElement)){var el=d.documentElement;
+  var p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el);
+  if(p&&p.catch)p.catch(function(){});}}catch(err){}}
+function doJoin(){if(!ws||ws.readyState!==1)return;goFS();joined=true;sendJoin();
  document.getElementById("join").style.display="none";
  document.getElementById("game").style.display="block";updateBtn();}
 function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:st.k?1:0}));}
@@ -128,8 +135,7 @@ document.getElementById("fs").addEventListener("click",function(){
  try{var d=document;
   if(d.fullscreenElement||d.webkitFullscreenElement){
    (d.exitFullscreen||d.webkitExitFullscreen).call(d);}
-  else{var el=d.documentElement;
-   (el.requestFullscreen||el.webkitRequestFullscreen).call(el);}
+  else goFS();
  }catch(err){}});
 setInterval(send,2000);
 function buildTerrain(){off=document.createElement("canvas");off.width=W;off.height=H;
