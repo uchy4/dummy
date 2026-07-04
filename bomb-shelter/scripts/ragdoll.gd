@@ -8,6 +8,7 @@ const LIFE := 4.5
 const FADE_START := 3.2
 
 var color := Color.WHITE
+var color2 := Color.TRANSPARENT  # second stripe color; unset means solid
 var impulse := Vector2.ZERO
 
 var _age := 0.0
@@ -16,7 +17,12 @@ var _parts: Array[RigidBody2D] = []
 
 func _ready() -> void:
 	z_index = 5
+	if color2 == Color.TRANSPARENT:
+		color2 = color
 	var torso := _part(Vector2(0, -2), Vector2(12, 10), color)
+	if not color2.is_equal_approx(color):
+		var band := _rect_poly(Vector2(12, 3), color2)
+		torso.add_child(band)
 	var head := _part(Vector2(0, -11), Vector2(10, 9), color.lightened(0.35))
 	_decorate_head(head)
 	var arm_l := _part(Vector2(-7, 0), Vector2(4, 10), color.darkened(0.15))

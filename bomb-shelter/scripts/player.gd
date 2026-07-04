@@ -16,6 +16,7 @@ const KICK_COOLDOWN := 0.35
 
 var index := 0
 var player_color := Color.WHITE
+var color2 := Color.WHITE  ## second stripe color; equals player_color when solid
 var display_name := "P?"
 var alive := true
 var deaths := 0
@@ -54,6 +55,7 @@ var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 func setup(i: int, color: Color) -> void:
 	index = i
 	player_color = color
+	color2 = color
 	display_name = "P%d" % (i + 1)
 	_a_left = StringName("p%d_left" % (i + 1))
 	_a_right = StringName("p%d_right" % (i + 1))
@@ -61,16 +63,26 @@ func setup(i: int, color: Color) -> void:
 	_a_kick = StringName("p%d_kick" % (i + 1))
 
 
-func setup_remote(i: int, p_name: String, color: Color) -> void:
+func setup_remote(i: int, p_name: String, color: Color, second := Color.TRANSPARENT) -> void:
 	index = i
 	remote = true
 	display_name = p_name
 	player_color = color
+	color2 = color if second == Color.TRANSPARENT else second
 
 
 func set_color(c: Color) -> void:
+	set_colors(c, c)
+
+
+func set_colors(c: Color, c2: Color) -> void:
 	player_color = c
+	color2 = c2
 	queue_redraw()
+
+
+func is_striped() -> bool:
+	return not player_color.is_equal_approx(color2)
 
 
 func _ready() -> void:
@@ -228,6 +240,7 @@ func die(kick := Vector2.ZERO) -> void:
 
 	var rd := Ragdoll.new()
 	rd.color = player_color
+	rd.color2 = color2
 	rd.impulse = kick.limit_length(700.0) if kick != Vector2.ZERO else Vector2(0, -220)
 	rd.position = global_position
 	get_parent().add_child.call_deferred(rd)
@@ -269,6 +282,9 @@ func _draw() -> void:
 	draw_rect(Rect2(-6, -16, 12, 11), Color.BLACK)
 	draw_rect(Rect2(-7, -18, 14, 6), Color.BLACK)
 	draw_rect(Rect2(-6, -7, 12, 10), player_color)
+	if is_striped():
+		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
+		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
 	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
 	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
 	var fx := _facing * 1.0

@@ -64,7 +64,7 @@ display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff
 var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
-var pal=[],taken=[],selColor=null;
+var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
@@ -85,22 +85,30 @@ function connect(){
    buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
-  else if(m.t==="colors"){pal=m.pal;taken=m.taken;
-   if(!joined){if(!selColor||taken.indexOf(selColor)>=0){selColor=null;
-    for(var i=0;i<pal.length;i++)if(taken.indexOf(pal[i])<0){selColor=pal[i];break;}}
-    renderSw();}}
+  else if(m.t==="colors"){opts=m.opts;
+   if(!joined){if(!selKey||!opts.some(function(o){return key(o)===selKey;}))
+    selKey=opts.length?key(opts[0]):null;
+   renderSw();}}
   else if(m.t==="win")win=m;};
 }
+function key(o){return o.join("|");}
+function bg(o){return o.length>1?
+ "repeating-linear-gradient(45deg,#"+o[0]+" 0,#"+o[0]+" 7px,#"+o[1]+" 7px,#"+o[1]+" 14px)":
+ "#"+o[0];}
 function renderSw(){var d=document.getElementById("swatches");d.innerHTML="";
- pal.forEach(function(c){var s=document.createElement("div");
- s.className="sw"+(taken.indexOf(c)>=0?" dis":"")+(c===selColor?" sel":"");
- s.style.background="#"+c;
- if(taken.indexOf(c)<0)s.addEventListener("click",function(){selColor=c;renderSw();});
+ opts.forEach(function(o){var s=document.createElement("div");
+ s.className="sw"+(key(o)===selKey?" sel":"");
+ s.style.background=bg(o);
+ s.addEventListener("click",function(){selKey=key(o);renderSw();});
  d.appendChild(s);});}
-function myColor(){return (you>=0&&roster[you])?roster[you].c:(selColor||"ff8f2e");}
-function updateBtn(){document.getElementById("colorbtn").style.background="#"+myColor();}
-function sendJoin(){ws.send(JSON.stringify({t:"join",n:document.getElementById("name").value||"web",
- c:"#"+(selColor||"ff8f2e")}));}
+function selOpt(){for(var i=0;i<opts.length;i++)if(key(opts[i])===selKey)return opts[i];
+ return opts.length?opts[0]:["ff8f2e"];}
+function updateBtn(){var me=(you>=0&&roster[you])?roster[you]:null;
+ document.getElementById("colorbtn").style.background=
+  me?bg(me.c2&&me.c2!==me.c?[me.c,me.c2]:[me.c]):bg(selOpt());}
+function sendJoin(){var o=selOpt();
+ ws.send(JSON.stringify({t:"join",n:document.getElementById("name").value||"web",
+ c:"#"+o[0],c2:"#"+(o[1]||o[0])}));}
 function doJoin(){if(!ws||ws.readyState!==1)return;joined=true;sendJoin();
  document.getElementById("join").style.display="none";
  document.getElementById("game").style.display="block";updateBtn();}
@@ -113,10 +121,9 @@ function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
  el.addEventListener("pointerdown",on);el.addEventListener("pointerup",off2);
  el.addEventListener("pointercancel",off2);el.addEventListener("pointerleave",off2);});
 document.getElementById("colorbtn").addEventListener("click",function(){
- if(!ws||ws.readyState!==1||!joined||pal.length===0)return;
- var cur=myColor(),i=(pal.indexOf(cur)+1)%pal.length;
- for(var n=0;n<pal.length;n++){var c=pal[(i+n)%pal.length];
-  if(taken.indexOf(c)<0){ws.send(JSON.stringify({t:"c",c:"#"+c}));break;}}});
+ if(!ws||ws.readyState!==1||!joined||opts.length===0)return;
+ var o=opts[cycleIdx%opts.length];cycleIdx++;
+ ws.send(JSON.stringify({t:"c",c:"#"+o[0],c2:"#"+(o[1]||o[0])}));});
 document.getElementById("fs").addEventListener("click",function(){
  try{var d=document;
   if(d.fullscreenElement||d.webkitFullscreenElement){
@@ -145,9 +152,11 @@ function lerpP(i){if(!sc)return null;var cur=sc.p[i];if(!cur)return null;
  if(!sp||!sp.p[i])return{x:cur[0],y:cur[1]};
  var dt=tc-tp;var a=dt>0?Math.min((performance.now()-tc)/dt,1.3):1;
  return{x:sp.p[i][0]+(cur[0]-sp.p[i][0])*a,y:sp.p[i][1]+(cur[1]-sp.p[i][1])*a};}
-function drawGuy(x,y,col){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
+function drawGuy(x,y,col,col2){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
  ctx.fillStyle=shade(col,0.6);ctx.fillRect(x-5,y+3,4,11);ctx.fillRect(x+1,y+3,4,11);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
+ if(col2&&col2!==col){ctx.fillStyle=col2;
+  ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
  ctx.fillStyle=shade(col,1.35);ctx.fillRect(x-5,y-15,10,9);
  ctx.fillStyle=shade(col,1.15);ctx.fillRect(x-6,y-17,12,4);
  ctx.fillStyle="#fff";ctx.fillRect(x-3,y-12,2,3);ctx.fillRect(x+1,y-12,2,3);}
@@ -180,7 +189,8 @@ function render(){requestAnimationFrame(render);
   ctx.fillText((b[3]/10).toFixed(1),b[0],b[1]-b[4]-6);}
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
   var pos=lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
-  drawGuy(pos.x,pos.y,col);
+  var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;
+  drawGuy(pos.x,pos.y,col,col2);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;
@@ -289,7 +299,7 @@ func _process(delta: float) -> void:
 		clients[_next_id] = {
 			"ws": ws, "joined": false, "connected": true,
 			"pending_init": false, "pending_colors": true,
-			"name": "", "color": Color("ff8f2e"),
+			"name": "", "color": Color("ff8f2e"), "color2": Color("ff8f2e"),
 			"axis": 0.0, "jump": false, "kick": false,
 		}
 		_next_id += 1
@@ -369,9 +379,11 @@ func _handle(c: Dictionary, msg: Dictionary) -> void:
 			if c.name.is_empty():
 				c.name = "web"
 			c.color = Color.from_string(str(msg.get("c", "")), Color("ff8f2e"))
+			c.color2 = Color.from_string(str(msg.get("c2", "")), c.color)
 		"i":
 			c.axis = clampf(float(msg.get("a", 0)), -1.0, 1.0)
 			c.jump = int(msg.get("j", 0)) != 0
 			c.kick = int(msg.get("k", 0)) != 0
 		"c":
 			c.color = Color.from_string(str(msg.get("c", "")), c.color)
+			c.color2 = Color.from_string(str(msg.get("c2", "")), c.color)

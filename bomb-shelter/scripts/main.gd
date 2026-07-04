@@ -276,30 +276,48 @@ func _net_service() -> void:
 	NetHub.broadcast({"t": "s", "p": ps, "b": bs})
 
 
-func _taken_colors(except: Player = null) -> Array[String]:
-	var out: Array[String] = []
+func _pair_key(a: Color, b: Color) -> String:
+	return a.to_html(false) + "|" + b.to_html(false)
+
+
+func _taken_pairs(except: Player = null) -> Dictionary:
+	var out := {}
 	for p in players:
 		if p != except:
-			out.append(p.player_color.to_html(false))
+			out[_pair_key(p.player_color, p.color2)] = true
 	return out
 
 
-func _first_free_color() -> String:
-	var taken := _taken_colors()
+## What joiners can pick: every free solid color, then striped two-color
+## combos to keep the tray full as solids run out. Never includes anything
+## already worn by a player.
+func _color_options() -> Array:
+	var taken := _taken_pairs()
+	var opts: Array = []
 	for c in NetHub.PALETTE:
-		if not taken.has(c):
-			return c
-	return Color.from_hsv(randf(), 0.7, 1.0).to_html(false)
+		if not taken.has(c + "|" + c):
+			opts.append([c])
+	var n: int = NetHub.PALETTE.size()
+	for step in range(1, n):
+		for a in range(0, n - step):
+			if opts.size() >= 12:
+				return opts
+			var c1: String = NetHub.PALETTE[a]
+			var c2: String = NetHub.PALETTE[a + step]
+			if not taken.has(c1 + "|" + c2):
+				opts.append([c1, c2])
+	return opts
 
 
 func _colors_msg() -> Dictionary:
-	return {"t": "colors", "pal": NetHub.PALETTE, "taken": _taken_colors()}
+	return {"t": "colors", "opts": _color_options()}
 
 
 func _roster_msg() -> Dictionary:
 	var list := []
 	for p in players:
-		list.append({"n": p.display_name, "c": p.player_color.to_html(false)})
+		list.append({"n": p.display_name, "c": p.player_color.to_html(false),
+			"c2": p.color2.to_html(false)})
 	return {"t": "roster", "p": list}
 
 
@@ -312,12 +330,14 @@ func _sync_web_players() -> void:
 		if not web_players.has(id):
 			if players.size() >= MAX_PLAYERS:
 				continue
-			# No color sharing: a taken color falls back to the first free one.
-			if _taken_colors().has((c.color as Color).to_html(false)):
-				c.color = Color.from_string(_first_free_color(), c.color)
+			# No color sharing: a taken combo falls back to the first free one.
+			if _taken_pairs().has(_pair_key(c.color, c.color2)):
+				var free: Array = _color_options()[0]
+				c.color = Color.from_string(free[0], c.color)
+				c.color2 = Color.from_string(free[1] if free.size() > 1 else free[0], c.color)
 			var p := Player.new()
 			p.name = "WebPlayer%d" % id
-			p.setup_remote(players.size(), str(c.name), c.color)
+			p.setup_remote(players.size(), str(c.name), c.color, c.color2)
 			p.respawn_point = _shelter_slot(players.size())
 			p.world_bounds = _bounds
 			p.position = p.respawn_point
@@ -330,11 +350,12 @@ func _sync_web_players() -> void:
 		p.remote_axis = c.axis if c.connected else 0.0
 		p.remote_jump = c.jump and c.connected
 		p.remote_kick = c.kick and c.connected
-		if not p.player_color.is_equal_approx(c.color):
-			if _taken_colors(p).has((c.color as Color).to_html(false)):
-				c.color = p.player_color  # requested color is in use: reject
+		if not p.player_color.is_equal_approx(c.color) or not p.color2.is_equal_approx(c.color2):
+			if _taken_pairs(p).has(_pair_key(c.color, c.color2)):
+				c.color = p.player_color  # requested combo is in use: reject
+				c.color2 = p.color2
 			else:
-				p.set_color(c.color)
+				p.set_colors(c.color, c.color2)
 				hud.set_row_color(p.index, c.color)
 				_roster_dirty = true
 
