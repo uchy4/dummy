@@ -222,7 +222,7 @@ func _sync_players(delta: float) -> void:
 		vis.visible = p.alive and p.visible
 		if not p.alive:
 			continue
-		vis.position = map3(p.get_global_transform_interpolated().origin)
+		vis.position = map3(p.global_position)
 		var model := vis.get_node("Model") as Node3D
 		var target_yaw := PI / 2.0 * float(p._facing)
 		model.rotation.y = lerp_angle(model.rotation.y, target_yaw, minf(12.0 * delta, 1.0))
@@ -305,7 +305,7 @@ func _sync_bombs() -> void:
 		if not _bomb_visuals.has(b):
 			_bomb_visuals[b] = _make_bomb_visual(b)
 		var vis: Node3D = _bomb_visuals[b]
-		vis.position = map3(b.get_global_transform_interpolated().origin)
+		vis.position = map3(b.global_position)
 		vis.rotation.z = -b.rotation
 		var label := vis.get_node("Fuse") as Label3D
 		label.text = "%.1f" % maxf(b.fuse, 0.0)
