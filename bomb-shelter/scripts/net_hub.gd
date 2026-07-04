@@ -37,7 +37,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
 display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba(255,255,255,.85)}
 .pad.on{background:rgba(255,255,255,.35)}
-#left{left:16px}#right{left:116px}#jump{right:16px}
+#left{left:16px}#right{left:116px}#jump{right:16px}#kick{right:116px;font-size:26px}
 #colorbtn{position:absolute;top:10px;right:10px;width:40px;height:34px;border:none;background:none}
 </style></head><body>
 <div id="join"><h1>BOMB SHELTER</h1>
@@ -46,10 +46,10 @@ display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba
 <button onclick="doJoin()">JOIN GAME</button><div id="status">connecting…</div></div>
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
-<div class="pad" id="jump">&#9650;</div>
+<div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
 <input id="colorbtn" type="color" value="#ff8f2e"></div>
 <script>
-var ws=null,joined=false,st={a:0,j:0},held={left:false,right:false,jump:false};
+var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
@@ -80,10 +80,10 @@ function doJoin(){if(!ws||ws.readyState!==1)return;joined=true;sendJoin();
  document.getElementById("join").style.display="none";
  document.getElementById("game").style.display="block";
  document.getElementById("colorbtn").value=document.getElementById("color").value;}
-function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0}));}
+function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:st.k?1:0}));}
 function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
- if(a!==st.a||held.jump!==!!st.j){st.a=a;st.j=held.jump;send();}}
-["left","right","jump"].forEach(function(k){var el=document.getElementById(k);
+ if(a!==st.a||held.jump!==!!st.j||held.kick!==!!st.k){st.a=a;st.j=held.jump;st.k=held.kick;send();}}
+["left","right","jump","kick"].forEach(function(k){var el=document.getElementById(k);
  function on(e){e.preventDefault();held[k]=true;el.classList.add("on");upd();}
  function off2(e){e.preventDefault();held[k]=false;el.classList.remove("on");upd();}
  el.addEventListener("pointerdown",on);el.addEventListener("pointerup",off2);
@@ -255,7 +255,7 @@ func _process(delta: float) -> void:
 		clients[_next_id] = {
 			"ws": ws, "joined": false, "connected": true, "pending_init": false,
 			"name": "", "color": Color("ff8f2e"),
-			"axis": 0.0, "jump": false,
+			"axis": 0.0, "jump": false, "kick": false,
 		}
 		_next_id += 1
 
@@ -324,5 +324,6 @@ func _handle(c: Dictionary, msg: Dictionary) -> void:
 		"i":
 			c.axis = clampf(float(msg.get("a", 0)), -1.0, 1.0)
 			c.jump = int(msg.get("j", 0)) != 0
+			c.kick = int(msg.get("k", 0)) != 0
 		"c":
 			c.color = Color.from_string(str(msg.get("c", "")), c.color)

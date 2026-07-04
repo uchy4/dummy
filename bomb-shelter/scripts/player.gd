@@ -11,6 +11,8 @@ const PUSH_FORCE := 380.0
 const PLAYER_SHOVE := 900.0
 const RESPAWN_TIME := 3.0
 const INVULN_TIME := 1.5
+const KICK_RANGE := 30.0
+const KICK_COOLDOWN := 0.35
 
 var index := 0
 var player_color := Color.WHITE
@@ -24,6 +26,7 @@ var respawn_point := Vector2.ZERO
 var remote := false
 var remote_axis := 0.0
 var remote_jump := false
+var remote_kick := false
 
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
@@ -33,12 +36,16 @@ var _jump_buffer := 0.0
 var _walk_phase := 0.0
 var _swing := 0.0
 var _prev_jump_held := false
+var _prev_kick_held := false
+var _kick_cd := 0.0
+var _facing := 1
 var _was_on_floor := true
 var _fall_speed := 0.0
 var _step_sign := 0
 var _a_left: StringName
 var _a_right: StringName
 var _a_jump: StringName
+var _a_kick: StringName
 var _shape: CollisionShape2D
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
@@ -51,6 +58,7 @@ func setup(i: int, color: Color) -> void:
 	_a_left = StringName("p%d_left" % (i + 1))
 	_a_right = StringName("p%d_right" % (i + 1))
 	_a_jump = StringName("p%d_jump" % (i + 1))
+	_a_kick = StringName("p%d_kick" % (i + 1))
 
 
 func setup_remote(i: int, p_name: String, color: Color) -> void:
@@ -97,6 +105,15 @@ func _physics_process(delta: float) -> void:
 	var jump_released := not jump_held and _prev_jump_held
 	_prev_jump_held = jump_held
 	var dir := remote_axis if remote else Input.get_axis(_a_left, _a_right)
+	if absf(dir) > 0.2:
+		_facing = 1 if dir > 0.0 else -1
+
+	_kick_cd -= delta
+	var kick_held := remote_kick if remote else Input.is_action_pressed(_a_kick)
+	if kick_held and not _prev_kick_held and _kick_cd <= 0.0:
+		_kick_cd = KICK_COOLDOWN
+		_do_kick()
+	_prev_kick_held = kick_held
 
 	velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
 	_coyote = 0.15 if is_on_floor() else _coyote - delta
@@ -151,6 +168,30 @@ func _physics_process(delta: float) -> void:
 	# Failsafe: anyone who escapes the map dies and respawns in the shelter.
 	if not world_bounds.has_point(global_position):
 		die()
+
+
+## Punt nearby bombs (and, more gently, players) at 45 degrees upward in
+## the facing direction.
+func _do_kick() -> void:
+	var dir45 := Vector2(_facing, -1).normalized()
+	var center := global_position + Vector2(_facing * 10.0, 0.0)
+	var hit := false
+	for b in get_tree().get_nodes_in_group(&"bombs"):
+		var bomb := b as Bomb
+		if bomb and center.distance_to(bomb.global_position) <= KICK_RANGE + bomb._body_radius:
+			bomb.linear_velocity = dir45 * Settings.kick_bomb_power
+			bomb.angular_velocity = _facing * 8.0
+			hit = true
+	for p in get_tree().get_nodes_in_group(&"players"):
+		var other := p as Player
+		if other and other != self and other.alive \
+				and center.distance_to(other.global_position) <= KICK_RANGE + 8.0:
+			other.velocity += dir45 * Settings.kick_player_power
+			other._coyote = 0.0
+			hit = true
+	get_tree().call_group(&"sfx", &"play_kick", global_position)
+	if hit:
+		_puff(3)
 
 
 func take_blast(kick: Vector2, lethal: bool) -> void:
@@ -230,10 +271,11 @@ func _draw() -> void:
 	draw_rect(Rect2(-6, -7, 12, 10), player_color)
 	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
 	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
-	draw_rect(Rect2(-3, -12, 2, 3), Color.WHITE)
-	draw_rect(Rect2(1, -12, 2, 3), Color.WHITE)
-	draw_rect(Rect2(-2.5, -11, 1, 1.5), Color.BLACK)
-	draw_rect(Rect2(1.5, -11, 1, 1.5), Color.BLACK)
+	var fx := _facing * 1.0
+	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
+	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)
+	draw_rect(Rect2(-2.5 + fx, -11, 1, 1.5), Color.BLACK)
+	draw_rect(Rect2(1.5 + fx, -11, 1, 1.5), Color.BLACK)
 	# Near arm drawn over the torso.
 	_limb(Vector2(-5, -6), -_swing, 10, arm_c)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

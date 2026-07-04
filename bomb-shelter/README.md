@@ -40,12 +40,17 @@ your right. Tap the win screen for a rematch.
 
 ## Controls
 
-| Player | Move | Jump |
-|---|---|---|
-| P1 (blue) | A / D | W |
-| P2 (red) | ← / → | ↑ |
-| P3 (green) | J / L | I |
-| P4 (yellow) | F / H (or numpad 4/6) | T (or numpad 8) |
+| Player | Move | Jump | Kick |
+|---|---|---|---|
+| P1 (purple) | A / D | W | S |
+| P2 (red) | ← / → | ↑ | ↓ |
+| P3 (green) | J / L | I | K |
+| P4 (yellow) | F / H (or numpad 4/6) | T (or numpad 8) | G (or numpad 5) |
+
+**Kick** launches any bomb next to you at 45° upward in the direction you
+face — the fastest way to get a ticking bomb into a tunnel mouth. It also
+punts other players (less far). Both kick powers are sliders in Quick
+Settings. Touch and web players get a KICK button next to jump.
 
 - **R** — restart with a freshly generated map (any time)
 - **Enter** — rematch from the win screen

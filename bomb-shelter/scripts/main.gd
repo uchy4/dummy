@@ -11,10 +11,11 @@ const PLAYER_COLORS: Array[Color] = [
 	Color("9575ff"), Color("ef5350"), Color("9ccc65"), Color("ffca28"),
 ]
 const KEYMAPS: Array[Dictionary] = [
-	{"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W]},
-	{"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP]},
-	{"left": [KEY_J], "right": [KEY_L], "jump": [KEY_I]},
-	{"left": [KEY_F, KEY_KP_4], "right": [KEY_H, KEY_KP_6], "jump": [KEY_T, KEY_KP_8]},
+	{"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W], "kick": [KEY_S]},
+	{"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP], "kick": [KEY_DOWN]},
+	{"left": [KEY_J], "right": [KEY_L], "jump": [KEY_I], "kick": [KEY_K]},
+	{"left": [KEY_F, KEY_KP_4], "right": [KEY_H, KEY_KP_6],
+		"jump": [KEY_T, KEY_KP_8], "kick": [KEY_G, KEY_KP_5]},
 ]
 
 @export_range(2, 4) var num_players := 4
@@ -298,6 +299,7 @@ func _sync_web_players() -> void:
 		var p: Player = web_players[id]
 		p.remote_axis = c.axis if c.connected else 0.0
 		p.remote_jump = c.jump and c.connected
+		p.remote_kick = c.kick and c.connected
 		if not p.player_color.is_equal_approx(c.color):
 			p.set_color(c.color)
 			hud.set_row_color(p.index, c.color)
@@ -324,7 +326,7 @@ func _restart() -> void:
 
 func _register_actions() -> void:
 	for i in KEYMAPS.size():
-		for dir in ["left", "right", "jump"]:
+		for dir in ["left", "right", "jump", "kick"]:
 			_add_action("p%d_%s" % [i + 1, dir], KEYMAPS[i][dir])
 	_add_action("restart", [KEY_R])
 	_add_action("settings", [KEY_ESCAPE])

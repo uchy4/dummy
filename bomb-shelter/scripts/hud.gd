@@ -61,7 +61,7 @@ func setup(colors: Array[Color], touch := false) -> void:
 	if touch:
 		help.text = "Push bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	else:
-		help.text = "P1 A/D + W    P2 arrows    P3 J/L + I    P4 F/H + T (or numpad 4/6/8)    R restart    Esc settings\nPush bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
+		help.text = "P1 A/D W S-kick    P2 arrows ↓-kick    P3 J/L I K-kick    P4 F/H T G-kick    R restart    Esc settings\nKick bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)
 
 	_overlay = ColorRect.new()
@@ -179,6 +179,12 @@ func _build_settings_panel() -> void:
 	_add_slider(vbox, "Blast size", 0.5, 2.5, 0.05,
 		Settings.blast_scale,
 		func(v: float) -> void: Settings.blast_scale = v)
+	_add_slider(vbox, "Bomb kick power", 100.0, 900.0, 10.0,
+		Settings.kick_bomb_power,
+		func(v: float) -> void: Settings.kick_bomb_power = v)
+	_add_slider(vbox, "Player kick power", 0.0, 700.0, 10.0,
+		Settings.kick_player_power,
+		func(v: float) -> void: Settings.kick_player_power = v)
 
 	var types_label := _make_label(15, Color(1, 1, 1, 0.9))
 	types_label.text = "Bomb types in the mix:"
@@ -308,7 +314,7 @@ func _add_slider(parent: Control, text: String, mn: float, mx: float,
 # jump under the right. TouchScreenButton fires the same input actions the
 # keyboard uses, so the player script needs no changes.
 func _build_touch_controls() -> void:
-	for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"]]:
+	for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"], [&"p1_kick", "K"]]:
 		var b := TouchScreenButton.new()
 		b.action = cfg[0]
 		b.texture_normal = _circle_tex(64, Color(1, 1, 1, 0.22))
@@ -337,6 +343,7 @@ func _layout_touch() -> void:
 	_touch_buttons[0].position = Vector2(36, vs.y - 170)
 	_touch_buttons[1].position = Vector2(204, vs.y - 170)
 	_touch_buttons[2].position = Vector2(vs.x - 170, vs.y - 170)
+	_touch_buttons[3].position = Vector2(vs.x - 318, vs.y - 170)
 
 
 func _circle_tex(radius: int, color: Color) -> ImageTexture:

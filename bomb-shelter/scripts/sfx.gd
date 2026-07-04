@@ -43,6 +43,11 @@ func play_jump(_pos: Vector2) -> void:
 	_play(_jump_s, -11.0, randf_range(0.95, 1.15))
 
 
+## Kick: the jump chirp slowed way down reads as a heavy whoosh/thock.
+func play_kick(_pos: Vector2) -> void:
+	_play(_jump_s, -6.0, randf_range(0.58, 0.72))
+
+
 ## Small, subtle dirt crunch each time a foot plants; a slowed, louder
 ## variant doubles as the landing thud.
 func play_step(_pos: Vector2) -> void:
