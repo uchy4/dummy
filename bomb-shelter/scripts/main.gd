@@ -30,6 +30,8 @@ var hud: Hud
 var players: Array[Player] = []
 var web_players := {}  # NetHub client id -> Player
 var _bounds := Rect2()
+var _roster_dirty := true
+var _snap_tick := 0
 
 
 func _enter_tree() -> void:
@@ -51,6 +53,11 @@ func _ready() -> void:
 	terrain = Terrain.new()
 	terrain.name = "Terrain"
 	world.add_child(terrain)  # generates in _ready
+	terrain.carved.connect(_on_carved)
+	# Fresh match, fresh map: every web viewer needs the new terrain.
+	for id in NetHub.clients:
+		if NetHub.clients[id].joined:
+			NetHub.clients[id].pending_init = true
 
 	_build_backdrops()
 
@@ -65,7 +72,7 @@ func _ready() -> void:
 		var p := Player.new()
 		p.name = "Player%d" % (i + 1)
 		p.setup(i, Settings.player_colors[i])
-		p.respawn_point = terrain.shelter_spawn()
+		p.respawn_point = _shelter_slot(i)
 		p.world_bounds = _bounds
 		p.position = spawns[i]
 		world.add_child(p)
@@ -110,6 +117,7 @@ func _process(delta: float) -> void:
 		_restart()
 		return
 	_sync_web_players()
+	_net_service()
 	if settings_open:
 		return
 
@@ -166,10 +174,14 @@ func _build_boundaries() -> void:
 		world.add_child(wall)
 
 
+# Spread shelter positions out: players collide now, so they can't share one.
+func _shelter_slot(i: int) -> Vector2:
+	return terrain.shelter_spawn() + Vector2((i - (MAX_PLAYERS - 1) / 2.0) * 24.0, 0)
+
+
 func _reset_players() -> void:
-	var base := terrain.shelter_spawn()
 	for i in players.size():
-		players[i].teleport_to(base + Vector2((i - (players.size() - 1) / 2.0) * 24.0, 0))
+		players[i].teleport_to(_shelter_slot(i))
 
 
 func _build_finish() -> void:
@@ -198,6 +210,7 @@ func _on_finish_entered(body: Node2D) -> void:
 		return
 	game_over = true
 	hud.show_winner(p.display_name, p.player_color, elapsed)
+	NetHub.broadcast({"t": "win", "n": p.display_name, "c": p.player_color.to_html(false)})
 	get_tree().paused = true
 
 
@@ -207,6 +220,59 @@ func _on_player_color_changed(i: int, c: Color) -> void:
 		hud.set_row_color(i, c)
 	if i < Settings.player_colors.size():
 		Settings.player_colors[i] = c
+	_roster_dirty = true
+
+
+func _on_carved(pos: Vector2, radius: float) -> void:
+	NetHub.broadcast({"t": "carve", "x": int(pos.x), "y": int(pos.y), "r": int(radius)})
+
+
+# Stream game state to web viewers: init bundle for new/rejoined clients,
+# roster on changes, entity snapshots at ~15 Hz.
+func _net_service() -> void:
+	for id in NetHub.clients:
+		var c: Dictionary = NetHub.clients[id]
+		if not c.joined or not c.connected:
+			continue
+		if c.pending_init:
+			c.pending_init = false
+			NetHub.send_to(id, {
+				"t": "init", "w": Terrain.W, "h": Terrain.H, "ts": Terrain.TILE,
+				"surf": Terrain.SURFACE_ROW, "fin": int(terrain.finish_line_rect().position.y),
+				"grid": terrain.grid_string(),
+			})
+			NetHub.send_to(id, _roster_msg())
+			if web_players.has(id):
+				NetHub.send_to(id, {"t": "you", "i": (web_players[id] as Player).index})
+			if game_over:
+				NetHub.send_to(id, {"t": "win", "n": "someone", "c": "ffffff"})
+	if not NetHub.has_viewers():
+		return
+	if _roster_dirty:
+		_roster_dirty = false
+		NetHub.broadcast(_roster_msg())
+	_snap_tick += 1
+	if _snap_tick % 4 != 0:
+		return
+	var ps := []
+	for p in players:
+		ps.append([int(p.global_position.x), int(p.global_position.y),
+			1 if p.alive else 0, int(maxf(p.respawn_left, 0.0) * 10.0), p.deaths])
+	var bs := []
+	for b in get_tree().get_nodes_in_group(&"bombs"):
+		var bomb := b as Bomb
+		if bomb == null:
+			continue
+		bs.append([int(bomb.global_position.x), int(bomb.global_position.y),
+			int(bomb.type), int(maxf(bomb.fuse, 0.0) * 10.0), int(bomb._body_radius)])
+	NetHub.broadcast({"t": "s", "p": ps, "b": bs})
+
+
+func _roster_msg() -> Dictionary:
+	var list := []
+	for p in players:
+		list.append({"n": p.display_name, "c": p.player_color.to_html(false)})
+	return {"t": "roster", "p": list}
 
 
 ## Spawn a Player for every joined web controller and feed it live input.
@@ -221,19 +287,21 @@ func _sync_web_players() -> void:
 			var p := Player.new()
 			p.name = "WebPlayer%d" % id
 			p.setup_remote(players.size(), str(c.name), c.color)
-			p.respawn_point = terrain.shelter_spawn()
+			p.respawn_point = _shelter_slot(players.size())
 			p.world_bounds = _bounds
-			p.position = terrain.shelter_spawn() + Vector2(randf_range(-30.0, 30.0), 0.0)
+			p.position = p.respawn_point
 			world.add_child(p)
 			players.append(p)
 			web_players[id] = p
 			hud.add_player_row(c.color)
+			_roster_dirty = true
 		var p: Player = web_players[id]
 		p.remote_axis = c.axis if c.connected else 0.0
 		p.remote_jump = c.jump and c.connected
 		if not p.player_color.is_equal_approx(c.color):
 			p.set_color(c.color)
 			hud.set_row_color(p.index, c.color)
+			_roster_dirty = true
 
 
 func _on_restart_requested() -> void:

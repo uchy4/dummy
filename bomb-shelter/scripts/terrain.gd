@@ -18,6 +18,9 @@ const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS }
 enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK }
 
+## Emitted for every blast so web clients can mirror the destruction.
+signal carved(world_pos: Vector2, radius: float)
+
 var rng := RandomNumberGenerator.new()
 var room_count := 0
 
@@ -216,8 +219,19 @@ func _paint_all() -> void:
 
 # ------------------------------------------------------------- destruction ---
 
+## The whole grid as one digit per cell (Cell enum values), row-major —
+## the initial terrain payload for web clients.
+func grid_string() -> String:
+	var out := PackedByteArray()
+	out.resize(_grid.size())
+	for i in _grid.size():
+		out[i] = 48 + _grid[i]
+	return out.get_string_from_ascii()
+
+
 ## Blow a circular hole (world-space position and radius). Bedrock survives.
 func carve_circle(world_pos: Vector2, radius: float) -> void:
+	carved.emit(world_pos, radius)
 	var c := local_to_map(to_local(world_pos))
 	var r := ceili(radius / TILE)
 	for y in range(maxi(c.y - r, 0), mini(c.y + r + 1, H)):

@@ -8,6 +8,7 @@ const ACCEL := 1900.0
 const JUMP_VELOCITY := -430.0
 const MAX_FALL := 900.0
 const PUSH_FORCE := 380.0
+const PLAYER_SHOVE := 900.0
 const RESPAWN_TIME := 3.0
 const INVULN_TIME := 1.5
 
@@ -68,7 +69,7 @@ func _ready() -> void:
 	add_to_group(&"players")
 	z_index = 5
 	collision_layer = 2
-	collision_mask = 1 | 4
+	collision_mask = 1 | 2 | 4  # terrain, other players, bombs
 	floor_snap_length = 6.0
 	_shape = CollisionShape2D.new()
 	var cap := CapsuleShape2D.new()
@@ -136,12 +137,16 @@ func _physics_process(delta: float) -> void:
 	_swing = lerpf(_swing, swing_target, 0.35)
 	queue_redraw()
 
-	# Shove bombs we walk into.
+	# Shove bombs and other players we walk into.
 	for i in get_slide_collision_count():
 		var c := get_slide_collision(i)
 		var rb := c.get_collider() as RigidBody2D
 		if rb:
 			rb.apply_central_impulse(-c.get_normal() * PUSH_FORCE * delta)
+			continue
+		var other := c.get_collider() as Player
+		if other and other.alive:
+			other.velocity.x += -c.get_normal().x * PLAYER_SHOVE * delta
 
 	# Failsafe: anyone who escapes the map dies and respawns in the shelter.
 	if not world_bounds.has_point(global_position):

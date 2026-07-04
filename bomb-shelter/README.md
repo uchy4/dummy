@@ -71,11 +71,20 @@ rematches (R / Enter):
 ## Web join (play from your phone)
 
 Open **Quick Settings → Show web-join QR**. The game hosts a tiny web server
-on the local network; anyone on the **same Wi-Fi** scans the QR (or types the
-shown URL), gets a controller page in their phone browser, picks a name and
-color, and joins the match live — spawning in the shelter. Up to 8 players
-total. Local players can change their colors from the pickers in Quick
-Settings; web players change theirs from their phone.
+on the local network; anyone on the **same Wi-Fi** (or the host phone's
+hotspot) scans the QR, picks a name and color, and joins live — spawning in
+the shelter. Up to 8 players total.
+
+The phone page is a **full lightweight game client** (~10 KB, hand-written
+canvas renderer — no engine download): it shows the whole match with a
+camera that follows your own character, terrain destruction mirrored via
+carve events, bombs with fuse tickers, explosion flashes, death bursts, the
+finish line, and a win banner — with the touch controls overlaid. The host
+streams compact snapshots at ~15 Hz over the same WebSocket the controls
+use; the host stays fully authoritative.
+
+Local players change colors from the pickers in Quick Settings; web players
+change theirs from their phone (top-right swatch).
 
 ## How to play (the logic to test)
 
