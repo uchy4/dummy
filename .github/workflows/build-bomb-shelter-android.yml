@@ -39,6 +39,16 @@ jobs:
       - name: Import project
         run: godot --headless --path bomb-shelter --import || true
 
+      - name: Headless smoke test (boot the game, fail on script errors)
+        run: |
+          timeout 15 godot --headless --path bomb-shelter 2>&1 | tee /tmp/smoke.log || true
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" /tmp/smoke.log; then
+            echo "===== SMOKE TEST FAILED — script errors at runtime ====="
+            grep -nE "SCRIPT ERROR|Parse Error|Compile Error|ERROR|   at:" /tmp/smoke.log | head -80
+            exit 1
+          fi
+          echo "Smoke test passed - game boots without script errors."
+
       - name: Configure Android export (keystore + editor settings)
         run: |
           keytool -genkeypair -v -keystore "$HOME/debug.keystore" \
