@@ -274,14 +274,14 @@ func shelter_spawn() -> Vector2:
 ## A rare few of the dead-end pockets get an armor chest, resting on the
 ## pocket floor.
 func chest_positions() -> Array[Vector2]:
-	var cells := chest_cells.duplicate()
+	var cells: Array[Vector2i] = chest_cells.duplicate()
 	cells.shuffle()
 	var count := rng.randi_range(3, 5)
 	var out: Array[Vector2] = []
-	for c in cells:
+	for c: Vector2i in cells:
 		if out.size() >= count:
 			break
-		var y := c.y
+		var y: int = c.y
 		while y < H - 2 and _gget(c.x, y + 1) == Cell.EMPTY:
 			y += 1
 		out.append(Vector2((c.x + 0.5) * TILE, (y + 1) * TILE - 8.0))
