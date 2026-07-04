@@ -39,6 +39,9 @@ display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba
 .pad.on{background:rgba(255,255,255,.35)}
 #left{left:16px}#right{left:116px}#jump{right:16px}#kick{right:116px;font-size:26px}
 #colorbtn{position:absolute;top:10px;right:10px;width:40px;height:34px;border:none;background:none}
+#fs{position:absolute;top:8px;right:58px;width:38px;height:38px;border-radius:8px;
+background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
+display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff}
 </style></head><body>
 <div id="join"><h1>BOMB SHELTER</h1>
 <input id="name" type="text" maxlength="10" placeholder="Your name">
@@ -47,7 +50,7 @@ display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
-<input id="colorbtn" type="color" value="#ff8f2e"></div>
+<input id="colorbtn" type="color" value="#ff8f2e"><div id="fs">&#x26F6;</div></div>
 <script>
 var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
@@ -90,6 +93,13 @@ function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
  el.addEventListener("pointercancel",off2);el.addEventListener("pointerleave",off2);});
 ["color","colorbtn"].forEach(function(id){document.getElementById(id).addEventListener("change",function(e){
  if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"c",c:e.target.value}));});});
+document.getElementById("fs").addEventListener("click",function(){
+ try{var d=document;
+  if(d.fullscreenElement||d.webkitFullscreenElement){
+   (d.exitFullscreen||d.webkitExitFullscreen).call(d);}
+  else{var el=d.documentElement;
+   (el.requestFullscreen||el.webkitRequestFullscreen).call(el);}
+ }catch(err){}});
 setInterval(send,2000);
 function buildTerrain(){off=document.createElement("canvas");off.width=W;off.height=H;
  octx=off.getContext("2d");
