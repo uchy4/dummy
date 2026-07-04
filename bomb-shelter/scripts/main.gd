@@ -233,7 +233,13 @@ func _on_carved(pos: Vector2, radius: float) -> void:
 func _net_service() -> void:
 	for id in NetHub.clients:
 		var c: Dictionary = NetHub.clients[id]
-		if not c.joined or not c.connected:
+		if not c.connected:
+			continue
+		if c.get("pending_colors", false) \
+				and (c.ws as WebSocketPeer).get_ready_state() == WebSocketPeer.STATE_OPEN:
+			c.pending_colors = false
+			NetHub.send_to(id, _colors_msg())
+		if not c.joined:
 			continue
 		if c.pending_init:
 			c.pending_init = false
@@ -252,6 +258,7 @@ func _net_service() -> void:
 	if _roster_dirty:
 		_roster_dirty = false
 		NetHub.broadcast(_roster_msg())
+		NetHub.broadcast_all(_colors_msg())
 	_snap_tick += 1
 	if _snap_tick % 4 != 0:
 		return
@@ -267,6 +274,26 @@ func _net_service() -> void:
 		bs.append([int(bomb.global_position.x), int(bomb.global_position.y),
 			int(bomb.type), int(maxf(bomb.fuse, 0.0) * 10.0), int(bomb._body_radius)])
 	NetHub.broadcast({"t": "s", "p": ps, "b": bs})
+
+
+func _taken_colors(except: Player = null) -> Array[String]:
+	var out: Array[String] = []
+	for p in players:
+		if p != except:
+			out.append(p.player_color.to_html(false))
+	return out
+
+
+func _first_free_color() -> String:
+	var taken := _taken_colors()
+	for c in NetHub.PALETTE:
+		if not taken.has(c):
+			return c
+	return Color.from_hsv(randf(), 0.7, 1.0).to_html(false)
+
+
+func _colors_msg() -> Dictionary:
+	return {"t": "colors", "pal": NetHub.PALETTE, "taken": _taken_colors()}
 
 
 func _roster_msg() -> Dictionary:
@@ -285,6 +312,9 @@ func _sync_web_players() -> void:
 		if not web_players.has(id):
 			if players.size() >= MAX_PLAYERS:
 				continue
+			# No color sharing: a taken color falls back to the first free one.
+			if _taken_colors().has((c.color as Color).to_html(false)):
+				c.color = Color.from_string(_first_free_color(), c.color)
 			var p := Player.new()
 			p.name = "WebPlayer%d" % id
 			p.setup_remote(players.size(), str(c.name), c.color)
@@ -301,9 +331,12 @@ func _sync_web_players() -> void:
 		p.remote_jump = c.jump and c.connected
 		p.remote_kick = c.kick and c.connected
 		if not p.player_color.is_equal_approx(c.color):
-			p.set_color(c.color)
-			hud.set_row_color(p.index, c.color)
-			_roster_dirty = true
+			if _taken_colors(p).has((c.color as Color).to_html(false)):
+				c.color = p.player_color  # requested color is in use: reject
+			else:
+				p.set_color(c.color)
+				hud.set_row_color(p.index, c.color)
+				_roster_dirty = true
 
 
 func _on_restart_requested() -> void:

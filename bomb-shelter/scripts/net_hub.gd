@@ -9,6 +9,13 @@ const WS_PORT_BASE := 8920
 const MAX_CLIENTS := 6
 const HTTP_TIMEOUT := 6.0
 
+## Selectable player colors (hex, no #). Joiners get the first free one by
+## default and can't take one already in use.
+const PALETTE: Array[String] = [
+	"9575ff", "ef5350", "9ccc65", "ffca28", "ff8f2e",
+	"4dd0e1", "ff6bcb", "a1887f", "eceff1", "26a69a",
+]
+
 var http_port := 0
 var ws_port := 0
 ## id -> {ws, joined, connected, name, color, axis, jump}
@@ -27,8 +34,10 @@ body{background:#17100a;color:#eee;font-family:sans-serif;height:100vh;overflow:
 #join{display:flex;flex-direction:column;gap:14px;padding:26px;max-width:420px;margin:auto;width:100%;height:100%;justify-content:center}
 h1{font-size:22px;color:#ffca28;text-align:center}
 input[type=text]{font-size:18px;padding:10px;border-radius:8px;border:1px solid #555;background:#222;color:#eee}
-.row{display:flex;align-items:center;gap:12px}
-input[type=color]{width:56px;height:44px;border:none;background:none}
+#swatches{display:flex;flex-wrap:wrap;justify-content:center}
+.sw{width:42px;height:42px;border-radius:50%;margin:5px;border:3px solid transparent}
+.sw.sel{border-color:#fff}
+.sw.dis{opacity:.22}
 button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ffca28;color:#000;font-weight:bold}
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
 #game{display:none;position:fixed;inset:0}
@@ -38,23 +47,24 @@ background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
 display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba(255,255,255,.85)}
 .pad.on{background:rgba(255,255,255,.35)}
 #left{left:16px}#right{left:116px}#jump{right:16px}#kick{right:116px;font-size:26px}
-#colorbtn{position:absolute;top:10px;right:10px;width:40px;height:34px;border:none;background:none}
+#colorbtn{position:absolute;top:8px;right:10px;width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
 #fs{position:absolute;top:8px;right:58px;width:38px;height:38px;border-radius:8px;
 background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);
 display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff}
 </style></head><body>
 <div id="join"><h1>BOMB SHELTER</h1>
 <input id="name" type="text" maxlength="10" placeholder="Your name">
-<div class="row"><label>Color</label><input id="color" type="color" value="#ff8f2e"></div>
+<div id="swatches"></div>
 <button onclick="doJoin()">JOIN GAME</button><div id="status">connecting…</div></div>
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
-<input id="colorbtn" type="color" value="#ff8f2e"><div id="fs">&#x26F6;</div></div>
+<div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
 <script>
 var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
+var pal=[],taken=[],selColor=null;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
@@ -73,16 +83,27 @@ function connect(){
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
    buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;}
-  else if(m.t==="roster")roster=m.p;
-  else if(m.t==="you")you=m.i;
+  else if(m.t==="roster"){roster=m.p;updateBtn();}
+  else if(m.t==="you"){you=m.i;updateBtn();}
+  else if(m.t==="colors"){pal=m.pal;taken=m.taken;
+   if(!joined){if(!selColor||taken.indexOf(selColor)>=0){selColor=null;
+    for(var i=0;i<pal.length;i++)if(taken.indexOf(pal[i])<0){selColor=pal[i];break;}}
+    renderSw();}}
   else if(m.t==="win")win=m;};
 }
+function renderSw(){var d=document.getElementById("swatches");d.innerHTML="";
+ pal.forEach(function(c){var s=document.createElement("div");
+ s.className="sw"+(taken.indexOf(c)>=0?" dis":"")+(c===selColor?" sel":"");
+ s.style.background="#"+c;
+ if(taken.indexOf(c)<0)s.addEventListener("click",function(){selColor=c;renderSw();});
+ d.appendChild(s);});}
+function myColor(){return (you>=0&&roster[you])?roster[you].c:(selColor||"ff8f2e");}
+function updateBtn(){document.getElementById("colorbtn").style.background="#"+myColor();}
 function sendJoin(){ws.send(JSON.stringify({t:"join",n:document.getElementById("name").value||"web",
- c:document.getElementById("color").value}));}
+ c:"#"+(selColor||"ff8f2e")}));}
 function doJoin(){if(!ws||ws.readyState!==1)return;joined=true;sendJoin();
  document.getElementById("join").style.display="none";
- document.getElementById("game").style.display="block";
- document.getElementById("colorbtn").value=document.getElementById("color").value;}
+ document.getElementById("game").style.display="block";updateBtn();}
 function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:st.k?1:0}));}
 function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
  if(a!==st.a||held.jump!==!!st.j||held.kick!==!!st.k){st.a=a;st.j=held.jump;st.k=held.kick;send();}}
@@ -91,8 +112,11 @@ function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
  function off2(e){e.preventDefault();held[k]=false;el.classList.remove("on");upd();}
  el.addEventListener("pointerdown",on);el.addEventListener("pointerup",off2);
  el.addEventListener("pointercancel",off2);el.addEventListener("pointerleave",off2);});
-["color","colorbtn"].forEach(function(id){document.getElementById(id).addEventListener("change",function(e){
- if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"c",c:e.target.value}));});});
+document.getElementById("colorbtn").addEventListener("click",function(){
+ if(!ws||ws.readyState!==1||!joined||pal.length===0)return;
+ var cur=myColor(),i=(pal.indexOf(cur)+1)%pal.length;
+ for(var n=0;n<pal.length;n++){var c=pal[(i+n)%pal.length];
+  if(taken.indexOf(c)<0){ws.send(JSON.stringify({t:"c",c:"#"+c}));break;}}});
 document.getElementById("fs").addEventListener("click",function(){
  try{var d=document;
   if(d.fullscreenElement||d.webkitFullscreenElement){
@@ -263,7 +287,8 @@ func _process(delta: float) -> void:
 		var ws := WebSocketPeer.new()
 		ws.accept_stream(tcp)
 		clients[_next_id] = {
-			"ws": ws, "joined": false, "connected": true, "pending_init": false,
+			"ws": ws, "joined": false, "connected": true,
+			"pending_init": false, "pending_colors": true,
 			"name": "", "color": Color("ff8f2e"),
 			"axis": 0.0, "jump": false, "kick": false,
 		}
@@ -307,6 +332,19 @@ func broadcast(msg: Dictionary) -> void:
 	for id in clients:
 		var c: Dictionary = clients[id]
 		if not c.joined or not c.connected:
+			continue
+		var ws: WebSocketPeer = c.ws
+		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+			ws.send_text(s)
+
+
+## Like broadcast, but also reaches connected clients that haven't joined
+## yet (the join screen needs live color availability).
+func broadcast_all(msg: Dictionary) -> void:
+	var s := JSON.stringify(msg)
+	for id in clients:
+		var c: Dictionary = clients[id]
+		if not c.connected:
 			continue
 		var ws: WebSocketPeer = c.ws
 		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
