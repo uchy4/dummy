@@ -167,6 +167,9 @@ func _build_settings_panel() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
+	_add_slider(vbox, "Bots — hard AI (applies on restart, R)", 0.0, 4.0, 1.0,
+		float(Settings.bot_count),
+		func(v: float) -> void: Settings.bot_count = int(v))
 	_add_slider(vbox, "Bombs per drop (at max difficulty)", 1.0, 6.0, 1.0,
 		float(Settings.bombs_per_drop),
 		func(v: float) -> void: Settings.bombs_per_drop = int(v))

@@ -40,6 +40,8 @@ jobs:
         run: godot --headless --path bomb-shelter --import || true
 
       - name: Headless smoke test (boot the game, fail on script errors)
+        env:
+          BOMB_SHELTER_SMOKE: "1"
         run: |
           timeout 15 godot --headless --path bomb-shelter 2>&1 | tee /tmp/smoke.log || true
           if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" /tmp/smoke.log; then

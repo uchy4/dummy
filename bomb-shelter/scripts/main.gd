@@ -67,7 +67,10 @@ func _ready() -> void:
 	if Settings.player_colors.size() < KEYMAPS.size():
 		Settings.player_colors = PLAYER_COLORS.duplicate()
 
-	var spawns := terrain.surface_spawns(num_players)
+	if OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
+		Settings.bot_count = maxi(Settings.bot_count, 3)  # CI exercises bot AI
+	var bot_count := clampi(Settings.bot_count, 0, MAX_PLAYERS - num_players)
+	var spawns := terrain.surface_spawns(num_players + bot_count)
 	_bounds = terrain.world_rect().grow_individual(80, 900, 80, 300)
 	for i in num_players:
 		var p := Player.new()
@@ -78,6 +81,25 @@ func _ready() -> void:
 		p.position = spawns[i]
 		world.add_child(p)
 		players.append(p)
+
+	for i in bot_count:
+		var idx := players.size()
+		var free: Array = _color_options()[0]
+		var c1 := Color.from_string(free[0], Color.WHITE)
+		var c2 := Color.from_string(free[1] if free.size() > 1 else free[0], c1)
+		var p := Player.new()
+		p.name = "Bot%d" % (i + 1)
+		p.setup_remote(idx, "Bot %d" % (i + 1), c1, c2)
+		p.respawn_point = _shelter_slot(idx)
+		p.world_bounds = _bounds
+		p.position = spawns[idx]
+		world.add_child(p)
+		players.append(p)
+		var brain := BotController.new()
+		brain.name = "BotBrain%d" % (i + 1)
+		brain.player = p
+		brain.terrain = terrain
+		world.add_child(brain)
 
 	var camera := GameCamera.new()
 	var wr := terrain.world_rect()

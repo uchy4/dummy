@@ -260,7 +260,7 @@ func surface_y() -> float:
 
 func surface_spawns(n: int) -> Array[Vector2]:
 	var cx := W / 2
-	var cols := [cx - 6, cx - 3, cx + 3, cx + 6, cx - 9, cx + 9]
+	var cols := [cx - 6, cx - 3, cx + 3, cx + 6, cx - 9, cx + 9, cx - 12, cx + 12]
 	var out: Array[Vector2] = []
 	for i in n:
 		out.append(Vector2((cols[i] + 0.5) * TILE, SURFACE_ROW * TILE - 20.0))
@@ -292,6 +292,11 @@ func chest_positions() -> Array[Vector2]:
 func finish_line_rect() -> Rect2:
 	var floor_top := (H - 4) * TILE
 	return Rect2(3 * TILE, floor_top - 14, (W - 6) * TILE, 14)
+
+
+## Public read access to the cell grid (Cell enum), used by bot navigation.
+func cell(x: int, y: int) -> int:
+	return _gget(x, y)
 
 
 # -------------------------------------------------------------------- grid ---
