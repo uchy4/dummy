@@ -43,14 +43,14 @@ func play_jump(_pos: Vector2) -> void:
 	_play(_jump_s, -11.0, randf_range(0.95, 1.15))
 
 
-## Dirt crunch each time a foot plants; a slowed, louder variant doubles
-## as the landing thud.
+## Small, subtle dirt crunch each time a foot plants; a slowed, louder
+## variant doubles as the landing thud.
 func play_step(_pos: Vector2) -> void:
-	_play(_step_s, -14.0, randf_range(0.9, 1.2))
+	_play(_step_s, -22.0, randf_range(0.9, 1.2))
 
 
 func play_land(_pos: Vector2) -> void:
-	_play(_step_s, -10.0, randf_range(0.55, 0.75))
+	_play(_step_s, -13.0, randf_range(0.55, 0.75))
 
 
 func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
@@ -142,7 +142,7 @@ func _make_jump() -> AudioStreamWAV:
 ## Footstep: granular dirt crunch — a dense cluster of micro-pops (impact)
 ## thinning into a short grind, with low body and high grit.
 func _make_step() -> AudioStreamWAV:
-	var n := int(RATE * 0.11)
+	var n := int(RATE * 0.08)
 	var data := PackedByteArray()
 	data.resize(n * 2)
 	var rng := RandomNumberGenerator.new()
@@ -150,14 +150,14 @@ func _make_step() -> AudioStreamWAV:
 	var lp := 0.0
 	for i in n:
 		var t := float(i) / RATE
-		var raw := rng.randf_range(-0.25, 0.25) * exp(-t * 50.0)
-		var density := 0.38 * exp(-t * 28.0)
+		var raw := rng.randf_range(-0.18, 0.18) * exp(-t * 55.0)
+		var density := 0.28 * exp(-t * 40.0)
 		if rng.randf() < density:
-			var amp := rng.randf_range(0.5, 1.0)
+			var amp := rng.randf_range(0.35, 0.75)
 			raw += amp if rng.randf() < 0.5 else -amp
 		lp += (raw - lp) * 0.45
 		var grit := raw - lp
-		var s := (lp * 0.95 + grit * 0.75) * exp(-t * 16.0)
+		var s := (lp * 0.85 + grit * 0.65) * exp(-t * 22.0)
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32000.0))
 	return _wav(data)
 
