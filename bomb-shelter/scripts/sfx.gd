@@ -282,8 +282,8 @@ func _make_snap() -> AudioStreamWAV:
 
 ## Win fanfare: rising C-E-G-C arpeggio with a sustained final note.
 func _make_fanfare() -> AudioStreamWAV:
-	var notes := [523.25, 659.25, 784.0, 1046.5]
-	var starts := [0.0, 0.16, 0.32, 0.48]
+	var notes: Array[float] = [523.25, 659.25, 784.0, 1046.5]
+	var starts: Array[float] = [0.0, 0.16, 0.32, 0.48]
 	var n := int(RATE * 1.1)
 	var data := PackedByteArray()
 	data.resize(n * 2)
