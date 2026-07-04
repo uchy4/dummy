@@ -18,10 +18,13 @@ func _ready() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	var p := body as Player
-	if p == null or not p.alive or p.armor:
+	# Duck-typed on purpose: casting to Player here would chain into a
+	# class-loading cycle (Bomb -> Chest -> Player -> Bomb).
+	if not body.is_in_group(&"players"):
 		return
-	p.give_armor()
+	if not body.get(&"alive") or body.get(&"armor"):
+		return
+	body.call(&"give_armor")
 	get_tree().call_group(&"sfx", &"play_pickup", global_position)
 	_poof()
 

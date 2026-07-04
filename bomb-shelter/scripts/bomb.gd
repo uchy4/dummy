@@ -146,11 +146,12 @@ func _explode() -> void:
 		bomb.apply_central_impulse(dir * BOMB_IMPULSE * (0.5 + falloff) * bomb.mass)
 		bomb.ignite(randf_range(0.25, 0.7))  # its death sets their fuse off
 
-	for ch in get_tree().get_nodes_in_group(&"chests"):
-		var chest := ch as Chest
-		if chest and global_position.distance_to(chest.global_position) <= blast \
-				and not _blocked(space, chest.global_position):
-			chest.blast_destroy()
+	# Untyped on purpose: naming Chest here would create a Bomb -> Chest ->
+	# Player -> Bomb class-loading cycle.
+	for ch: Node2D in get_tree().get_nodes_in_group(&"chests"):
+		if global_position.distance_to(ch.global_position) <= blast \
+				and not _blocked(space, ch.global_position):
+			ch.call(&"blast_destroy")
 
 	if terrain:
 		terrain.carve_circle(global_position, carve)
