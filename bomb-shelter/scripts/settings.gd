@@ -13,6 +13,10 @@ static var type_enabled: Array[bool] = [true, true, true, true]
 ## Hard AI opponents, spawned at match start (change applies on restart).
 static var bot_count := 0
 
+## Elimination mode: dying puts you out for the match (no respawns).
+## Last player standing wins.
+static var one_life := true
+
 ## Kick launch speeds (px/s at 45 degrees up), tunable in Quick Settings.
 static var kick_bomb_power := 430.0
 static var kick_player_power := 280.0

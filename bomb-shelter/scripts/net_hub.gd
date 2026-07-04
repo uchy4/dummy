@@ -222,9 +222,10 @@ function render(){requestAnimationFrame(render);
   ctx.fillText(roster[i].n,10,18+i*15);}
  ctx.textAlign="center";
  if(sc&&you>=0&&sc.p[you]&&sc.p[you][2]===0){
-  ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(cw/2-110,ch*0.35-24,220,36);
+  ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(cw/2-130,ch*0.35-24,260,36);
   ctx.fillStyle="#ff8a80";ctx.font="bold 18px sans-serif";
-  ctx.fillText("respawn in "+(sc.p[you][3]/10).toFixed(1),cw/2,ch*0.35);}
+  var msg=sc.p[you][3]<0?"eliminated — spectating":"respawn in "+(sc.p[you][3]/10).toFixed(1);
+  ctx.fillText(msg,cw/2,ch*0.35);}
  if(win){ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,ch*0.3,cw,90);
   ctx.fillStyle="#"+win.c;ctx.font="bold 26px sans-serif";
   ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,ch*0.3+38);

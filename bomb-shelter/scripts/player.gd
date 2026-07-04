@@ -102,9 +102,10 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not alive:
-		respawn_left -= delta
-		if respawn_left <= 0.0:
-			_respawn()
+		if not Settings.one_life:
+			respawn_left -= delta
+			if respawn_left <= 0.0:
+				_respawn()
 		return
 
 	if _invuln_left > 0.0:
@@ -234,6 +235,8 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 ## Move the player somewhere safe without a death penalty (Quick Settings
 ## "reset" button). A dead player respawns almost immediately instead.
 func teleport_to(pos: Vector2) -> void:
+	if not alive and Settings.one_life:
+		return  # the dead stay dead in elimination mode
 	global_position = pos
 	reset_physics_interpolation()
 	velocity = Vector2.ZERO

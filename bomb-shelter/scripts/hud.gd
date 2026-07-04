@@ -125,12 +125,13 @@ func set_center(text: String) -> void:
 	_center.visible = not text.is_empty()
 
 
-func show_winner(winner_name: String, color: Color, time: float) -> void:
+func show_winner(winner_name: String, color: Color, time: float,
+		reason := "Reached the finish line") -> void:
 	_win_title.text = "%s WINS!" % winner_name.to_upper()
 	_win_title.add_theme_color_override(&"font_color", color)
 	var again := "tap anywhere for a rematch" if _touch else "press Enter for a rematch"
-	_win_sub.text = "Reached the finish line in %d:%04.1f  —  %s" \
-		% [int(time) / 60, fmod(time, 60.0), again]
+	_win_sub.text = "%s in %d:%04.1f  —  %s" \
+		% [reason, int(time) / 60, fmod(time, 60.0), again]
 	_overlay.visible = true
 
 
@@ -166,6 +167,13 @@ func _build_settings_panel() -> void:
 	title.text = "QUICK SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
+
+	var one_life := CheckBox.new()
+	one_life.text = "One life — elimination (last standing wins)"
+	one_life.button_pressed = Settings.one_life
+	one_life.focus_mode = Control.FOCUS_NONE
+	one_life.toggled.connect(func(on: bool) -> void: Settings.one_life = on)
+	vbox.add_child(one_life)
 
 	_add_slider(vbox, "Bots — hard AI (applies on restart, R)", 0.0, 4.0, 1.0,
 		float(Settings.bot_count),

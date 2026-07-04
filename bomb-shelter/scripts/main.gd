@@ -156,8 +156,13 @@ func _process(delta: float) -> void:
 		if p.alive:
 			var suffix := "   ARMOR" if p.armor else ""
 			hud.set_player_status(i, "%s   deaths %d%s" % [p.display_name, p.deaths, suffix])
+		elif Settings.one_life:
+			hud.set_player_status(i, "%s   OUT" % p.display_name)
 		else:
 			hud.set_player_status(i, "%s   respawn %.1f" % [p.display_name, maxf(p.respawn_left, 0.0)])
+
+	if Settings.one_life:
+		_check_elimination()
 
 	if elapsed < GRACE:
 		hud.set_center("First bomb in %d — take cover!" % ceili(GRACE - elapsed))
@@ -237,8 +242,29 @@ func _on_finish_entered(body: Node2D) -> void:
 	var p := body as Player
 	if game_over or p == null or not p.alive:
 		return
+	_declare_winner(p, "Reached the finish line")
+
+
+## Elimination mode: last one standing wins; everyone dead is a draw.
+func _check_elimination() -> void:
+	if game_over:
+		return
+	var living: Array[Player] = []
+	for p in players:
+		if p.alive:
+			living.append(p)
+	if living.size() == 1 and players.size() >= 2:
+		_declare_winner(living[0], "Last one standing")
+	elif living.is_empty():
+		game_over = true
+		hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
+		NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})
+		get_tree().paused = true
+
+
+func _declare_winner(p: Player, reason: String) -> void:
 	game_over = true
-	hud.show_winner(p.display_name, p.player_color, elapsed)
+	hud.show_winner(p.display_name, p.player_color, elapsed, reason)
 	NetHub.broadcast({"t": "win", "n": p.display_name, "c": p.player_color.to_html(false)})
 	get_tree().paused = true
 
@@ -292,8 +318,9 @@ func _net_service() -> void:
 		return
 	var ps := []
 	for p in players:
+		var resp := -1 if Settings.one_life else int(maxf(p.respawn_left, 0.0) * 10.0)
 		ps.append([int(p.global_position.x), int(p.global_position.y),
-			1 if p.alive else 0, int(maxf(p.respawn_left, 0.0) * 10.0), p.deaths,
+			1 if p.alive else 0, resp, p.deaths,
 			1 if p.armor else 0])
 	var bs := []
 	for b in get_tree().get_nodes_in_group(&"bombs"):
