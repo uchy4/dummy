@@ -18,8 +18,16 @@ const PALETTE: Array[String] = [
 
 const BEACON_PORT := 8930
 
+## Web app manifest so the join page installs as a standalone home-screen app.
+const MANIFEST := """{"name":"Bomb Shelter","short_name":"Bomb Shelter",
+"display":"standalone","orientation":"portrait","background_color":"#17100a",
+"theme_color":"#17100a","start_url":"/","icons":[
+{"src":"/icon.png","sizes":"192x192","type":"image/png"},
+{"src":"/icon.png","sizes":"512x512","type":"image/png"}]}"""
+
 var http_port := 0
 var ws_port := 0
+var _icon_png := PackedByteArray()
 ## When true (hosting), broadcast a discovery beacon so other phones'
 ## "Join LAN game" screens can find this match.
 var advertising := false
@@ -36,7 +44,16 @@ var _next_id := 1
 
 const PAGE := """<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Bomb Shelter</title><style>
+<title>Bomb Shelter</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bomb Shelter">
+<meta name="theme-color" content="#17100a">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon.png">
+<link rel="manifest" href="/manifest.json">
+<style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;touch-action:none}
 html,body{width:100%;height:100%;overflow:hidden}
 body{background:#17100a;color:#eee;font-family:sans-serif;position:fixed;top:0;left:0;right:0;bottom:0}
@@ -70,7 +87,9 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="swatches"></div>
 <button onclick="doJoin()">JOIN GAME</button>
 <button id="joinfs" onclick="goFS()">&#x26F6; Fullscreen</button>
-<div id="status">connecting…</div></div>
+<div id="status">connecting…</div>
+<div id="a2hs" style="display:none;font-size:13px;color:#9aa;text-align:center;padding:4px">
+Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></div>
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
@@ -290,6 +309,11 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#ddd";ctx.font="14px sans-serif";
   ctx.fillText("waiting for host rematch…",cw/2,ch*0.3+66);}}
 function y0(py){return py-20;}
+// Show the "Add to Home Screen" hint only in a normal browser tab, not when
+// already launched as an installed home-screen app.
+(function(){try{var standalone=window.navigator.standalone===true||
+ (window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches);
+ if(!standalone)document.getElementById("a2hs").style.display="block";}catch(e){}})();
 fit();connect();render();
 </script></body></html>"""
 
@@ -305,6 +329,52 @@ func _ready() -> void:
 			ws_port = p
 			break
 	_beacon.set_broadcast_enabled(true)
+	_icon_png = _make_icon_png()
+
+
+## Write a small HTTP/1.1 response with the given content type and body.
+func _send_http(tcp: StreamPeerTCP, content_type: String, body: PackedByteArray) -> void:
+	var head := ("HTTP/1.1 200 OK\r\nContent-Type: %s\r\n" +
+		"Content-Length: %d\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n") \
+		% [content_type, body.size()]
+	tcp.put_data(head.to_utf8_buffer())
+	tcp.put_data(body)
+
+
+## A 256x256 bomb icon PNG for the home-screen app.
+func _make_icon_png() -> PackedByteArray:
+	var s := 256
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color("8ecae6"))
+	var ground := int(s * 0.72)
+	for y in range(ground, s):
+		for x in s:
+			img.set_pixel(x, y, Color("7a5230"))
+	for y in range(ground, ground + 14):
+		for x in s:
+			img.set_pixel(x, y, Color("4caf50"))
+	var cx := s / 2
+	var cy := int(s * 0.52)
+	var r := int(s * 0.27)
+	for y in range(cy - r - 4, cy + r + 4):
+		for x in range(cx - r - 4, cx + r + 4):
+			var d := Vector2(x - cx, y - cy).length()
+			if d <= r:
+				img.set_pixel(x, y, Color("212126"))
+			elif d <= r + 3:
+				img.set_pixel(x, y, Color(0, 0, 0, 0.5))
+	# highlight + fuse spark
+	for y in range(cy - r / 2, cy - r / 5):
+		for x in range(cx - r / 2, cx - r / 5):
+			if Vector2(x - (cx - r / 3), y - (cy - r / 3)).length() <= r / 5:
+				img.set_pixel(x, y, Color(1, 1, 1, 0.25))
+	var fx := cx + int(r * 0.5)
+	var fy := cy - r - 6
+	for y in range(fy - 8, fy + 8):
+		for x in range(fx - 8, fx + 8):
+			if x >= 0 and y >= 0 and x < s and y < s and Vector2(x - fx, y - fy).length() <= 7:
+				img.set_pixel(x, y, Color("ffb300"))
+	return img.save_png_to_buffer()
 
 
 func join_url() -> String:
@@ -361,11 +431,21 @@ func _process(delta: float) -> void:
 		if n > 0:
 			p.buf += tcp.get_utf8_string(n)
 		if p.buf.contains("\r\n\r\n"):
-			var body := PAGE.replace("__WSPORT__", str(ws_port)).to_utf8_buffer()
-			var head := ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
-				"Content-Length: %d\r\nConnection: close\r\n\r\n") % body.size()
-			tcp.put_data(head.to_utf8_buffer())
-			tcp.put_data(body)
+			# Route by request path: the home-screen icon (iOS auto-fetches
+			# /apple-touch-icon*.png), the web manifest (Android install), or
+			# the page itself.
+			var path := "/"
+			var line: String = p.buf.split("\r\n")[0]
+			var parts := line.split(" ")
+			if parts.size() >= 2:
+				path = parts[1]
+			if path.contains("icon") or path.contains("favicon") or path.contains("apple-touch"):
+				_send_http(tcp, "image/png", _icon_png)
+			elif path.contains("manifest"):
+				_send_http(tcp, "application/manifest+json", MANIFEST.to_utf8_buffer())
+			else:
+				_send_http(tcp, "text/html; charset=utf-8",
+					PAGE.replace("__WSPORT__", str(ws_port)).to_utf8_buffer())
 			p.sent = true
 			p.age = 0.0
 			keep.append(p)
