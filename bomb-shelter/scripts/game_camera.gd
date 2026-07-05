@@ -4,7 +4,7 @@ extends Camera2D
 ## spread apart, clamped so the whole map always fits. Screen shake via trauma.
 
 const MIN_ZOOM := 0.36
-const MAX_ZOOM := 0.95
+const MAX_ZOOM := 2.4
 const MARGIN := 240.0
 
 var map_rect := Rect2()
@@ -34,7 +34,8 @@ func _physics_process(delta: float) -> void:
 		bbox = bbox.grow(MARGIN)
 
 		var vp := get_viewport_rect().size
-		var tz := clampf(minf(vp.x / bbox.size.x, vp.y / bbox.size.y), MIN_ZOOM, MAX_ZOOM)
+		var fit := minf(vp.x / bbox.size.x, vp.y / bbox.size.y)
+		var tz := clampf(fit * Settings.zoom_scale, MIN_ZOOM, MAX_ZOOM)
 		zoom = zoom.lerp(Vector2.ONE * tz, 1.0 - exp(-4.0 * delta))
 
 		var half := vp / zoom / 2.0

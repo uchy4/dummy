@@ -276,12 +276,19 @@ func surface_y() -> float:
 
 
 func surface_spawns(n: int) -> Array[Vector2]:
-	var cx := W / 2
-	var cols := [cx - 6, cx - 3, cx + 3, cx + 6, cx - 9, cx + 9, cx - 12, cx + 12]
 	var out: Array[Vector2] = []
 	for i in n:
-		out.append(Vector2((cols[i] + 0.5) * TILE, SURFACE_ROW * TILE - 20.0))
+		out.append(surface_spawn(i))
 	return out
+
+
+## A spawn point above the grass for the given slot (columns spread out from
+## the middle, cycling if there are more players than columns).
+func surface_spawn(i: int) -> Vector2:
+	var cx := W / 2
+	var cols := [cx - 6, cx - 3, cx + 3, cx + 6, cx - 9, cx + 9, cx - 12, cx + 12]
+	var c: int = cols[i % cols.size()]
+	return Vector2((c + 0.5) * TILE, SURFACE_ROW * TILE - 20.0)
 
 
 func shelter_spawn() -> Vector2:

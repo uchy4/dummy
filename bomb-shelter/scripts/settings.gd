@@ -14,6 +14,10 @@ static var type_enabled: Array[bool] = [true, true, true, true]
 ## Applies on restart. Untick for the classic flat look.
 static var mode_3d := true
 
+## Camera zoom multiplier — higher zooms in toward the character. Applies
+## live to the local camera and streams to web viewers.
+static var zoom_scale := 1.0
+
 ## Hard AI opponents, spawned at match start (change applies on restart).
 static var bot_count := 0
 

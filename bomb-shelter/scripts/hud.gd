@@ -196,6 +196,9 @@ func _build_settings_panel() -> void:
 	_add_slider(vbox, "Ramp-up time to max (seconds)", 30.0, 300.0, 5.0,
 		Settings.ramp_time,
 		func(v: float) -> void: Settings.ramp_time = v)
+	_add_slider(vbox, "Camera zoom", 0.6, 2.2, 0.05,
+		Settings.zoom_scale,
+		func(v: float) -> void: Settings.zoom_scale = v)
 	_add_slider(vbox, "Blast size", 0.5, 2.5, 0.05,
 		Settings.blast_scale,
 		func(v: float) -> void: Settings.blast_scale = v)

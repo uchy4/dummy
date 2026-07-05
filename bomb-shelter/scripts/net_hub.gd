@@ -235,7 +235,7 @@ function render(){requestAnimationFrame(render);
   ctx.fillText("waiting for game…",cw/2,ch/2);return;}
  var me=you>=0?lerpP(you):null;
  if(me){cam.x+=(me.x-cam.x)*0.12;cam.y+=(me.y-cam.y)*0.12;}
- var zoom=Math.max(cw,ch)/760;var vw=cw/zoom,vh=ch/zoom;
+ var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);var vw=cw/zoom,vh=ch/zoom;
  cam.x=Math.max(vw/2,Math.min(W*TS-vw/2,cam.x));
  cam.y=Math.max(vh/2-350,Math.min(H*TS-vh/2,cam.y));
  ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-cam.x,-cam.y);

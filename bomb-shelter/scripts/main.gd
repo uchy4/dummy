@@ -87,7 +87,7 @@ func _ready() -> void:
 		var p := Player.new()
 		p.name = "Player%d" % (i + 1)
 		p.setup(i, Settings.player_colors[i])
-		p.respawn_point = _shelter_slot(i)
+		p.respawn_point = terrain.surface_spawn(i)
 		p.world_bounds = _bounds
 		p.position = spawns[i]
 		world.add_child(p)
@@ -101,7 +101,7 @@ func _ready() -> void:
 		var p := Player.new()
 		p.name = "Bot%d" % (i + 1)
 		p.setup_remote(idx, "Bot %d" % (i + 1), c1, c2)
-		p.respawn_point = _shelter_slot(idx)
+		p.respawn_point = terrain.surface_spawn(idx)
 		p.world_bounds = _bounds
 		p.position = spawns[idx]
 		world.add_child(p)
@@ -355,7 +355,7 @@ func _net_service() -> void:
 	var cs := []
 	for ch in get_tree().get_nodes_in_group(&"chests"):
 		cs.append([int(ch.global_position.x), int(ch.global_position.y)])
-	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs})
+	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs, "z": Settings.zoom_scale})
 
 
 func _pair_key(a: Color, b: Color) -> String:
@@ -420,7 +420,7 @@ func _sync_web_players() -> void:
 			var p := Player.new()
 			p.name = "WebPlayer%d" % id
 			p.setup_remote(players.size(), str(c.name), c.color, c.color2)
-			p.respawn_point = _shelter_slot(players.size())
+			p.respawn_point = terrain.surface_spawn(players.size())  # surface, not the bunker
 			p.world_bounds = _bounds
 			p.position = p.respawn_point
 			world.add_child(p)
