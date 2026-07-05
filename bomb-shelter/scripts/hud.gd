@@ -168,6 +168,13 @@ func _build_settings_panel() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
+	var cam_follow := CheckBox.new()
+	cam_follow.text = "Camera follows one player (else whole group)"
+	cam_follow.button_pressed = Settings.camera_follow
+	cam_follow.focus_mode = Control.FOCUS_NONE
+	cam_follow.toggled.connect(func(on: bool) -> void: Settings.camera_follow = on)
+	vbox.add_child(cam_follow)
+
 	var one_life := CheckBox.new()
 	one_life.text = "One life — elimination (last standing wins)"
 	one_life.button_pressed = Settings.one_life

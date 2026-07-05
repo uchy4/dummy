@@ -83,7 +83,9 @@ func play_armor_break(_pos: Vector2) -> void:
 func play_tick(_pos: Vector2) -> void:
 	if get_child_count() >= 10:
 		return
-	_play(_tick_s, -16.0, randf_range(0.97, 1.03))
+	# Kept deliberately faint (~20% of the old level): with many live bombs
+	# the accelerating countdown ticks were overstimulating.
+	_play(_tick_s, -30.0, randf_range(0.97, 1.03))
 
 
 ## The crack of a blast lighting another bomb's fuse.

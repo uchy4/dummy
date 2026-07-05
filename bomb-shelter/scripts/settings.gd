@@ -18,6 +18,10 @@ static var mode_3d := true
 ## live to the local camera and streams to web viewers.
 static var zoom_scale := 1.0
 
+## Camera framing: false frames the whole group (default), true follows a
+## single player (parity with the web view).
+static var camera_follow := false
+
 ## Hard AI opponents, spawned at match start (change applies on restart).
 static var bot_count := 0
 

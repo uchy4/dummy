@@ -88,6 +88,9 @@ func _process(delta: float) -> void:
 		_leave("")
 		return
 
+	# Follow-mode tracks this device's own player, matching the web view.
+	if camera and my_index >= 0 and my_index < players.size():
+		camera.focus_target = players[my_index]
 	_animate_puppets(delta)
 
 

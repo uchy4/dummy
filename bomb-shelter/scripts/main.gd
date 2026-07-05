@@ -117,6 +117,8 @@ func _ready() -> void:
 	camera.map_rect = wr.grow_individual(40, 500, 40, 0)
 	camera.position = Vector2(wr.get_center().x, terrain.surface_y() - 60.0)
 	camera.zoom = Vector2(0.8, 0.8)
+	if not players.is_empty():
+		camera.focus_target = players[0]  # follow-mode tracks player 1
 	world.add_child(camera)
 
 	var spawner := BombSpawner.new()

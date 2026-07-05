@@ -9,6 +9,9 @@ const MARGIN := 240.0
 
 var map_rect := Rect2()
 var trauma := 0.0
+## In follow mode (Settings.camera_follow) the camera tracks this one player
+## instead of framing the whole group. Falls back to the first living player.
+var focus_target: Player = null
 
 
 func _ready() -> void:
@@ -21,10 +24,23 @@ func add_trauma(amount: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	var targets: Array[Vector2] = []
+	var living: Array[Player] = []
 	for p in get_tree().get_nodes_in_group(&"players"):
 		var pl := p as Player
 		if pl and pl.alive:
+			living.append(pl)
+
+	var targets: Array[Vector2] = []
+	if Settings.camera_follow:
+		# Follow one player (parity with the web view). Prefer the assigned
+		# focus target; otherwise the first living player.
+		var who: Player = focus_target if (focus_target and focus_target.alive) else null
+		if who == null and not living.is_empty():
+			who = living[0]
+		if who:
+			targets.append(who.global_position)
+	else:
+		for pl in living:
 			targets.append(pl.global_position)
 
 	if not targets.is_empty():
