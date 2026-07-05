@@ -52,9 +52,6 @@ button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ff
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
 #game{display:none;position:fixed;top:0;left:0;right:0;bottom:0}
 canvas{position:absolute;top:0;left:0;display:block}
-#rotate{display:none;position:absolute;top:0;left:0;right:0;
-background:rgba(10,7,4,.72);color:#ffca28;z-index:20;
-text-align:center;font-size:14px;padding:7px 12px;pointer-events:none}
 .pad{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));width:84px;height:84px;border-radius:50%;
 background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
 display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba(255,255,255,.85)}
@@ -77,8 +74,7 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
-<div id="colorbtn"></div><div id="fs">&#x26F6;</div>
-<div id="rotate">&#x21BB; rotate sideways for the full view</div></div>
+<div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
 <script>
 var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
@@ -88,6 +84,33 @@ var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f91
 var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var VW=0,VH=0,DPR=1;
+// --- Web Audio: procedural SFX so the web view sounds like the native app ---
+var AC=null;
+function initAudio(){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+function noiseBuf(dur){var n=Math.floor(AC.sampleRate*dur),b=AC.createBuffer(1,n,AC.sampleRate),d=b.getChannelData(0);
+ for(var i=0;i<n;i++)d[i]=Math.random()*2-1;return b;}
+function boom(vol){if(!AC)return;var t=AC.currentTime;
+ var s=AC.createBufferSource();s.buffer=noiseBuf(0.55);
+ var lp=AC.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(500,t);
+ lp.frequency.exponentialRampToValueAtTime(60,t+0.4);
+ var g=AC.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+ s.connect(lp);lp.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+0.55);
+ var o=AC.createOscillator();o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(30,t+0.3);
+ var g2=AC.createGain();g2.gain.setValueAtTime(vol*0.9,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+ o.connect(g2);g2.connect(AC.destination);o.start(t);o.stop(t+0.35);}
+function splat(){if(!AC)return;var t=AC.currentTime;
+ var s=AC.createBufferSource();s.buffer=noiseBuf(0.25);
+ var lp=AC.createBiquadFilter();lp.type="lowpass";lp.frequency.setValueAtTime(900,t);
+ lp.frequency.exponentialRampToValueAtTime(120,t+0.2);
+ var g=AC.createGain();g.gain.setValueAtTime(0.5,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+ s.connect(lp);lp.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+0.25);}
+function tone(freq,start,dur,vol){var t=AC.currentTime+start;
+ var o=AC.createOscillator();o.type="triangle";o.frequency.value=freq;
+ var g=AC.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(vol,t+0.02);
+ g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+ o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur);}
+function fanfare(){if(!AC)return;[523.25,659.25,784.0,1046.5].forEach(function(f,i){
+ tone(f,i*0.16,i===3?0.6:0.2,0.28);});}
 // Size the canvas from the *visual* viewport in real pixels. CSS 100vh/100%
 // is unreliable on iOS Safari (collapsing URL bar, stale post-rotation
 // layout) and produced a broken "slice" — this is the robust fix.
@@ -98,7 +121,6 @@ function fit(){
  DPR=window.devicePixelRatio||1;
  cv.style.width=VW+"px";cv.style.height=VH+"px";
  cv.width=Math.round(VW*DPR);cv.height=Math.round(VH*DPR);
- document.getElementById("rotate").style.display=(joined&&VH>VW*1.15)?"block":"none";
 }
 window.addEventListener("resize",fit);
 window.addEventListener("orientationchange",function(){setTimeout(fit,250);});
@@ -111,9 +133,10 @@ function connect(){
  ws.onmessage=function(ev){var m=JSON.parse(ev.data);
   if(m.t==="s"){
    if(sc)for(var i=0;i<sc.p.length&&i<m.p.length;i++)
-    if(sc.p[i][2]===1&&m.p[i][2]===0)burst(m.p[i][0],m.p[i][1],roster[i]?roster[i].c:"fff");
+    if(sc.p[i][2]===1&&m.p[i][2]===0){burst(m.p[i][0],m.p[i][1],roster[i]?roster[i].c:"fff");splat();}
    sp=sc;tp=tc;sc=m;tc=performance.now();}
-  else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});}
+  else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
+   boom(Math.min(0.55,0.2+m.r/240));}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
@@ -124,7 +147,7 @@ function connect(){
    if(!joined){if(!selKey||!opts.some(function(o){return key(o)===selKey;}))
     selKey=opts.length?key(opts[0]):null;
    renderSw();}}
-  else if(m.t==="win")win=m;};
+  else if(m.t==="win"){win=m;fanfare();}};
 }
 function key(o){return o.join("|");}
 function bg(o){return o.length>1?
@@ -149,6 +172,8 @@ function goFS(){try{var d=document;
   var p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el);
   if(p&&p.catch)p.catch(function(){});}}catch(err){}}
 function doJoin(){if(!ws||ws.readyState!==1)return;goFS();joined=true;sendJoin();
+ if(!AC)initAudio();
+ if(AC&&AC.state==="suspended"){var pr=AC.resume();if(pr&&pr.catch)pr.catch(function(){});}
  document.getElementById("join").style.display="none";
  document.getElementById("game").style.display="block";updateBtn();
  fit();setTimeout(fit,150);setTimeout(fit,600);}
