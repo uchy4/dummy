@@ -153,7 +153,7 @@ function connect(){
   if(m.t==="s"){
    if(sc)for(var i=0;i<sc.p.length&&i<m.p.length;i++)
     if(sc.p[i][2]===1&&m.p[i][2]===0){burst(m.p[i][0],m.p[i][1],roster[i]?roster[i].c:"fff");splat();}
-   sp=sc;tp=tc;sc=m;tc=performance.now();}
+   sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();}
   else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
    boom(Math.min(0.55,0.2+m.r/240));}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
@@ -235,6 +235,39 @@ function lerpP(i){if(!sc)return null;var cur=sc.p[i];if(!cur)return null;
  if(!sp||!sp.p[i])return{x:cur[0],y:cur[1]};
  var dt=tc-tp;var a=dt>0?Math.min((performance.now()-tc)/dt,1.3):1;
  return{x:sp.p[i][0]+(cur[0]-sp.p[i][0])*a,y:sp.p[i][1]+(cur[1]-sp.p[i][1])*a};}
+// --- Client-side prediction for YOUR player: simulate locally from your own
+// input against the terrain the client already has, so movement is instant;
+// the host stream only nudges/reconciles it. Removes the input round-trip lag.
+var PX=0,PY=0,VX=0,VY=0,onG=false,predOK=false,prevJ=false,lastT=0;
+function mv(a,b,d){return Math.abs(b-a)<=d?b:a+(b>a?d:-d);}
+function solidBox(cx,cy){var l=cx-6,rt=cx+6,tp=cy-12,bt=cy+12;
+ var c0=Math.floor(l/TS),c1=Math.floor((rt-0.01)/TS),r0=Math.floor(tp/TS),r1=Math.floor((bt-0.01)/TS);
+ for(var r=r0;r<=r1;r++)for(var c=c0;c<=c1;c++){
+  if(c<0||c>=W)return true;if(r<0||r>=H)continue;
+  if(grid[r*W+c]!==0)return true;}return false;}
+function predict(dt){if(dt>0.05)dt=0.05;
+ onG=solidBox(PX,PY+1);
+ var steps=Math.max(1,Math.ceil(Math.max(Math.abs(VX),Math.abs(VY))*dt/6));
+ var sdt=dt/steps;
+ for(var s=0;s<steps;s++){
+  var dir=(held.left?-1:0)+(held.right?1:0);
+  VX=mv(VX,dir*230,1900*sdt);
+  VY=Math.min(VY+980*sdt,900);
+  if(held.jump&&!prevJ&&onG){VY=-430;onG=false;}
+  prevJ=held.jump;
+  var nx=PX+VX*sdt;
+  if(!solidBox(nx,PY))PX=nx;
+  else{var sx=VX>0?1:-1;while(!solidBox(PX+sx,PY)&&(nx-PX)*sx>0)PX+=sx;VX=0;}
+  var ny=PY+VY*sdt;
+  if(!solidBox(PX,ny))PY=ny;
+  else{var sy=VY>0?1:-1;if(VY>0)onG=true;while(!solidBox(PX,PY+sy)&&(ny-PY)*sy>0)PY+=sy;VY=0;}}}
+function reconcile(){if(you<0||!sc||!sc.p[you])return;var hp=sc.p[you];
+ if(hp[2]!==1){predOK=false;return;}
+ var hx=hp[0],hy=hp[1];
+ if(!predOK){PX=hx;PY=hy;VX=0;VY=0;predOK=true;return;}
+ var ex=hx-PX,ey=hy-PY;
+ if(ex*ex+ey*ey>3600){PX=hx;PY=hy;VX=0;VY=0;}  // snap on blast/respawn
+ else{PX+=ex*0.2;PY+=ey*0.2;}}
 function drawGuy(x,y,col,col2,armor){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
  ctx.fillStyle=shade(col,0.6);ctx.fillRect(x-5,y+3,4,11);ctx.fillRect(x+1,y+3,4,11);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
@@ -252,8 +285,11 @@ function render(){requestAnimationFrame(render);
  ctx.fillStyle="#8ecae6";ctx.fillRect(0,0,cw,ch);
  if(!grid){ctx.fillStyle="#fff";ctx.font="16px sans-serif";ctx.textAlign="center";
   ctx.fillText("waiting for game…",cw/2,ch/2);return;}
- var me=you>=0?lerpP(you):null;
- if(me){cam.x+=(me.x-cam.x)*0.12;cam.y+=(me.y-cam.y)*0.12;}
+ var t0=performance.now();var pdt=lastT?(t0-lastT)/1000:0;lastT=t0;
+ var myAlive=you>=0&&sc&&sc.p[you]&&sc.p[you][2]===1;
+ if(myAlive&&predOK)predict(pdt);
+ var me=(myAlive&&predOK)?{x:PX,y:PY}:(you>=0?lerpP(you):null);
+ if(me){cam.x+=(me.x-cam.x)*0.28;cam.y+=(me.y-cam.y)*0.28;}
  var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);var vw=cw/zoom,vh=ch/zoom;
  cam.x=Math.max(vw/2,Math.min(W*TS-vw/2,cam.x));
  cam.y=Math.max(vh/2-350,Math.min(H*TS-vh/2,cam.y));
@@ -279,7 +315,7 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle=b[3]<12?"#ff5936":"#fff";ctx.font="bold 11px sans-serif";ctx.textAlign="center";
   ctx.fillText((b[3]/10).toFixed(1),b[0],b[1]-b[4]-6);}
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
-  var pos=lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
+  var pos=(i===you&&predOK)?{x:PX,y:PY}:lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
   var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;
   drawGuy(pos.x,pos.y,col,col2,p[5]===1);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();

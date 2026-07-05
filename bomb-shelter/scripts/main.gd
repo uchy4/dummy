@@ -339,7 +339,7 @@ func _net_service() -> void:
 		NetHub.broadcast(_roster_msg())
 		NetHub.broadcast_all(_colors_msg())
 	_snap_tick += 1
-	if _snap_tick % 4 != 0:
+	if _snap_tick % 2 != 0:  # 30 Hz position stream (was 15) - less felt lag
 		return
 	var ps := []
 	for p in players:
