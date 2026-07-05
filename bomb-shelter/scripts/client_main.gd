@@ -354,9 +354,13 @@ func _build_hud() -> void:
 	center.add_child(_win_label)
 
 	if DisplayServer.is_touchscreen_available():
+		# Must match the host HUD's construction exactly: the textures anchor
+		# the hit shape (no texture = tap area offset from the visuals).
 		for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"], [&"p1_kick", "K"]]:
 			var b := TouchScreenButton.new()
 			b.action = cfg[0]
+			b.texture_normal = Hud.circle_tex(64, Color(1, 1, 1, 0.22))
+			b.texture_pressed = Hud.circle_tex(64, Color(1, 1, 1, 0.45))
 			var shape := CircleShape2D.new()
 			shape.radius = 74.0
 			b.shape = shape
@@ -368,6 +372,7 @@ func _build_hud() -> void:
 			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			l.add_theme_font_size_override(&"font_size", 52)
 			l.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.8))
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			b.add_child(l)
 			_hud.add_child(b)
 			_touch_buttons.append(b)

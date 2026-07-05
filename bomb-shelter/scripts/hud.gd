@@ -337,8 +337,8 @@ func _build_touch_controls() -> void:
 	for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"], [&"p1_kick", "K"]]:
 		var b := TouchScreenButton.new()
 		b.action = cfg[0]
-		b.texture_normal = _circle_tex(64, Color(1, 1, 1, 0.22))
-		b.texture_pressed = _circle_tex(64, Color(1, 1, 1, 0.45))
+		b.texture_normal = circle_tex(64, Color(1, 1, 1, 0.22))
+		b.texture_pressed = circle_tex(64, Color(1, 1, 1, 0.45))
 		var shape := CircleShape2D.new()
 		shape.radius = 74.0
 		b.shape = shape
@@ -366,7 +366,7 @@ func _layout_touch() -> void:
 	_touch_buttons[3].position = Vector2(vs.x - 318, vs.y - 170)
 
 
-func _circle_tex(radius: int, color: Color) -> ImageTexture:
+static func circle_tex(radius: int, color: Color) -> ImageTexture:
 	var s := radius * 2
 	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
 	for y in s:
