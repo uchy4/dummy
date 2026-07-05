@@ -35,11 +35,12 @@ var _pending: Array[Dictionary] = []
 var _next_id := 1
 
 const PAGE := """<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Bomb Shelter</title><style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;touch-action:none}
-body{background:#17100a;color:#eee;font-family:sans-serif;height:100vh;overflow:hidden}
-#join{display:flex;flex-direction:column;gap:14px;padding:26px;max-width:420px;margin:auto;width:100%;height:100%;justify-content:center}
+html,body{width:100%;height:100%;overflow:hidden}
+body{background:#17100a;color:#eee;font-family:sans-serif;position:fixed;top:0;left:0;right:0;bottom:0}
+#join{display:flex;flex-direction:column;gap:14px;padding:26px;max-width:420px;margin:auto;width:100%;height:100%;justify-content:center;overflow:auto}
 h1{font-size:22px;color:#ffca28;text-align:center}
 input[type=text]{font-size:18px;padding:10px;border-radius:8px;border:1px solid #555;background:#222;color:#eee}
 #swatches{display:flex;flex-wrap:wrap;justify-content:center}
@@ -49,15 +50,21 @@ input[type=text]{font-size:18px;padding:10px;border-radius:8px;border:1px solid 
 button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ffca28;color:#000;font-weight:bold}
 #joinfs{background:#2a2118;color:#eee;border:1px solid #5a4a2e;font-size:17px}
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
-#game{display:none;position:fixed;inset:0}
-canvas{position:absolute;inset:0;width:100%;height:100%}
-.pad{position:absolute;bottom:14px;width:84px;height:84px;border-radius:50%;
+#game{display:none;position:fixed;top:0;left:0;right:0;bottom:0}
+canvas{position:absolute;top:0;left:0;display:block}
+#rotate{display:none;position:absolute;top:0;left:0;right:0;
+background:rgba(10,7,4,.72);color:#ffca28;z-index:20;
+text-align:center;font-size:14px;padding:7px 12px;pointer-events:none}
+.pad{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));width:84px;height:84px;border-radius:50%;
 background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
 display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba(255,255,255,.85)}
 .pad.on{background:rgba(255,255,255,.35)}
-#left{left:16px}#right{left:116px}#jump{right:16px}#kick{right:116px;font-size:26px}
-#colorbtn{position:absolute;top:8px;right:10px;width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
-#fs{position:absolute;top:8px;right:58px;width:44px;height:44px;border-radius:10px;
+#left{left:calc(16px + env(safe-area-inset-left))}
+#right{left:calc(116px + env(safe-area-inset-left))}
+#jump{right:calc(16px + env(safe-area-inset-right))}
+#kick{right:calc(116px + env(safe-area-inset-right));font-size:26px}
+#colorbtn{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
+#fs{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(58px + env(safe-area-inset-right));width:44px;height:44px;border-radius:10px;
 background:rgba(0,0,0,.45);border:2px solid rgba(255,255,255,.7);
 display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff}
 </style></head><body>
@@ -70,7 +77,8 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="game"><canvas id="cv"></canvas>
 <div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
 <div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
-<div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
+<div id="colorbtn"></div><div id="fs">&#x26F6;</div>
+<div id="rotate">&#x21BB; rotate sideways for the full view</div></div>
 <script>
 var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
@@ -79,6 +87,22 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+var VW=0,VH=0,DPR=1;
+// Size the canvas from the *visual* viewport in real pixels. CSS 100vh/100%
+// is unreliable on iOS Safari (collapsing URL bar, stale post-rotation
+// layout) and produced a broken "slice" — this is the robust fix.
+function fit(){
+ var vv=window.visualViewport;
+ VW=Math.round(vv?vv.width:window.innerWidth);
+ VH=Math.round(vv?vv.height:window.innerHeight);
+ DPR=window.devicePixelRatio||1;
+ cv.style.width=VW+"px";cv.style.height=VH+"px";
+ cv.width=Math.round(VW*DPR);cv.height=Math.round(VH*DPR);
+ document.getElementById("rotate").style.display=(joined&&VH>VW*1.15)?"block":"none";
+}
+window.addEventListener("resize",fit);
+window.addEventListener("orientationchange",function(){setTimeout(fit,250);});
+if(window.visualViewport)window.visualViewport.addEventListener("resize",fit);
 function connect(){
  ws=new WebSocket("ws://"+location.hostname+":__WSPORT__");
  ws.onopen=function(){document.getElementById("status").textContent="ready — pick a name and join";
@@ -126,7 +150,8 @@ function goFS(){try{var d=document;
   if(p&&p.catch)p.catch(function(){});}}catch(err){}}
 function doJoin(){if(!ws||ws.readyState!==1)return;goFS();joined=true;sendJoin();
  document.getElementById("join").style.display="none";
- document.getElementById("game").style.display="block";updateBtn();}
+ document.getElementById("game").style.display="block";updateBtn();
+ fit();setTimeout(fit,150);setTimeout(fit,600);}
 function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:st.k?1:0}));}
 function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
  if(a!==st.a||held.jump!==!!st.j||held.kick!==!!st.k){st.a=a;st.j=held.jump;st.k=held.kick;send();}}
@@ -177,9 +202,9 @@ function drawGuy(x,y,col,col2,armor){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,
  ctx.fillStyle=shade(col,1.15);ctx.fillRect(x-6,y-17,12,4);
  ctx.fillStyle="#fff";ctx.fillRect(x-3,y-12,2,3);ctx.fillRect(x+1,y-12,2,3);}
 function render(){requestAnimationFrame(render);
- var dpr=window.devicePixelRatio||1,cw=cv.clientWidth,ch=cv.clientHeight;
- if(cv.width!==cw*dpr||cv.height!==ch*dpr){cv.width=cw*dpr;cv.height=ch*dpr;}
- ctx.setTransform(dpr,0,0,dpr,0,0);
+ if(VW===0)fit();
+ var cw=VW,ch=VH;
+ ctx.setTransform(DPR,0,0,DPR,0,0);
  ctx.fillStyle="#8ecae6";ctx.fillRect(0,0,cw,ch);
  if(!grid){ctx.fillStyle="#fff";ctx.font="16px sans-serif";ctx.textAlign="center";
   ctx.fillText("waiting for game…",cw/2,ch/2);return;}
@@ -240,7 +265,7 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#ddd";ctx.font="14px sans-serif";
   ctx.fillText("waiting for host rematch…",cw/2,ch*0.3+66);}}
 function y0(py){return py-20;}
-connect();render();
+fit();connect();render();
 </script></body></html>"""
 
 
