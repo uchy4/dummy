@@ -66,6 +66,24 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 
+	# In-place update: visible only when the launch check found a newer CI
+	# build. Same signing key every build, so Android installs it right over
+	# this one — no uninstall.
+	var upd := Button.new()
+	upd.visible = Updater.update_available()
+	if upd.visible:
+		upd.text = "⬇ UPDATE AVAILABLE — install build %d" % Updater.latest_build
+	upd.add_theme_font_size_override(&"font_size", 18)
+	upd.add_theme_color_override(&"font_color", Color("1b5e20"))
+	upd.modulate = Color("b9f6ca")
+	upd.pressed.connect(func() -> void: Updater.launch_update())
+	Updater.update_found.connect(func(b: int) -> void:
+		upd.text = "⬇ UPDATE AVAILABLE — install build %d" % b
+		upd.visible = true)
+	box.add_child(upd)
+	if BuildInfo.BUILD > 0:
+		title.tooltip_text = "build %d" % BuildInfo.BUILD
+
 	_name_edit = LineEdit.new()
 	_name_edit.placeholder_text = "Your name (for joining)"
 	_name_edit.text = Settings.join_name

@@ -254,6 +254,24 @@ func _build_settings_panel() -> void:
 		box.add_child(picker)
 		colors_row.add_child(box)
 
+	# In-place update button: only shows when the launch check found a newer
+	# CI build. Same signing key, so Android installs it over this build.
+	var upd := Button.new()
+	upd.visible = Updater.update_available()
+	if upd.visible:
+		upd.text = "⬇ Update available — install build %d" % Updater.latest_build
+	upd.focus_mode = Control.FOCUS_NONE
+	upd.modulate = Color("b9f6ca")
+	upd.pressed.connect(func() -> void: Updater.launch_update())
+	Updater.update_found.connect(func(b: int) -> void:
+		upd.text = "⬇ Update available — install build %d" % b
+		upd.visible = true)
+	vbox.add_child(upd)
+	if BuildInfo.BUILD > 0:
+		var ver := _make_label(12, Color(1, 1, 1, 0.5))
+		ver.text = "this device: build %d" % BuildInfo.BUILD
+		vbox.add_child(ver)
+
 	var reset := Button.new()
 	reset.text = "Reset players to shelter"
 	reset.focus_mode = Control.FOCUS_NONE

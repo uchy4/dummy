@@ -36,6 +36,12 @@ jobs:
           unzip -q templates.tpz -d /tmp/templates
           mv /tmp/templates/templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
 
+      - name: Stamp build number (in-app update check compares against releases)
+        run: |
+          sed -i "s/const BUILD := 0/const BUILD := ${{ github.run_number }}/" \
+            bomb-shelter/scripts/build_info.gd
+          grep "const BUILD" bomb-shelter/scripts/build_info.gd
+
       - name: Import project
         run: godot --headless --path bomb-shelter --import || true
 
@@ -74,16 +80,21 @@ jobs:
           # Also set the keystore directly in BOTH presets - the most reliable
           # thing headless export reads.
           python3 - <<'PYEOF'
-          import os
+          import os, re
           p = 'bomb-shelter/export_presets.cfg'
           s = open(p).read()
+          run = os.environ['GITHUB_RUN_NUMBER']
           block = ('\nkeystore/debug="%s/debug.keystore"'
                    '\nkeystore/debug_user="androiddebugkey"'
                    '\nkeystore/debug_password="android"\n') % os.environ['HOME']
+          # Rising versionCode per CI run so Android always treats a newer
+          # APK as an upgrade (installs over the old one, never a downgrade).
+          block += ('version/code=%s\nversion/name="build %s"\n' % (run, run))
+          s = re.sub(r'^version/(code|name)=.*\n', '', s, flags=re.M)
           for sect in ('[preset.0.options]', '[preset.1.options]'):
               s = s.replace(sect, sect + block)
           open(p, 'w').write(s)
-          print('keystore injected into both presets')
+          print('keystore + version %s injected into both presets' % run)
           PYEOF
 
       - name: Export debug APKs (2D and 3D flavors)
