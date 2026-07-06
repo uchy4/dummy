@@ -47,6 +47,7 @@ var _prev_jump_held := false
 var _prev_kick_held := false
 var _kick_cd := 0.0
 var _facing := 1
+var airborne := false
 var _was_on_floor := true
 var _fall_speed := 0.0
 var _step_sign := 0
@@ -169,9 +170,10 @@ func _physics_process(delta: float) -> void:
 		_puff(8)
 	_was_on_floor = is_on_floor()
 
-	# Limb swing: legs/arms pump while walking, settle when idle or airborne.
+	# Limb swing: legs/arms pump while walking; airborne uses a fixed jump pose.
+	airborne = not is_on_floor()
 	var swing_target := 0.0
-	if is_on_floor() and absf(velocity.x) > 20.0:
+	if not airborne and absf(velocity.x) > 20.0:
 		_walk_phase += velocity.x * delta * 0.055
 		swing_target = sin(_walk_phase) * 0.6
 		# A crunch each time a foot plants: the swing reverses direction at
@@ -180,8 +182,6 @@ func _physics_process(delta: float) -> void:
 		if sgn != _step_sign:
 			_step_sign = sgn
 			get_tree().call_group(&"sfx", &"play_step", global_position)
-	elif not is_on_floor():
-		swing_target = 0.35  # arms/legs trail in the air
 	_swing = lerpf(_swing, swing_target, 0.35)
 	queue_redraw()
 
@@ -299,8 +299,10 @@ func _puff(amount: int) -> void:
 	get_parent().add_child.call_deferred(d)
 
 
-func _limb(anchor: Vector2, angle: float, length: float, col: Color) -> void:
-	draw_set_transform(anchor, angle, Vector2.ONE)
+## Draw one limb. f (=_facing) mirrors the whole pose horizontally so the
+## character flips correctly when it turns around.
+func _limb(anchor: Vector2, angle: float, length: float, col: Color, f: float) -> void:
+	draw_set_transform(Vector2(anchor.x * f, anchor.y), angle * f, Vector2.ONE)
 	draw_rect(Rect2(-3, -1, 6, length + 2), Color.BLACK)  # outline
 	draw_rect(Rect2(-2, 0, 4, length), col)
 
@@ -308,11 +310,31 @@ func _limb(anchor: Vector2, angle: float, length: float, col: Color) -> void:
 func _draw() -> void:
 	var arm_c := player_color.darkened(0.15)
 	var leg_c := player_color.darkened(0.35)
-	# Far arm and far leg swing opposite the near ones.
-	_limb(Vector2(5, -6), _swing, 10, arm_c.darkened(0.2))
-	_limb(Vector2(3, 2), -_swing, 12, leg_c.darkened(0.2))
-	_limb(Vector2(-3, 2), _swing, 12, leg_c)
-	# Torso and head in body space, black silhouette first.
+	var f := float(_facing)
+	# Poses defined facing-right; _limb mirrors them by f when facing left.
+	var r_arm: float
+	var l_arm: float
+	var r_leg: float
+	var l_leg: float
+	var leg_x := 3.0
+	if airborne:
+		# Jump: arms up in a Y, feet together and straight.
+		r_arm = -2.5
+		l_arm = 2.5
+		r_leg = 0.0
+		l_leg = 0.0
+		leg_x = 1.5
+	else:
+		# Walk cycle: arms and legs swing opposite each other.
+		r_arm = _swing
+		l_arm = -_swing
+		r_leg = -_swing
+		l_leg = _swing
+	# Back arm and both legs (behind the torso).
+	_limb(Vector2(5, -6), r_arm, 10, arm_c.darkened(0.2), f)
+	_limb(Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
+	_limb(Vector2(-leg_x, 2), l_leg, 12, leg_c, f)
+	# Torso and head in body space (symmetric), black silhouette first.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
 	draw_rect(Rect2(-6, -16, 12, 11), Color.BLACK)
@@ -326,11 +348,11 @@ func _draw() -> void:
 		draw_rect(Rect2(-6, -3.2, 12, 1.2), Color(0.6, 0.63, 0.7))
 	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
 	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
-	var fx := _facing * 1.0
+	var fx := f * 1.0
 	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
 	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)
 	draw_rect(Rect2(-2.5 + fx, -11, 1, 1.5), Color.BLACK)
 	draw_rect(Rect2(1.5 + fx, -11, 1, 1.5), Color.BLACK)
-	# Near arm drawn over the torso.
-	_limb(Vector2(-5, -6), -_swing, 10, arm_c)
+	# Front arm drawn over the torso.
+	_limb(Vector2(-5, -6), l_arm, 10, arm_c, f)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

@@ -109,14 +109,13 @@ func _animate_puppets(delta: float) -> void:
 		var vy := (target.y - _plast[i].y) * 15.0
 		p.velocity = Vector2(vx, vy)
 		p.puppet_on_floor = absf(vy) < 30.0
+		p.airborne = not p.puppet_on_floor
 		if absf(vx) > 20.0:
 			p._facing = 1 if vx > 0.0 else -1
 		var swing_target := 0.0
 		if absf(vx) > 20.0 and p.puppet_on_floor:
 			p._walk_phase += vx * delta * 0.055
 			swing_target = sin(p._walk_phase) * 0.6
-		elif not p.puppet_on_floor:
-			swing_target = 0.35
 		p._swing = lerpf(p._swing, swing_target, 0.35)
 		p.queue_redraw()
 	for i in bombs.size():
