@@ -215,11 +215,15 @@ func _build_settings_panel() -> void:
 	_add_slider(vbox, "Player kick power", 0.0, 700.0, 10.0,
 		Settings.kick_player_power,
 		func(v: float) -> void: Settings.kick_player_power = v)
+	_add_slider(vbox, "Stun time (seconds)", 0.0, 3.0, 0.1,
+		Settings.stun_time,
+		func(v: float) -> void: Settings.stun_time = v)
 
 	var types_label := _make_label(15, Color(1, 1, 1, 0.9))
 	types_label.text = "Bomb types in the mix:"
 	vbox.add_child(types_label)
-	var type_names := ["Normal", "Big (huge blast)", "Cluster (splits)", "Bouncy"]
+	var type_names := ["Normal", "Big (huge blast)", "Cluster (splits)", "Bouncy",
+		"Sticky (kick it!)"]
 	var grid := GridContainer.new()
 	grid.columns = 2
 	vbox.add_child(grid)

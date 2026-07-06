@@ -7,8 +7,9 @@ static var drop_interval := 3.4   ## starting seconds between drops
 static var ramp_time := 120.0     ## seconds until the bombardment reaches max difficulty
 static var blast_scale := 1.0     ## multiplier on blast/kill/carve radius
 
-## Which bomb types spawn, indexed by Bomb.Type: NORMAL, BIG, CLUSTER, BOUNCY.
-static var type_enabled: Array[bool] = [true, true, true, true]
+## Which bomb types spawn, indexed by Bomb.Type: NORMAL, BIG, CLUSTER,
+## BOUNCY, STICKY.
+static var type_enabled: Array[bool] = [true, true, true, true, true]
 
 ## 2.5D rendering: the 2D sim runs unchanged, drawn with KayKit 3D assets.
 ## Applies on restart. Untick for the classic flat look.
@@ -32,6 +33,10 @@ static var one_life := true
 ## Kick launch speeds (px/s at 45 degrees up), tunable in Quick Settings.
 static var kick_bomb_power := 430.0
 static var kick_player_power := 280.0
+
+## Ragdoll-stun length (seconds) after surviving a blast or a direct bomb
+## hit. 0 disables stun entirely.
+static var stun_time := 1.0
 
 ## Local players' chosen colors (set from the Quick Settings pickers).
 ## Filled with the defaults by Main on first run.

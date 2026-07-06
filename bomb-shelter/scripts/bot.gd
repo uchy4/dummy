@@ -44,6 +44,26 @@ func _physics_process(delta: float) -> void:
 			threat = bomb
 			tdist = d
 
+	# A sticky bomb glued to us: kick it off immediately, aimed at the
+	# nearest living opponent if there is one.
+	var stuck: Bomb = null
+	for b in get_tree().get_nodes_in_group(&"bombs"):
+		var bomb := b as Bomb
+		if bomb and bomb.carrier == player:
+			stuck = bomb
+			break
+	if stuck:
+		var aim := Vector2(signf(randf() - 0.5), -1).normalized()
+		var best := 1e9
+		for p in get_tree().get_nodes_in_group(&"players"):
+			var other := p as Player
+			if other and other != player and other.alive:
+				var d := pos.distance_to(other.global_position)
+				if d < best:
+					best = d
+					aim = (pos.direction_to(other.global_position) + Vector2.UP).normalized()
+		player.queue_kick(aim, 1.0)
+
 	if threat:
 		if tdist < 34.0 and threat.fuse > KICK_FUSE_MIN:
 			# Close and still fresh: face it and punt it away.

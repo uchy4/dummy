@@ -434,6 +434,9 @@ func _sync_web_players() -> void:
 		p.remote_axis = c.axis if c.connected else 0.0
 		p.remote_jump = c.jump and c.connected
 		p.remote_kick = c.kick and c.connected
+		if c.connected and c.kick_dir != Vector2.ZERO:
+			p.queue_kick(c.kick_dir, c.kick_power)
+			c.kick_dir = Vector2.ZERO
 		if not p.player_color.is_equal_approx(c.color) or not p.color2.is_equal_approx(c.color2):
 			if _taken_pairs(p).has(_pair_key(c.color, c.color2)):
 				c.color = p.player_color  # requested combo is in use: reject

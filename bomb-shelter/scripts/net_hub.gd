@@ -101,7 +101,7 @@ var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var grassCells=null;var anim={};
-var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
+var BOMB=["#212126","#131318","#733f17","#1f5c2e","#80247f"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var VW=0,VH=0,DPR=1;
 // --- Web Audio: procedural SFX so the web view sounds like the native app ---
@@ -540,6 +540,7 @@ func _process(delta: float) -> void:
 			"pending_init": false, "pending_colors": true,
 			"name": "", "color": Color("ff8f2e"), "color2": Color("ff8f2e"),
 			"axis": 0.0, "jump": false, "kick": false,
+			"kick_dir": Vector2.ZERO, "kick_power": 1.0,
 		}
 		_next_id += 1
 
@@ -623,6 +624,11 @@ func _handle(c: Dictionary, msg: Dictionary) -> void:
 			c.axis = clampf(float(msg.get("a", 0)), -1.0, 1.0)
 			c.jump = int(msg.get("j", 0)) != 0
 			c.kick = int(msg.get("k", 0)) != 0
+		"k":
+			# One-shot directional charged kick from the gesture layer.
+			var kd := Vector2(float(msg.get("dx", 0)), float(msg.get("dy", 0)))
+			c.kick_dir = kd if kd.length_squared() > 0.001 else Vector2.ZERO
+			c.kick_power = clampf(float(msg.get("p", 1.0)), 0.2, 1.0)
 		"c":
 			c.color = Color.from_string(str(msg.get("c", "")), c.color)
 			c.color2 = Color.from_string(str(msg.get("c2", "")), c.color)

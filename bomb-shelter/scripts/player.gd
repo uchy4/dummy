@@ -30,6 +30,11 @@ var remote_axis := 0.0
 var remote_jump := false
 var remote_kick := false
 
+## One-shot directional kick queued by gestures / web clients; consumed on
+## the next physics tick. ZERO = nothing queued.
+var _queued_kick := Vector2.ZERO
+var _queued_kick_power := 1.0
+
 ## Puppet: a display-only mirror on a LAN-join client. No physics, no input —
 ## position and state come from host snapshots; drawing and the 3D layer work
 ## as usual.
@@ -144,8 +149,13 @@ func _physics_process(delta: float) -> void:
 	var kick_held := remote_kick if remote else Input.is_action_pressed(_a_kick)
 	if kick_held and not _prev_kick_held and _kick_cd <= 0.0:
 		_kick_cd = KICK_COOLDOWN
-		_do_kick()
+		_do_kick_dir(Vector2(_facing, -1).normalized(), 1.0)
 	_prev_kick_held = kick_held
+	if _queued_kick != Vector2.ZERO:
+		if _kick_cd <= 0.0:
+			_kick_cd = KICK_COOLDOWN
+			_do_kick_dir(_queued_kick, _queued_kick_power)
+		_queued_kick = Vector2.ZERO
 
 	velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
 	_coyote = 0.15 if is_on_floor() else _coyote - delta
@@ -201,23 +211,42 @@ func _physics_process(delta: float) -> void:
 		die()
 
 
-## Punt nearby bombs (and, more gently, players) at 45 degrees upward in
-## the facing direction.
-func _do_kick() -> void:
-	var dir45 := Vector2(_facing, -1).normalized()
+## Queue a directional kick with a 0.2..1.0 power scale (charged gesture
+## kicks and web clients use this; the classic kick button stays 45 degrees
+## at full power).
+func queue_kick(dir: Vector2, power: float) -> void:
+	_queued_kick = dir.normalized() if dir.length_squared() > 0.001 \
+		else Vector2(_facing, -1).normalized()
+	_queued_kick_power = clampf(power, 0.2, 1.0)
+
+
+## Punt nearby bombs (and, more gently, players) in the given direction.
+## A sticky bomb glued to us always launches, whatever the range.
+func _do_kick_dir(dir: Vector2, power: float) -> void:
+	if absf(dir.x) > 0.2:
+		_facing = 1 if dir.x > 0.0 else -1
 	var center := global_position + Vector2(_facing * 10.0, 0.0)
 	var hit := false
 	for b in get_tree().get_nodes_in_group(&"bombs"):
 		var bomb := b as Bomb
-		if bomb and center.distance_to(bomb.global_position) <= KICK_RANGE + bomb._body_radius:
-			bomb.linear_velocity = dir45 * Settings.kick_bomb_power
-			bomb.angular_velocity = _facing * 8.0
+		if bomb == null:
+			continue
+		if bomb.carrier == self:
+			bomb.launch(dir * Settings.kick_bomb_power * power)
+			hit = true
+			continue
+		if center.distance_to(bomb.global_position) <= KICK_RANGE + bomb._body_radius:
+			if bomb.carrier != null:
+				bomb.launch(dir * Settings.kick_bomb_power * power)
+			else:
+				bomb.linear_velocity = dir * Settings.kick_bomb_power * power
+				bomb.angular_velocity = _facing * 8.0
 			hit = true
 	for p in get_tree().get_nodes_in_group(&"players"):
 		var other := p as Player
 		if other and other != self and other.alive \
 				and center.distance_to(other.global_position) <= KICK_RANGE + 8.0:
-			other.velocity += dir45 * Settings.kick_player_power
+			other.velocity += dir * Settings.kick_player_power * power
 			other._coyote = 0.0
 			hit = true
 	get_tree().call_group(&"sfx", &"play_kick", global_position)
