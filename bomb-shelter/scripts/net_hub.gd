@@ -100,6 +100,7 @@ var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
+var grassCells=null;var anim={};
 var BOMB=["#212126","#131318","#733f17","#1f5c2e"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var VW=0,VH=0,DPR=1;
@@ -159,7 +160,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -216,9 +217,12 @@ document.getElementById("fs").addEventListener("click",function(){
  }catch(err){}});
 setInterval(send,2000);
 function buildTerrain(){off=document.createElement("canvas");off.width=W;off.height=H;
- octx=off.getContext("2d");
+ octx=off.getContext("2d");grassCells=[];
  for(var r=0;r<H;r++)for(var c=0;c<W;c++){var v=grid[r*W+c];if(!v)continue;
-  octx.fillStyle=(Math.random()<0.3)?CELL2[v]:CELL[v];octx.fillRect(c,r,1,1);}}
+  // Grass blocks are dirt-bodied; a thin green cap is drawn on top at render.
+  var dv=(v===3)?1:v;
+  octx.fillStyle=(Math.random()<0.3)?CELL2[dv]:CELL[dv];octx.fillRect(c,r,1,1);
+  if(v===3)grassCells.push(r*W+c);}}
 function carve(x,y,rad){if(!grid)return;
  var c0=Math.floor(x/TS),r0=Math.floor(y/TS),rr=Math.ceil(rad/TS);
  for(var r=r0-rr;r<=r0+rr;r++)for(var c=c0-rr;c<=c0+rr;c++){
@@ -268,16 +272,34 @@ function reconcile(){if(you<0||!sc||!sc.p[you])return;var hp=sc.p[you];
  var ex=hx-PX,ey=hy-PY;
  if(ex*ex+ey*ey>3600){PX=hx;PY=hy;VX=0;VY=0;}  // snap on blast/respawn
  else{PX+=ex*0.2;PY+=ey*0.2;}}
-function drawGuy(x,y,col,col2,armor){ctx.fillStyle="#000";ctx.fillRect(x-7,y-18,14,33);
- ctx.fillStyle=shade(col,0.6);ctx.fillRect(x-5,y+3,4,11);ctx.fillRect(x+1,y+3,4,11);
+// Animated humanoid matching the native Android character: mirrored limbs by
+// facing, walk swing, and a Y-shape jump pose. All derived client-side.
+function rgbOf(h){h=h.replace("#","");
+ return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];}
+function mul(c,f){return "rgb("+(c[0]*f|0)+","+(c[1]*f|0)+","+(c[2]*f|0)+")";}
+function lw(c,f){return "rgb("+((c[0]+(255-c[0])*f)|0)+","+((c[1]+(255-c[1])*f)|0)+","+((c[2]+(255-c[2])*f)|0)+")";}
+function limbW(x,y,ax,ay,ang,len,col,f){ctx.save();ctx.translate(x+ax*f,y+ay);ctx.rotate(ang*f);
+ ctx.fillStyle="#000";ctx.fillRect(-3,-1,6,len+2);
+ ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);ctx.restore();}
+function drawGuy(x,y,col,col2,armor,swing,face,air){
+ var c=rgbOf(col),armc=mul(c,0.85),legc=mul(c,0.65);
+ var ra,la,rl,ll,lx;
+ if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
+ else{ra=swing;la=-swing;rl=-swing;ll=swing;lx=3;}
+ limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
+ limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
+ limbW(x,y,-lx,2,ll,12,legc,face);               // front leg
+ ctx.fillStyle="#000";                            // torso/head silhouette
+ ctx.fillRect(x-7,y-8,14,12);ctx.fillRect(x-6,y-16,12,11);ctx.fillRect(x-7,y-18,14,6);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
- if(col2&&col2!==col){ctx.fillStyle=col2;
-  ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
- if(armor){ctx.fillStyle="#d1d9e6";ctx.fillRect(x-6,y-7,12,4);
-  ctx.fillStyle="#99a2b3";ctx.fillRect(x-6,y-3.2,12,1.2);}
- ctx.fillStyle=shade(col,1.35);ctx.fillRect(x-5,y-15,10,9);
- ctx.fillStyle=shade(col,1.15);ctx.fillRect(x-6,y-17,12,4);
- ctx.fillStyle="#fff";ctx.fillRect(x-3,y-12,2,3);ctx.fillRect(x+1,y-12,2,3);}
+ if(col2&&col2!==col){ctx.fillStyle=col2;ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
+ if(armor){ctx.fillStyle="#d1d9e6";ctx.fillRect(x-6,y-7,12,4);ctx.fillStyle="#99a2b3";ctx.fillRect(x-6,y-3.2,12,1.2);}
+ ctx.fillStyle=lw(c,0.35);ctx.fillRect(x-5,y-15,10,9);      // head
+ ctx.fillStyle=lw(c,0.15);ctx.fillRect(x-6,y-17,12,4);      // hat
+ var fx=face;
+ ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
+ ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);
+ limbW(x,y,-5,-6,la,10,armc,face);}              // front arm
 function render(){requestAnimationFrame(render);
  if(VW===0)fit();
  var cw=VW,ch=VH;
@@ -297,6 +319,10 @@ function render(){requestAnimationFrame(render);
  ctx.imageSmoothingEnabled=false;
  ctx.fillStyle="#17100a";ctx.fillRect(0,SURF*TS,W*TS,(H-SURF)*TS);
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
+ if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
+  if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
+  ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
+  ctx.fillStyle="#3f9143";ctx.fillRect(gx,gy+4,TS,1.5);}
  for(var fx=3*TS,k=0;fx<(W-3)*TS;fx+=8,k++){
   ctx.fillStyle=(k%2===0)?"#ffd54f":"#1a1a1a";ctx.fillRect(fx,FIN,8,14);}
  var now=performance.now();
@@ -317,7 +343,17 @@ function render(){requestAnimationFrame(render);
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
   var pos=(i===you&&predOK)?{x:PX,y:PY}:lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
   var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;
-  drawGuy(pos.x,pos.y,col,col2,p[5]===1);
+  // Derive facing/walk-swing/airborne locally from motion (no extra network data).
+  var a=anim[i]||(anim[i]={face:1,phase:0,swing:0,px:pos.x,py:pos.y});
+  var vpx,vpy,grnd;
+  if(i===you&&predOK){vpx=VX;vpy=VY;grnd=onG;}
+  else{var dd=Math.max(pdt,0.001);vpx=(pos.x-a.px)/dd;vpy=(pos.y-a.py)/dd;grnd=Math.abs(vpy)<80;}
+  a.px=pos.x;a.py=pos.y;
+  if(Math.abs(vpx)>20)a.face=vpx>0?1:-1;
+  var air=!grnd,stg=0;
+  if(!air&&Math.abs(vpx)>20){a.phase+=vpx*pdt*0.055;stg=Math.sin(a.phase)*0.6;}
+  a.swing+=(stg-a.swing)*0.35;
+  drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;
