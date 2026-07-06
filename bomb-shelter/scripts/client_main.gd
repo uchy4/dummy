@@ -23,8 +23,7 @@ var _finish: FinishLine
 var _status: Label
 var _win_label: Label
 var _hud: CanvasLayer
-var _touch_buttons: Array[TouchScreenButton] = []
-var _sent_a := 0
+var _sent_a := 0.0
 var _sent_j := false
 var _sent_k := false
 
@@ -113,10 +112,19 @@ func _animate_puppets(delta: float) -> void:
 		if absf(vx) > 20.0:
 			p._facing = 1 if vx > 0.0 else -1
 		var swing_target := 0.0
-		if absf(vx) > 20.0 and p.puppet_on_floor:
+		if not p.puppet_stunned and absf(vx) > 20.0 and p.puppet_on_floor:
 			p._walk_phase += vx * delta * 0.055
 			swing_target = sin(p._walk_phase) * 0.6
 		p._swing = lerpf(p._swing, swing_target, 0.35)
+		if p.puppet_stunned:
+			p._dizzy_phase += delta * 6.0
+			if p.puppet_on_floor:
+				var dir_sign: float = 1.0 if vx >= 0.0 else -1.0
+				p.rotation = 1.1 * dir_sign
+			else:
+				p.rotation += delta * 3.0
+		else:
+			p.rotation = 0.0
 		p.queue_redraw()
 	for i in bombs.size():
 		var b := bombs[i]
@@ -129,12 +137,10 @@ func _animate_puppets(delta: float) -> void:
 
 
 func _send_inputs() -> void:
-	var axis := Input.get_axis(&"p1_left", &"p1_right")
-	var a := 0
-	if axis < -0.3:
-		a = -1
-	elif axis > 0.3:
-		a = 1
+	# Analog: keyboard gives -1/0/1, the touch joystick anything in between.
+	var a := snappedf(Input.get_axis(&"p1_left", &"p1_right"), 0.01)
+	if absf(a) < 0.08:
+		a = 0.0
 	var j := Input.is_action_pressed(&"p1_jump")
 	var kk := Input.is_action_pressed(&"p1_kick")
 	if a != _sent_a or j != _sent_j or kk != _sent_k:
@@ -218,6 +224,11 @@ func _apply_snapshot(m: Dictionary) -> void:
 		p.visible = p.alive
 		if arr.size() > 5:
 			p.armor = int(arr[5]) == 1
+		if arr.size() > 6:
+			var stun_flag: int = arr[6]
+			p.puppet_stunned = stun_flag == 1
+		else:
+			p.puppet_stunned = false
 		if was and not p.alive:
 			var rd := Ragdoll.new()
 			rd.color = p.player_color
@@ -356,37 +367,44 @@ func _build_hud() -> void:
 	center.add_child(_win_label)
 
 	if DisplayServer.is_touchscreen_available():
-		# Must match the host HUD's construction exactly: the textures anchor
-		# the hit shape (no texture = tap area offset from the visuals).
-		for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"], [&"p1_kick", "K"]]:
-			var b := TouchScreenButton.new()
-			b.action = cfg[0]
-			b.texture_normal = Hud.circle_tex(64, Color(1, 1, 1, 0.22))
-			b.texture_pressed = Hud.circle_tex(64, Color(1, 1, 1, 0.45))
-			var shape := CircleShape2D.new()
-			shape.radius = 74.0
-			b.shape = shape
-			b.passby_press = true
-			var l := Label.new()
-			l.text = cfg[1]
-			l.size = Vector2(128, 128)
-			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			l.add_theme_font_size_override(&"font_size", 52)
-			l.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.8))
-			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			b.add_child(l)
-			_hud.add_child(b)
-			_touch_buttons.append(b)
-		_layout_touch()
-		get_viewport().size_changed.connect(_layout_touch)
+		# Same gesture controls as the host: invisible thumb joystick + tap
+		# jump feed the P1 actions (picked up by _send_inputs); a charged
+		# kick goes straight to the host as a "k" message.
+		var g := TouchGestures.new()
+		g.char_screen = _my_char_screen
+		g.axis_changed.connect(_on_gesture_axis)
+		g.jump_tapped.connect(_on_gesture_jump)
+		g.kick_charged.connect(_on_gesture_kick)
+		_hud.add_child(g)
 
 
-func _layout_touch() -> void:
-	if _touch_buttons.size() < 4:
-		return
-	var vs := get_viewport().get_visible_rect().size
-	_touch_buttons[0].position = Vector2(36, vs.y - 170)
-	_touch_buttons[1].position = Vector2(204, vs.y - 170)
-	_touch_buttons[2].position = Vector2(vs.x - 170, vs.y - 170)
-	_touch_buttons[3].position = Vector2(vs.x - 318, vs.y - 170)
+## Screen position of my own puppet, or INF when not spawned/alive.
+func _my_char_screen() -> Vector2:
+	if my_index < 0 or my_index >= players.size():
+		return Vector2.INF
+	var p := players[my_index]
+	if not is_instance_valid(p) or not p.visible:
+		return Vector2.INF
+	return p.get_global_transform_with_canvas().origin
+
+
+func _on_gesture_axis(v: float) -> void:
+	Input.action_release(&"p1_left")
+	Input.action_release(&"p1_right")
+	if v > 0.0:
+		Input.action_press(&"p1_right", v)
+	elif v < 0.0:
+		Input.action_press(&"p1_left", -v)
+
+
+func _on_gesture_jump() -> void:
+	Input.action_press(&"p1_jump")
+	get_tree().create_timer(0.12).timeout.connect(
+		func() -> void: Input.action_release(&"p1_jump"))
+
+
+func _on_gesture_kick(dir: Vector2, power: float) -> void:
+	if ws and ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		ws.send_text(JSON.stringify({"t": "k",
+			"dx": snappedf(dir.x, 0.01), "dy": snappedf(dir.y, 0.01),
+			"p": snappedf(power, 0.01)}))

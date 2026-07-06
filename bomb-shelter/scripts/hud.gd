@@ -20,7 +20,6 @@ var _qr_overlay: Control
 var _qr_texture: TextureRect
 var _qr_url: Label
 var _touch := false
-var _touch_buttons: Array[TouchScreenButton] = []
 
 
 func setup(colors: Array[Color], touch := false) -> void:
@@ -59,7 +58,7 @@ func setup(colors: Array[Color], touch := false) -> void:
 	help.offset_right = -10
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if touch:
-		help.text = "Push bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
+		help.text = "Drag = move   •   quick tap = jump   •   press your player + swipe = charged kick"
 	else:
 		help.text = "P1 A/D W S-kick    P2 arrows ↓-kick    P3 J/L I K-kick    P4 F/H T G-kick    R restart    Esc settings\nKick bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)
@@ -344,40 +343,54 @@ func _add_slider(parent: Control, text: String, mn: float, mx: float,
 	parent.add_child(s)
 
 
-# On-screen controls for touch devices: left/right under the left thumb,
-# jump under the right. TouchScreenButton fires the same input actions the
-# keyboard uses, so the player script needs no changes.
+# Touch controls: an invisible joystick that appears under the thumb, quick
+# tap = jump, press your character + swipe = charged directional kick. Axis
+# and jump feed the same P1 input actions the keyboard uses, so the player
+# script needs no changes; charged kicks go straight to queue_kick().
 func _build_touch_controls() -> void:
-	for cfg: Array in [[&"p1_left", "<"], [&"p1_right", ">"], [&"p1_jump", "^"], [&"p1_kick", "K"]]:
-		var b := TouchScreenButton.new()
-		b.action = cfg[0]
-		b.texture_normal = circle_tex(64, Color(1, 1, 1, 0.22))
-		b.texture_pressed = circle_tex(64, Color(1, 1, 1, 0.45))
-		var shape := CircleShape2D.new()
-		shape.radius = 74.0
-		b.shape = shape
-		b.passby_press = true
-		var l := Label.new()
-		l.text = cfg[1]
-		l.size = Vector2(128, 128)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		l.add_theme_font_size_override(&"font_size", 52)
-		l.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.8))
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(l)
-		add_child(b)
-		_touch_buttons.append(b)
-	_layout_touch()
-	get_viewport().size_changed.connect(_layout_touch)
+	var g := TouchGestures.new()
+	g.char_screen = _local_char_screen
+	g.axis_changed.connect(_on_gesture_axis)
+	g.jump_tapped.connect(_on_gesture_jump)
+	g.kick_charged.connect(_on_gesture_kick)
+	add_child(g)
 
 
-func _layout_touch() -> void:
-	var vs := get_viewport().get_visible_rect().size
-	_touch_buttons[0].position = Vector2(36, vs.y - 170)
-	_touch_buttons[1].position = Vector2(204, vs.y - 170)
-	_touch_buttons[2].position = Vector2(vs.x - 170, vs.y - 170)
-	_touch_buttons[3].position = Vector2(vs.x - 318, vs.y - 170)
+## Screen position of the local touch player (P1), or INF when unavailable.
+func _local_char_screen() -> Vector2:
+	var p := _local_touch_player()
+	if p == null:
+		return Vector2.INF
+	return p.get_global_transform_with_canvas().origin
+
+
+func _local_touch_player() -> Player:
+	for n in get_tree().get_nodes_in_group(&"players"):
+		var p := n as Player
+		if p and p.index == 0 and not p.puppet and not p.remote and p.alive:
+			return p
+	return null
+
+
+func _on_gesture_axis(v: float) -> void:
+	Input.action_release(&"p1_left")
+	Input.action_release(&"p1_right")
+	if v > 0.0:
+		Input.action_press(&"p1_right", v)
+	elif v < 0.0:
+		Input.action_press(&"p1_left", -v)
+
+
+func _on_gesture_jump() -> void:
+	Input.action_press(&"p1_jump")
+	get_tree().create_timer(0.12).timeout.connect(
+		func() -> void: Input.action_release(&"p1_jump"))
+
+
+func _on_gesture_kick(dir: Vector2, power: float) -> void:
+	var p := _local_touch_player()
+	if p:
+		p.queue_kick(dir, power)
 
 
 static func circle_tex(radius: int, color: Color) -> ImageTexture:

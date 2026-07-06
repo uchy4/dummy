@@ -18,6 +18,7 @@ const KILL_RADIUS := 48.0
 const BOMB_IMPULSE := 300.0
 const PLAYER_KNOCKBACK := 430.0
 const BOMBLET_COUNT := 3
+const IMPACT_STUN_SPEED := 230.0  ## fast enough to ragdoll-stun a player we slam into
 
 var type := Type.NORMAL
 var is_bomblet := false
@@ -80,6 +81,12 @@ func _ready() -> void:
 		freeze = true
 		collision_layer = 0
 		collision_mask = 0
+	else:
+		# Lets us catch the reverse impact-stun case: a fast bomb slamming
+		# into a standing player, which never shows up in the player's own
+		# slide-collision loop since the player isn't the one moving.
+		contact_monitor = true
+		max_contacts_reported = 4
 
 	var cs := CollisionShape2D.new()
 	var shape := CircleShape2D.new()
@@ -121,6 +128,10 @@ func _physics_process(delta: float) -> void:
 		return
 	if type == Type.STICKY:
 		_sticky_logic(delta)
+	# A carried sticky bomb has its collision disabled (see _stick_to), but
+	# skip explicitly too: riding a carrier must never impact-stun.
+	if carrier == null and linear_velocity.length() > IMPACT_STUN_SPEED:
+		_check_player_impact()
 	# Deflect bounces sideways a little so a bomb never pogos straight up
 	# and down in place forever.
 	if _prev_vy > 120.0 and linear_velocity.y < -60.0:
@@ -184,6 +195,21 @@ func launch(vel: Vector2) -> void:
 	collision_mask = 1 | 2 | 4
 	linear_velocity = vel
 	angular_velocity = signf(vel.x) * 8.0
+
+
+## Reverse case for impact-stun: a fast bomb slamming into a standing
+## player wouldn't show up in the player's own slide-collision loop (the
+## player isn't the one moving), so watch our own contacts instead. The
+## player's own apply_impact_stun() grace-gates double hits.
+func _check_player_impact() -> void:
+	for body in get_colliding_bodies():
+		var pl := body as Player
+		if pl == null or not pl.alive or pl.puppet:
+			continue
+		var dir := global_position.direction_to(pl.global_position)
+		if dir == Vector2.ZERO:
+			dir = Vector2.UP
+		pl.apply_impact_stun(dir)
 
 
 func _touching_player(exclude: Player) -> Player:

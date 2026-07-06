@@ -68,15 +68,7 @@ button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ff
 #joinfs{background:#2a2118;color:#eee;border:1px solid #5a4a2e;font-size:17px}
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
 #game{display:none;position:fixed;top:0;left:0;right:0;bottom:0}
-canvas{position:absolute;top:0;left:0;display:block}
-.pad{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));width:84px;height:84px;border-radius:50%;
-background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
-display:flex;align-items:center;justify-content:center;font-size:34px;color:rgba(255,255,255,.85)}
-.pad.on{background:rgba(255,255,255,.35)}
-#left{left:calc(16px + env(safe-area-inset-left))}
-#right{left:calc(116px + env(safe-area-inset-left))}
-#jump{right:calc(16px + env(safe-area-inset-right))}
-#kick{right:calc(116px + env(safe-area-inset-right));font-size:26px}
+canvas{position:absolute;top:0;left:0;display:block;touch-action:none}
 #colorbtn{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
 #fs{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(58px + env(safe-area-inset-right));width:44px;height:44px;border-radius:10px;
 background:rgba(0,0,0,.45);border:2px solid rgba(255,255,255,.7);
@@ -91,11 +83,12 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="a2hs" style="display:none;font-size:13px;color:#9aa;text-align:center;padding:4px">
 Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></div>
 <div id="game"><canvas id="cv"></canvas>
-<div class="pad" id="left">&#9664;</div><div class="pad" id="right">&#9654;</div>
-<div class="pad" id="jump">&#9650;</div><div class="pad" id="kick">KICK</div>
 <div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
 <script>
-var ws=null,joined=false,st={a:0,j:0,k:0},held={left:false,right:false,jump:false,kick:false};
+var ws=null,joined=false,st={a:0,j:0,k:0};
+// Gesture input: AXV = analog move axis, JHELD = jump held (both fed by the
+// invisible thumb-joystick + tap gestures below).
+var AXV=0,JHELD=false,moveT=null,kickT=null,joinT=0,scrZoom=1;
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
@@ -191,20 +184,43 @@ function goFS(){try{var d=document;
  if(!(d.fullscreenElement||d.webkitFullscreenElement)){var el=d.documentElement;
   var p=(el.requestFullscreen||el.webkitRequestFullscreen).call(el);
   if(p&&p.catch)p.catch(function(){});}}catch(err){}}
-function doJoin(){if(!ws||ws.readyState!==1)return;goFS();joined=true;sendJoin();
+function doJoin(){if(!ws||ws.readyState!==1)return;goFS();joined=true;joinT=performance.now();sendJoin();
  if(!AC)initAudio();
  if(AC&&AC.state==="suspended"){var pr=AC.resume();if(pr&&pr.catch)pr.catch(function(){});}
  document.getElementById("join").style.display="none";
  document.getElementById("game").style.display="block";updateBtn();
  fit();setTimeout(fit,150);setTimeout(fit,600);}
-function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:st.k?1:0}));}
-function upd(){var a=0;if(held.left)a-=1;if(held.right)a+=1;
- if(a!==st.a||held.jump!==!!st.j||held.kick!==!!st.k){st.a=a;st.j=held.jump;st.k=held.kick;send();}}
-["left","right","jump","kick"].forEach(function(k){var el=document.getElementById(k);
- function on(e){e.preventDefault();held[k]=true;el.classList.add("on");upd();}
- function off2(e){e.preventDefault();held[k]=false;el.classList.remove("on");upd();}
- el.addEventListener("pointerdown",on);el.addEventListener("pointerup",off2);
- el.addEventListener("pointercancel",off2);el.addEventListener("pointerleave",off2);});
+function send(){if(ws&&ws.readyState===1&&joined)ws.send(JSON.stringify({t:"i",a:st.a,j:st.j?1:0,k:0}));}
+function upd(){var a=Math.round(AXV*100)/100;
+ if(a!==st.a||JHELD!==!!st.j){st.a=a;st.j=JHELD;send();}}
+// --- Invisible joystick + tap-jump + press-your-character charged kick ---
+function myScreen(){if(you<0||!sc||!sc.p[you]||sc.p[you][2]!==1)return null;
+ var m=(predOK)?{x:PX,y:PY}:lerpP(you);
+ return{x:(m.x-cam.x)*scrZoom+VW/2,y:(m.y-cam.y)*scrZoom+VH/2};}
+function jumpPulse(){JHELD=true;upd();setTimeout(function(){JHELD=false;upd();},90);}
+cv.addEventListener("pointerdown",function(e){e.preventDefault();
+ if(!joined||!grid)return;
+ var ms=myScreen();
+ if(ms&&!kickT&&Math.hypot(e.clientX-ms.x,e.clientY-ms.y)<52){
+  kickT={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};return;}
+ if(!moveT){moveT={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};}});
+cv.addEventListener("pointermove",function(e){e.preventDefault();
+ if(moveT&&e.pointerId===moveT.id){moveT.x=e.clientX;moveT.y=e.clientY;
+  var dx=moveT.x-moveT.ox;
+  AXV=Math.abs(dx)<8?0:Math.max(-1,Math.min(1,dx/44));upd();}
+ else if(kickT&&e.pointerId===kickT.id){kickT.x=e.clientX;kickT.y=e.clientY;}});
+function endPtr(e){
+ if(moveT&&e.pointerId===moveT.id){
+  var quick=performance.now()-moveT.t0<220&&Math.hypot(moveT.x-moveT.ox,moveT.y-moveT.oy)<12;
+  moveT=null;AXV=0;upd();if(quick)jumpPulse();}
+ else if(kickT&&e.pointerId===kickT.id){
+  var dx=kickT.x-kickT.ox,dy=kickT.y-kickT.oy,d=Math.hypot(dx,dy);
+  var held=performance.now()-kickT.t0;kickT=null;
+  if(d<12){if(held<220)jumpPulse();return;}
+  var p=Math.max(0.25,Math.min(1,d/90));
+  if(ws&&ws.readyState===1&&joined)
+   ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}}
+cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
 document.getElementById("colorbtn").addEventListener("click",function(){
  if(!ws||ws.readyState!==1||!joined||opts.length===0)return;
  var o=opts[cycleIdx%opts.length];cycleIdx++;
@@ -254,11 +270,11 @@ function predict(dt){if(dt>0.05)dt=0.05;
  var steps=Math.max(1,Math.ceil(Math.max(Math.abs(VX),Math.abs(VY))*dt/6));
  var sdt=dt/steps;
  for(var s=0;s<steps;s++){
-  var dir=(held.left?-1:0)+(held.right?1:0);
+  var dir=AXV;
   VX=mv(VX,dir*230,1900*sdt);
   VY=Math.min(VY+980*sdt,900);
-  if(held.jump&&!prevJ&&onG){VY=-430;onG=false;}
-  prevJ=held.jump;
+  if(JHELD&&!prevJ&&onG){VY=-430;onG=false;}
+  prevJ=JHELD;
   var nx=PX+VX*sdt;
   if(!solidBox(nx,PY))PX=nx;
   else{var sx=VX>0?1:-1;while(!solidBox(PX+sx,PY)&&(nx-PX)*sx>0)PX+=sx;VX=0;}
@@ -281,10 +297,12 @@ function lw(c,f){return "rgb("+((c[0]+(255-c[0])*f)|0)+","+((c[1]+(255-c[1])*f)|
 function limbW(x,y,ax,ay,ang,len,col,f){ctx.save();ctx.translate(x+ax*f,y+ay);ctx.rotate(ang*f);
  ctx.fillStyle="#000";ctx.fillRect(-3,-1,6,len+2);
  ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);ctx.restore();}
-function drawGuy(x,y,col,col2,armor,swing,face,air){
+function drawGuy(x,y,col,col2,armor,swing,face,air,stun){
  var c=rgbOf(col),armc=mul(c,0.85),legc=mul(c,0.65);
  var ra,la,rl,ll,lx;
- if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
+ if(stun){ctx.save();ctx.translate(x,y);ctx.rotate(1.1*face);ctx.translate(-x,-y);
+  ra=-2.0;la=1.4;rl=-0.9;ll=0.5;lx=2;}
+ else if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
  else{ra=swing;la=-swing;rl=-swing;ll=swing;lx=3;}
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
  limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
@@ -299,7 +317,12 @@ function drawGuy(x,y,col,col2,armor,swing,face,air){
  var fx=face;
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
  ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);
- limbW(x,y,-5,-6,la,10,armc,face);}              // front arm
+ limbW(x,y,-5,-6,la,10,armc,face);               // front arm
+ if(stun){ctx.restore();                          // dizzy stars, drawn upright
+  var ph=performance.now()/180;
+  ctx.fillStyle="rgba(255,255,255,.9)";
+  ctx.beginPath();ctx.arc(x+Math.cos(ph)*10,y-24+Math.sin(ph)*3,1.6,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(x+Math.cos(ph+3.1)*10,y-24+Math.sin(ph+3.1)*3,1.6,0,7);ctx.fill();}}
 function render(){requestAnimationFrame(render);
  if(VW===0)fit();
  var cw=VW,ch=VH;
@@ -312,7 +335,7 @@ function render(){requestAnimationFrame(render);
  if(myAlive&&predOK)predict(pdt);
  var me=(myAlive&&predOK)?{x:PX,y:PY}:(you>=0?lerpP(you):null);
  if(me){cam.x+=(me.x-cam.x)*0.28;cam.y+=(me.y-cam.y)*0.28;}
- var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);var vw=cw/zoom,vh=ch/zoom;
+ var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);scrZoom=zoom;var vw=cw/zoom,vh=ch/zoom;
  cam.x=Math.max(vw/2,Math.min(W*TS-vw/2,cam.x));
  cam.y=Math.max(vh/2-350,Math.min(H*TS-vh/2,cam.y));
  ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-cam.x,-cam.y);
@@ -353,7 +376,7 @@ function render(){requestAnimationFrame(render);
   var air=!grnd,stg=0;
   if(!air&&Math.abs(vpx)>20){a.phase+=vpx*pdt*0.055;stg=Math.sin(a.phase)*0.6;}
   a.swing+=(stg-a.swing)*0.35;
-  drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air);
+  drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air,p.length>6&&p[6]===1);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;
@@ -365,7 +388,33 @@ function render(){requestAnimationFrame(render);
   var sx=s.x+s.vx*a*0.6,sy=s.y+s.vy*a*0.6+320*a*a*0.6;
   ctx.fillStyle=s.c.startsWith("#")?s.c:"#"+s.c;ctx.globalAlpha=1-a;
   ctx.fillRect(sx-2,sy-2,4,4);ctx.globalAlpha=1;}
+ // Charged-kick trajectory preview (world space): dotted arc along the path
+ // a kicked bomb would fly at the current charge.
+ if(kickT){var kdx=kickT.x-kickT.ox,kdy=kickT.y-kickT.oy,kd=Math.hypot(kdx,kdy);
+  var meW=(you>=0&&predOK)?{x:PX,y:PY}:(you>=0&&sc&&sc.p[you]?lerpP(you):null);
+  if(meW&&kd>=12){var kp=Math.max(0.25,Math.min(1,kd/90));
+   var kvx=kdx/kd*430*kp,kvy=kdy/kd*430*kp;
+   for(var ti=1;ti<=9;ti++){var tt=ti*0.055;
+    var qx=meW.x+kvx*tt,qy=meW.y+kvy*tt+490*tt*tt;
+    ctx.fillStyle="rgba(255,255,255,"+(0.85-ti*0.08).toFixed(2)+")";
+    ctx.beginPath();ctx.arc(qx,qy,2.2,0,7);ctx.fill();}}}
  ctx.restore();
+ // Gesture overlays (screen space): thumb joystick + kick charge bar + hint.
+ if(moveT){ctx.strokeStyle="rgba(255,255,255,.5)";ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(moveT.ox,moveT.oy,40,0,7);ctx.stroke();
+  var knx=Math.max(-40,Math.min(40,moveT.x-moveT.ox));
+  ctx.fillStyle="rgba(255,255,255,.3)";
+  ctx.beginPath();ctx.arc(moveT.ox+knx,moveT.oy,20,0,7);ctx.fill();}
+ if(kickT){var bdx=kickT.x-kickT.ox,bdy=kickT.y-kickT.oy,bd=Math.hypot(bdx,bdy);
+  if(bd>=12){var bp=Math.max(0.25,Math.min(1,bd/90));var ms2=myScreen();
+   if(ms2){ctx.fillStyle="rgba(0,0,0,.55)";ctx.fillRect(ms2.x-26,ms2.y-56,52,9);
+    ctx.fillStyle=bp>0.8?"#ff5252":(bp>0.5?"#ffca28":"#9ccc65");
+    ctx.fillRect(ms2.x-24,ms2.y-54,48*bp,5);}}}
+ if(joinT&&now-joinT<8000){ctx.fillStyle="rgba(0,0,0,.45)";
+  ctx.fillRect(cw/2-170,ch-96,340,46);
+  ctx.fillStyle="#fff";ctx.font="12px sans-serif";ctx.textAlign="center";
+  ctx.fillText("drag anywhere = move   •   quick tap = jump",cw/2,ch-78);
+  ctx.fillText("press your player + swipe = charged kick",cw/2,ch-60);}
  ctx.textAlign="left";ctx.font="12px sans-serif";
  for(var i=0;i<roster.length;i++){ctx.fillStyle="#"+roster[i].c;
   ctx.fillText(roster[i].n,10,18+i*15);}

@@ -13,6 +13,9 @@ const RESPAWN_TIME := 3.0
 const INVULN_TIME := 1.5
 const KICK_RANGE := 30.0
 const KICK_COOLDOWN := 0.35
+const IMPACT_STUN_SPEED := 230.0  ## relative speed along the normal to stun on impact
+const IMPACT_KNOCKBACK := 200.0
+const IMPACT_STUN_GRACE := 0.3  ## no re-stun this soon after an impact stun
 
 var index := 0
 var player_color := Color.WHITE
@@ -40,6 +43,11 @@ var _queued_kick_power := 1.0
 ## as usual.
 var puppet := false
 var puppet_on_floor := true
+var puppet_stunned := false  ## host says this puppet is ragdoll-stunned
+
+## Ragdoll-stun: seconds left before the player gets back up. Set via
+## apply_stun()/apply_impact_stun(); input is ignored while it's positive.
+var stun_left := 0.0
 
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
@@ -56,6 +64,8 @@ var airborne := false
 var _was_on_floor := true
 var _fall_speed := 0.0
 var _step_sign := 0
+var _dizzy_phase := 0.0  ## orbit angle for the stunned dizzy-stars doodle
+var _impact_stun_cd := 0.0  ## grace so the slide-loop and bomb contacts don't double-stun
 var _a_left: StringName
 var _a_right: StringName
 var _a_jump: StringName
@@ -137,40 +147,59 @@ func _physics_process(delta: float) -> void:
 		if _invuln_left <= 0.0:
 			modulate.a = 1.0
 
-	var jump_held := remote_jump if remote else Input.is_action_pressed(_a_jump)
-	var jump_pressed := jump_held and not _prev_jump_held
-	var jump_released := not jump_held and _prev_jump_held
-	_prev_jump_held = jump_held
-	var dir := remote_axis if remote else Input.get_axis(_a_left, _a_right)
-	if absf(dir) > 0.2:
-		_facing = 1 if dir > 0.0 else -1
+	_impact_stun_cd -= delta
 
-	_kick_cd -= delta
-	var kick_held := remote_kick if remote else Input.is_action_pressed(_a_kick)
-	if kick_held and not _prev_kick_held and _kick_cd <= 0.0:
-		_kick_cd = KICK_COOLDOWN
-		_do_kick_dir(Vector2(_facing, -1).normalized(), 1.0)
-	_prev_kick_held = kick_held
-	if _queued_kick != Vector2.ZERO:
-		if _kick_cd <= 0.0:
+	var was_stunned := stun_left > 0.0
+	if was_stunned:
+		stun_left -= delta
+		if stun_left <= 0.0:
+			stun_left = 0.0
+			rotation = 0.0
+
+	var dir := 0.0
+	var jump_released := false
+	if not was_stunned:
+		var jump_held := remote_jump if remote else Input.is_action_pressed(_a_jump)
+		var jump_pressed := jump_held and not _prev_jump_held
+		jump_released = not jump_held and _prev_jump_held
+		_prev_jump_held = jump_held
+		dir = remote_axis if remote else Input.get_axis(_a_left, _a_right)
+		if absf(dir) > 0.2:
+			_facing = 1 if dir > 0.0 else -1
+
+		_kick_cd -= delta
+		var kick_held := remote_kick if remote else Input.is_action_pressed(_a_kick)
+		if kick_held and not _prev_kick_held and _kick_cd <= 0.0:
 			_kick_cd = KICK_COOLDOWN
-			_do_kick_dir(_queued_kick, _queued_kick_power)
-		_queued_kick = Vector2.ZERO
+			_do_kick_dir(Vector2(_facing, -1).normalized(), 1.0)
+		_prev_kick_held = kick_held
+		if _queued_kick != Vector2.ZERO:
+			if _kick_cd <= 0.0:
+				_kick_cd = KICK_COOLDOWN
+				_do_kick_dir(_queued_kick, _queued_kick_power)
+			_queued_kick = Vector2.ZERO
 
-	velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
-	_coyote = 0.15 if is_on_floor() else _coyote - delta
-	_jump_buffer = 0.1 if jump_pressed else _jump_buffer - delta
+		velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
+		_coyote = 0.15 if is_on_floor() else _coyote - delta
+		_jump_buffer = 0.1 if jump_pressed else _jump_buffer - delta
 
-	if _jump_buffer > 0.0 and _coyote > 0.0:
-		velocity.y = JUMP_VELOCITY
-		_jump_buffer = 0.0
-		_coyote = 0.0
-		get_tree().call_group(&"sfx", &"play_jump", global_position)
-		_puff(4)
-	if jump_released and velocity.y < 0.0:
-		velocity.y *= 0.55  # variable jump height
+		if _jump_buffer > 0.0 and _coyote > 0.0:
+			velocity.y = JUMP_VELOCITY
+			_jump_buffer = 0.0
+			_coyote = 0.0
+			get_tree().call_group(&"sfx", &"play_jump", global_position)
+			_puff(4)
+		if jump_released and velocity.y < 0.0:
+			velocity.y *= 0.55  # variable jump height
 
-	velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
+		velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
+	else:
+		# Stunned: gravity, the slide, world-bounds and blast reactions all
+		# still run — just no input, and ground friction bleeds off speed.
+		velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
+		if is_on_floor():
+			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+
 	_fall_speed = velocity.y
 	move_and_slide()
 
@@ -183,7 +212,7 @@ func _physics_process(delta: float) -> void:
 	# Limb swing: legs/arms pump while walking; airborne uses a fixed jump pose.
 	airborne = not is_on_floor()
 	var swing_target := 0.0
-	if not airborne and absf(velocity.x) > 20.0:
+	if not was_stunned and not airborne and absf(velocity.x) > 20.0:
 		_walk_phase += velocity.x * delta * 0.055
 		swing_target = sin(_walk_phase) * 0.6
 		# A crunch each time a foot plants: the swing reverses direction at
@@ -193,13 +222,28 @@ func _physics_process(delta: float) -> void:
 			_step_sign = sgn
 			get_tree().call_group(&"sfx", &"play_step", global_position)
 	_swing = lerpf(_swing, swing_target, 0.35)
+
+	if stun_left > 0.0:
+		_dizzy_phase += delta * 6.0
+		if is_on_floor():
+			var dir_sign: float = signf(velocity.x) if absf(velocity.x) > 5.0 else float(_facing)
+			rotation = 1.1 * dir_sign
+		else:
+			rotation += delta * 3.0  # slow tumble while airborne
 	queue_redraw()
 
-	# Shove bombs and other players we walk into.
+	# Shove bombs and other players we walk into; a fast bomb impact (a
+	# falling bomb landing on someone, not a gentle roll-into) also
+	# ragdoll-stuns us.
 	for i in get_slide_collision_count():
 		var c := get_slide_collision(i)
 		var rb := c.get_collider() as RigidBody2D
 		if rb:
+			var bomb := rb as Bomb
+			if bomb and bomb.carrier == null:
+				var rel_speed := absf((velocity - bomb.linear_velocity).dot(c.get_normal()))
+				if rel_speed > IMPACT_STUN_SPEED:
+					apply_impact_stun(c.get_normal())
 			rb.apply_central_impulse(-c.get_normal() * PUSH_FORCE * delta)
 			continue
 		var other := c.get_collider() as Player
@@ -259,6 +303,26 @@ func give_armor() -> void:
 	queue_redraw()
 
 
+## Ragdoll-stun the player for `duration` seconds (blast survival, an armor
+## save, or a bomb impact). No-op once dead or for a non-positive duration;
+## never shortens stun time already in progress.
+func apply_stun(duration: float) -> void:
+	if duration <= 0.0 or not alive:
+		return
+	stun_left = maxf(stun_left, duration)
+
+
+## Bomb-impact stun plus a small shove in `dir` (away from the bomb).
+## Grace-gated so the player's own slide-collision loop and the bomb's
+## contact-monitor can't both fire for the same hit.
+func apply_impact_stun(dir: Vector2) -> void:
+	if not alive or _impact_stun_cd > 0.0:
+		return
+	_impact_stun_cd = IMPACT_STUN_GRACE
+	apply_stun(Settings.stun_time)
+	velocity += dir * IMPACT_KNOCKBACK + Vector2(0, -120.0)
+
+
 func take_blast(kick: Vector2, lethal: bool) -> void:
 	if not alive:
 		return
@@ -269,6 +333,7 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 			_invuln_left = 1.2
 			velocity += kick
 			_coyote = 0.0
+			apply_stun(Settings.stun_time)
 			get_tree().call_group(&"sfx", &"play_armor_break", global_position)
 			queue_redraw()
 			return
@@ -276,6 +341,7 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 		return
 	velocity += kick
 	_coyote = 0.0
+	apply_stun(Settings.stun_time)
 
 
 ## Move the player somewhere safe without a death penalty (Quick Settings
@@ -286,6 +352,8 @@ func teleport_to(pos: Vector2) -> void:
 	global_position = pos
 	reset_physics_interpolation()
 	velocity = Vector2.ZERO
+	stun_left = 0.0
+	rotation = 0.0
 	_invuln_left = INVULN_TIME
 	if not alive:
 		respawn_left = minf(respawn_left, 0.1)
@@ -299,6 +367,8 @@ func die(kick := Vector2.ZERO) -> void:
 	deaths += 1
 	respawn_left = RESPAWN_TIME
 	velocity = Vector2.ZERO
+	stun_left = 0.0
+	rotation = 0.0
 	hide()
 	_shape.set_deferred("disabled", true)
 	get_tree().call_group(&"sfx", &"play_splat", global_position)
@@ -315,6 +385,8 @@ func _respawn() -> void:
 	global_position = respawn_point
 	reset_physics_interpolation()
 	velocity = Vector2.ZERO
+	stun_left = 0.0
+	rotation = 0.0
 	alive = true
 	_invuln_left = INVULN_TIME
 	show()
@@ -346,7 +418,15 @@ func _draw() -> void:
 	var r_leg: float
 	var l_leg: float
 	var leg_x := 3.0
-	if airborne:
+	var stunned := stun_left > 0.0 or puppet_stunned
+	if stunned:
+		# Ragdoll tumble: limbs splayed at odd angles (overrides airborne pose).
+		r_arm = -2.0
+		l_arm = 1.4
+		r_leg = -0.9
+		l_leg = 0.5
+		leg_x = 2.0
+	elif airborne:
 		# Jump: arms up in a Y, feet together and straight.
 		r_arm = -2.5
 		l_arm = 2.5
@@ -385,3 +465,10 @@ func _draw() -> void:
 	# Front arm drawn over the torso.
 	_limb(Vector2(-5, -6), l_arm, 10, arm_c, f)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if stunned:
+		# Dizzy stars orbiting above the head.
+		var head := Vector2(0, -22)
+		draw_circle(head + Vector2(cos(_dizzy_phase) * 6.0, sin(_dizzy_phase) * 2.0 - 2.0),
+			1.6, Color.WHITE)
+		draw_circle(head + Vector2(cos(_dizzy_phase + PI) * 6.0, sin(_dizzy_phase + PI) * 2.0 - 2.0),
+			1.6, Color.WHITE)
