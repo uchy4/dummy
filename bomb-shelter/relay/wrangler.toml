@@ -1,0 +1,13 @@
+name = "bombshelter-relay"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# One Durable Object per room code: it pipes WebSocket messages between the
+# hosting phone and any number of web guests, and serves them the game page.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

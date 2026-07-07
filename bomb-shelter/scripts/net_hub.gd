@@ -25,9 +25,25 @@ const MANIFEST := """{"name":"Bomb Shelter","short_name":"Bomb Shelter",
 {"src":"/icon.png","sizes":"192x192","type":"image/png"},
 {"src":"/icon.png","sizes":"512x512","type":"image/png"}]}"""
 
+## Internet relay (Cloudflare Worker, see bomb-shelter/relay/). Empty until
+## deployed: paste the workers.dev hostname here to enable online rooms.
+const RELAY_HOST := ""
+
+## Relay client ids live far above LAN ids so the two can share `clients`.
+const RELAY_ID_BASE := 100000
+
+signal relay_ready(code: String)
+
 var http_port := 0
 var ws_port := 0
 var _icon_png := PackedByteArray()
+
+## Online room state: an outbound WebSocket to the relay carrying enveloped
+## guest traffic ({c,ev}/{c,m} in, {c,m}/{b,m} out).
+var relay_code := ""
+var _relay_ws: WebSocketPeer = null
+var _relay_wanted := false
+var _relay_retry := 0.0
 ## When true (hosting), broadcast a discovery beacon so other phones'
 ## "Join LAN game" screens can find this match.
 var advertising := false
@@ -161,8 +177,11 @@ function fit(){
 window.addEventListener("resize",fit);
 window.addEventListener("orientationchange",function(){setTimeout(fit,250);});
 if(window.visualViewport)window.visualViewport.addEventListener("resize",fit);
+// LAN serving fills this with ws://HOSTNAME:port; the internet relay fills
+// it with its own wss://... room URL. HOSTNAME resolves at load time.
+var WSURL="__WSURL__".replace("HOSTNAME",location.hostname);
 function connect(){
- ws=new WebSocket("ws://"+location.hostname+":__WSPORT__");
+ ws=new WebSocket(WSURL);
  ws.onopen=function(){document.getElementById("status").textContent="ready — pick a name and join";
   if(joined)sendJoin();};
  ws.onclose=function(){document.getElementById("status").textContent="reconnecting…";setTimeout(connect,1500);};
@@ -636,7 +655,93 @@ func lan_ip() -> String:
 	return candidates[0] if not candidates.is_empty() else fallback
 
 
+## Open an internet room via the relay Worker. Safe to call repeatedly.
+func start_relay() -> void:
+	if RELAY_HOST.is_empty() or _relay_ws != null:
+		_relay_wanted = true
+		return
+	_relay_wanted = true
+	_relay_ws = WebSocketPeer.new()
+	if _relay_ws.connect_to_url("wss://%s/host" % RELAY_HOST) != OK:
+		_relay_ws = null
+		_relay_retry = 4.0
+
+
+func relay_page_url() -> String:
+	if relay_code.is_empty():
+		return ""
+	return "https://%s/r/%s" % [RELAY_HOST, relay_code]
+
+
+func _relay_key(cid: int) -> int:
+	return RELAY_ID_BASE + cid
+
+
+func _relay_send(obj: Dictionary) -> void:
+	if _relay_ws != null and _relay_ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_relay_ws.send_text(JSON.stringify(obj))
+
+
+func _poll_relay(delta: float) -> void:
+	if _relay_ws == null:
+		if _relay_wanted and not RELAY_HOST.is_empty():
+			_relay_retry -= delta
+			if _relay_retry <= 0.0:
+				_relay_retry = 5.0
+				start_relay()
+		return
+	_relay_ws.poll()
+	var state := _relay_ws.get_ready_state()
+	if state == WebSocketPeer.STATE_CLOSED:
+		# Relay dropped: every remote guest is gone; retry soon.
+		for id in clients.keys():
+			if int(id) >= RELAY_ID_BASE:
+				clients[id].connected = false
+				clients[id].axis = 0.0
+				clients[id].jump = false
+		relay_code = ""
+		_relay_ws = null
+		_relay_retry = 4.0
+		return
+	if state != WebSocketPeer.STATE_OPEN:
+		return
+	while _relay_ws.get_available_packet_count() > 0:
+		var msg: Variant = JSON.parse_string(_relay_ws.get_packet().get_string_from_utf8())
+		if not (msg is Dictionary):
+			continue
+		var env := msg as Dictionary
+		if str(env.get("t", "")) == "room":
+			relay_code = str(env.get("code", ""))
+			# Ship the game page so the relay can serve it to guests.
+			var html := PAGE.replace("__WSURL__",
+				"wss://%s/join/%s" % [RELAY_HOST, relay_code])
+			_relay_send({"t": "page", "html": html})
+			relay_ready.emit(relay_code)
+			continue
+		if not env.has("c"):
+			continue
+		var key := _relay_key(int(env.get("c", 0)))
+		match str(env.get("ev", "")):
+			"open":
+				clients[key] = {
+					"ws": null, "relay": true, "joined": false, "connected": true,
+					"pending_init": false, "pending_colors": true,
+					"name": "", "color": Color("ff8f2e"), "color2": Color("ff8f2e"),
+					"axis": 0.0, "jump": false, "kick": false,
+					"kick_dir": Vector2.ZERO, "kick_power": 1.0,
+				}
+			"close":
+				if clients.has(key):
+					clients[key].connected = false
+					clients[key].axis = 0.0
+					clients[key].jump = false
+			_:
+				if clients.has(key) and env.get("m") is Dictionary:
+					_handle(clients[key], env.get("m") as Dictionary)
+
+
 func _process(delta: float) -> void:
+	_poll_relay(delta)
 	# --- LAN discovery beacon (hosting only) ---
 	if advertising:
 		_beacon_t -= delta
@@ -684,7 +789,7 @@ func _process(delta: float) -> void:
 				_send_http(tcp, "application/manifest+json", MANIFEST.to_utf8_buffer())
 			else:
 				_send_http(tcp, "text/html; charset=utf-8",
-					PAGE.replace("__WSPORT__", str(ws_port)).to_utf8_buffer())
+					PAGE.replace("__WSURL__", "ws://HOSTNAME:%d" % ws_port).to_utf8_buffer())
 			p.sent = true
 			p.age = 0.0
 			keep.append(p)
@@ -713,8 +818,8 @@ func _process(delta: float) -> void:
 
 	for id in clients.keys():
 		var c: Dictionary = clients[id]
-		if not c.connected:
-			continue
+		if not c.connected or c.get("relay", false):
+			continue  # relay guests are pumped by _poll_relay
 		var ws: WebSocketPeer = c.ws
 		ws.poll()
 		var state := ws.get_ready_state()
@@ -738,6 +843,9 @@ func send_to(id: int, msg: Dictionary) -> void:
 	var c: Dictionary = clients[id]
 	if not c.connected:
 		return
+	if c.get("relay", false):
+		_relay_send({"c": int(id) - RELAY_ID_BASE, "m": msg})
+		return
 	var ws: WebSocketPeer = c.ws
 	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		ws.send_text(JSON.stringify(msg))
@@ -749,6 +857,9 @@ func broadcast(msg: Dictionary) -> void:
 	for id in clients:
 		var c: Dictionary = clients[id]
 		if not c.joined or not c.connected:
+			continue
+		if c.get("relay", false):
+			_relay_send({"c": int(id) - RELAY_ID_BASE, "m": msg})
 			continue
 		var ws: WebSocketPeer = c.ws
 		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
@@ -762,6 +873,9 @@ func broadcast_all(msg: Dictionary) -> void:
 	for id in clients:
 		var c: Dictionary = clients[id]
 		if not c.connected:
+			continue
+		if c.get("relay", false):
+			_relay_send({"c": int(id) - RELAY_ID_BASE, "m": msg})
 			continue
 		var ws: WebSocketPeer = c.ws
 		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:

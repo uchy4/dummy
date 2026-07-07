@@ -301,6 +301,12 @@ func _build_settings_panel() -> void:
 	qr.pressed.connect(_show_qr)
 	vbox.add_child(qr)
 
+	var online := Button.new()
+	online.text = "🌐 Host ONLINE room  (friends in other cities)"
+	online.focus_mode = Control.FOCUS_NONE
+	online.pressed.connect(_show_online)
+	vbox.add_child(online)
+
 	var resume := Button.new()
 	resume.text = "Resume"
 	resume.focus_mode = Control.FOCUS_NONE
@@ -317,6 +323,35 @@ func _show_qr() -> void:
 	_qr_texture.texture = ImageTexture.create_from_image(Qr.make_image(url))
 	_qr_url.text = url + "\n(phone must be on the same Wi-Fi)"
 	_qr_overlay.visible = true
+
+
+## Internet room via the relay: opens (or reuses) the room and shows the
+## code + link + QR that friends anywhere can use from a browser.
+func _show_online() -> void:
+	if _qr_overlay == null:
+		_build_qr_overlay()
+	if NetHub.RELAY_HOST.is_empty():
+		_qr_texture.texture = null
+		_qr_url.text = "Online rooms need the relay deployed:\nsee bomb-shelter/relay/README.md"
+		_qr_overlay.visible = true
+		return
+	NetHub.start_relay()
+	if NetHub.relay_code.is_empty():
+		_qr_texture.texture = null
+		_qr_url.text = "opening online room…"
+	else:
+		_on_relay_ready(NetHub.relay_code)
+	_qr_overlay.visible = true
+	if not NetHub.relay_ready.is_connected(_on_relay_ready):
+		NetHub.relay_ready.connect(_on_relay_ready)
+
+
+func _on_relay_ready(code: String) -> void:
+	if _qr_overlay == null or _qr_url == null:
+		return
+	var url: String = NetHub.relay_page_url()
+	_qr_texture.texture = ImageTexture.create_from_image(Qr.make_image(url))
+	_qr_url.text = "ROOM CODE: %s\n%s\n(anyone, anywhere — send them the link)" % [code, url]
 
 
 func _build_qr_overlay() -> void:
