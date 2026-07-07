@@ -23,8 +23,8 @@ func _ready() -> void:
 	add_to_group(&"props")
 	add_to_group(&"ragdoll_parts")
 	z_index = 3
-	collision_layer = 0
-	collision_mask = 1  # tumbles off terrain, ignores players/bombs
+	collision_layer = 4  # players and bombs collide with (and push) it
+	collision_mask = 1 | 2 | 4
 
 	var size := Vector2(36, 20)
 	mass = 1.6

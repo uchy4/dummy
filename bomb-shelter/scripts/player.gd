@@ -282,6 +282,11 @@ func _physics_process(delta: float) -> void:
 		var other := c.get_collider() as Player
 		if other and other.alive:
 			other.velocity.x += -c.get_normal().x * PLAYER_SHOVE * delta
+			continue
+		# Running into livestock bumps it out of the way.
+		var cr := c.get_collider() as Critter
+		if cr and cr.alive:
+			cr.velocity += -c.get_normal() * PLAYER_SHOVE * 0.6 * delta
 
 	# Depth record (in-bounds only): the tie-breaker when nobody survives.
 	if world_bounds.has_point(global_position):

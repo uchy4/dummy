@@ -17,7 +17,8 @@ const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER, CLAY, STONE, DEEP }
-enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP, WATER_TOP }
+enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP, WATER_TOP,
+	CLAY_DARK, STONE_DARK, DEEP_DARK }
 
 ## One solid translucent water color — surface cells use the partial tile.
 const WATER_COLOR := Color(0.24, 0.5, 0.88, 0.55)
@@ -91,13 +92,18 @@ func load_from_string(s: String) -> void:
 # ---------------------------------------------------------------- tileset ---
 
 func _build_tileset() -> void:
-	var img := Image.create(TILE * 9, TILE, false, Image.FORMAT_RGBA8)
+	var img := Image.create(TILE * 12, TILE, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
+	# Every stratum is dual-toned like the dirt layer: a light and a dark
+	# block variant mixed at paint time.
 	_fill_tile(img, Tile.CLAY, Color("a5623b"), Color("874e2e"), 0.2)
+	_fill_tile(img, Tile.CLAY_DARK, Color("8a4f2e"), Color("6f3f24"), 0.22)
 	_fill_tile(img, Tile.STONE, Color("6e7681"), Color("59616b"), 0.24)
+	_fill_tile(img, Tile.STONE_DARK, Color("575f6a"), Color("454c56"), 0.24)
 	_fill_tile(img, Tile.DEEP, Color("553f4d"), Color("42313c"), 0.24)
+	_fill_tile(img, Tile.DEEP_DARK, Color("41303b"), Color("32252e"), 0.26)
 	# Grass: dirt base with a green top edge.
 	_fill_tile(img, Tile.GRASS, Color("7a5230"), Color("5e3d22"), 0.16)
 	for y in 5:
@@ -127,7 +133,7 @@ func _build_tileset() -> void:
 	var square := PackedVector2Array([
 		Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h),
 	])
-	for i in 9:
+	for i in 12:
 		src.create_tile(Vector2i(i, 0))
 		if i == Tile.WATER or i == Tile.WATER_TOP:
 			continue  # water is swim-through: no collision polygon
@@ -449,11 +455,11 @@ func _paint_all() -> void:
 				Cell.WATER:
 					t = Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
 				Cell.CLAY:
-					t = Tile.CLAY
+					t = Tile.CLAY_DARK if rng.randf() < 0.35 else Tile.CLAY
 				Cell.STONE:
-					t = Tile.STONE
+					t = Tile.STONE_DARK if rng.randf() < 0.35 else Tile.STONE
 				Cell.DEEP:
-					t = Tile.DEEP
+					t = Tile.DEEP_DARK if rng.randf() < 0.35 else Tile.DEEP
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
 					t = Tile.DIRT_DARK if rng.randf() < dark_chance else Tile.DIRT

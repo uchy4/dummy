@@ -20,8 +20,8 @@ func _ready() -> void:
 	add_to_group(&"chests")         # blasts in range call blast_destroy()
 	z_index = 3
 	mass = 1.8
-	collision_layer = 0
-	collision_mask = 1
+	collision_layer = 4  # players and bombs collide with (and push) it
+	collision_mask = 1 | 2 | 4
 	var pm := PhysicsMaterial.new()
 	pm.bounce = 0.2
 	pm.friction = 0.7

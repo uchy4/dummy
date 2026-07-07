@@ -98,6 +98,7 @@ func _build_outhouse() -> void:
 			pipe.top = Vector2(pump.position.x, float(terrain.pump_cell.y) * TILE)
 			pipe.bottom_y = float(terrain.reservoir_rect.position.y) * TILE + 4.0
 			add_child(pipe)
+			pump.pipe_bottom_y = pipe.bottom_y  # busted pump leaks all the way down
 
 
 ## Cutaway art: the well pipe running from the pump down into the ground.

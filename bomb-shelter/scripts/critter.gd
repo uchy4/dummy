@@ -47,8 +47,8 @@ func _ready() -> void:
 	prop_kind = 6 if kind == Kind.CHICKEN else 7
 	add_to_group(&"props")
 	z_index = 3
-	collision_layer = 0
-	collision_mask = 1  # walks on terrain, never blocks players/bombs
+	collision_layer = 4  # on the same physical plane: players bump into them
+	collision_mask = 1   # they walk on terrain (shoves come from the bumper)
 	floor_snap_length = 6.0
 
 	_shape_node = CollisionShape2D.new()

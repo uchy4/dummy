@@ -31,6 +31,12 @@ var _shower_accum := 0.0
 var _dribbling := false    # permanent post-blast trickle (shower only)
 var _dribble_accum := 0.0
 
+## PUMP: the well pipe's bottom (world y), set by BunkerProps. Once busted,
+## the whole pipe leaks — sprays burst out along its full length forever.
+var pipe_bottom_y := 0.0
+var _busted := false
+var _leak_accum := 0.0
+
 
 func _ready() -> void:
 	match kind:
@@ -61,6 +67,13 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if kind == Kind.PUMP:
+		if _busted and pipe_bottom_y > global_position.y:
+			_leak_accum += delta
+			if _leak_accum >= 0.3:
+				_leak_accum = 0.0
+				_pipe_leak()
+		return
 	if kind != Kind.SHOWER:
 		return
 	if _shower_timer >= 0.0:
@@ -84,7 +97,11 @@ func kicked() -> void:
 		Kind.TOILET:
 			_squirt()
 		Kind.PUMP:
+			# A kick busts the well: spout gushes and the pipe springs
+			# leaks all the way down to the reservoir, permanently.
 			_pump_squirt()
+			_busted = true
+			queue_redraw()
 		Kind.SHOWER:
 			if _shower_timer >= 0.0:
 				_shower_timer = -1.0
@@ -101,6 +118,8 @@ func blast_destroy() -> void:
 			_squirt()
 		Kind.PUMP:
 			_pump_squirt(2.0)
+			_busted = true
+			queue_redraw()
 		Kind.SHOWER:
 			_spray_down(1.6)
 			_dribbling = true
@@ -114,6 +133,19 @@ func _pump_squirt(mult := 1.0) -> void:
 	spray.spread = 0.45
 	spray.speed = 210.0 * mult
 	spray.global_position = global_position + Vector2(-6, -5)
+	get_parent().add_child.call_deferred(spray)
+
+
+## A busted well leaks from a random point along its buried pipe.
+func _pipe_leak() -> void:
+	var spray := WaterSpray.new()
+	var ly := lerpf(global_position.y + 10.0, pipe_bottom_y, randf())
+	var side := 1.0 if randf() < 0.5 else -1.0
+	spray.dir = Vector2(side, randf_range(-0.4, 0.1)).normalized()
+	spray.amount = 6
+	spray.spread = 0.35
+	spray.speed = randf_range(90.0, 150.0)
+	spray.global_position = Vector2(global_position.x, ly)
 	get_parent().add_child.call_deferred(spray)
 
 
@@ -156,8 +188,14 @@ func _draw_pump() -> void:
 	draw_rect(Rect2(-3, -9, 6, 18), Color("3e6b4f"))             # cast body
 	draw_rect(Rect2(-8, -7, 6, 3), Color("2f523c"))              # spout
 	draw_rect(Rect2(-8, -4, 2.5, 2), Color("2f523c"))            # spout lip
-	draw_line(Vector2(2, -9), Vector2(8, -13), Color("263e2e"), 2.5)  # handle
-	draw_circle(Vector2(8, -13), 1.6, Color("263e2e"))
+	if _busted:
+		# Drooped handle + a crack down the casting.
+		draw_line(Vector2(2, -9), Vector2(8, -5), Color("263e2e"), 2.5)
+		draw_circle(Vector2(8, -5), 1.6, Color("263e2e"))
+		draw_line(Vector2(-1, -8), Vector2(1.5, 6), Color("1a2a20"), 1.3)
+	else:
+		draw_line(Vector2(2, -9), Vector2(8, -13), Color("263e2e"), 2.5)  # handle
+		draw_circle(Vector2(8, -13), 1.6, Color("263e2e"))
 	draw_rect(Rect2(-6, 9, 12, 2), Color("54381f"))              # base plank
 
 
