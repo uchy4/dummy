@@ -270,10 +270,10 @@ func _generate() -> void:
 
 
 ## The homestead: an outhouse on the surface hiding a staircase down into a
-## furnished bunker, with animal pens one level below. Layout is random
-## every match: room order shuffles and widths vary (always >= 5 cells).
-## Every divider has a doorway — nothing is sealed off. Carved directly so
-## the crust guard doesn't apply.
+## furnished bunker — stairs, kitchen, bedroom, bathroom and arsenal all on
+## ONE level. Layout is random every match: room order shuffles and widths
+## vary (always >= 5 cells). Every divider has a doorway — nothing is
+## sealed off. Carved directly so the crust guard doesn't apply.
 func _build_bunker() -> void:
 	bunker_rooms = {}
 	var top := 24
@@ -286,25 +286,22 @@ func _build_bunker() -> void:
 	outhouse_cell = Vector2i(bx + 1, SURFACE_ROW)
 
 	# Stair landing first (the staircase must land in it), then the living
-	# rooms in a random order with random widths.
+	# rooms + arsenal in a random order with random widths, all on the same
+	# row. Widths are capped so the row never runs into the bedrock frame.
 	var stairs_w := rng.randi_range(7, 8)
 	bunker_rooms["stairs"] = Rect2i(bx, top, stairs_w, room_h)
 	var cur_x := bx + stairs_w + 1
-	var order: Array[String] = ["kitchen", "bedroom", "bathroom"]
+	var order: Array[String] = ["kitchen", "bedroom", "bathroom", "arsenal"]
 	order.shuffle()
+	var remaining := order.size()
 	for room_name in order:
-		var w := rng.randi_range(5, 8)
+		remaining -= 1
+		var w := rng.randi_range(9, 13) if room_name == "arsenal" \
+			else rng.randi_range(5, 8)
+		# Leave room for the rest at minimum width (5 + 1 wall each).
+		w = clampi(w, 5, W - 2 - cur_x - remaining * 6)
 		bunker_rooms[room_name] = Rect2i(cur_x, top, w, room_h)
 		cur_x += w + 1
-
-	# The arsenal one level below: the props layer racks guns on its walls
-	# that misfire when a blast rattles them.
-	var pen_top := top + room_h + 1
-	var ars_x := maxi(bx - rng.randi_range(0, 2), 3)
-	if bx > 40:
-		ars_x = bx + 1  # right-side homestead: arsenal stays clear of the shelter
-	var ars_w := rng.randi_range(9, 13)
-	bunker_rooms["arsenal"] = Rect2i(ars_x, pen_top, ars_w, room_h)
 
 	# Stone framing: solid ground within one cell of a room becomes stone,
 	# so the bunker reads as built, not dug. Never fills carved space.
@@ -340,18 +337,6 @@ func _build_bunker() -> void:
 		var sx := outhouse_cell.x + step
 		for dy in 3:
 			_gset(sx, SURFACE_ROW + step + dy, Cell.EMPTY)
-
-	# Hole in the landing floor down into the arsenal, plus climb-out steps
-	# at its right edge.
-	var stairs_r: Rect2i = bunker_rooms["stairs"]
-	var ars_r: Rect2i = bunker_rooms["arsenal"]
-	var hole_x := clampi(stairs_r.position.x + 2, ars_r.position.x + 1, ars_r.end.x - 3)
-	for hx in range(hole_x, hole_x + 2):
-		_gset(hx, top + room_h, Cell.EMPTY)
-	var step_x := ars_r.end.x - 1
-	_gset(step_x, pen_top + room_h - 2, Cell.STONE)
-	_gset(step_x, pen_top + room_h - 1, Cell.STONE)
-	_gset(step_x - 1, pen_top + room_h - 1, Cell.STONE)
 
 	# Protect the whole complex from random generation: caves, shafts and
 	# tunnels must never open pits into (or under) the bunker.
