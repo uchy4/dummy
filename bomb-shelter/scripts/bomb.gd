@@ -85,7 +85,7 @@ func _ready() -> void:
 			pm.friction = 1.0
 		Type.SHOCKWAVE:
 			mass = 1.2
-			_body_color = Color(0.55, 0.78, 0.95)
+			_body_color = Color(0.16, 0.32, 0.78)  # deep metallic blue
 			pm.bounce = 0.4
 	physics_material_override = pm
 	if puppet:
@@ -367,8 +367,13 @@ func _draw() -> void:
 			draw_circle(Vector2(_body_radius * 0.55, _body_radius * 0.5), 2.2, goo)
 			draw_circle(Vector2(0, _body_radius * 0.85), 1.8, goo)
 		Type.SHOCKWAVE:
-			# Concentric shock rings signal "launcher, not excavator".
-			var ring := Color(0.75, 0.95, 1.0, 0.85)
+			# Metallic shell: bright silver rim + a specular crescent over
+			# the blue body, plus shock rings ("launcher, not excavator").
+			draw_arc(Vector2.ZERO, _body_radius - 1.2, -2.7, -0.5, 16,
+				Color(0.9, 0.94, 1.0, 0.95), 2.6)
+			draw_arc(Vector2.ZERO, _body_radius - 4.5, 0.5, 2.1, 12,
+				Color(0.72, 0.8, 0.95, 0.5), 2.0)
+			var ring := Color(0.72, 0.9, 1.0, 0.8)
 			draw_arc(Vector2.ZERO, _body_radius * 1.5, 0.0, TAU, 24, ring, 1.4)
 			draw_arc(Vector2.ZERO, _body_radius * 2.1, 0.0, TAU, 24, ring, 1.0)
 	draw_rect(Rect2(-2.5, -_body_radius - 4, 5, 5), Color(0.35, 0.32, 0.3))

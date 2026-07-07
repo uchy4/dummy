@@ -62,6 +62,18 @@ func torso_pos() -> Vector2:
 	return _parts[0].global_position
 
 
+## True once the torso is resting on (or brushing) solid ground — a stunned
+## player stays ragdolled while still flying through the air.
+func torso_grounded() -> bool:
+	if _parts.is_empty():
+		return true
+	var torso := _parts[0]
+	var space := torso.get_world_2d().direct_space_state
+	var q := PhysicsRayQueryParameters2D.create(torso.global_position,
+		torso.global_position + Vector2(0, 14), 1)
+	return not space.intersect_ray(q).is_empty()
+
+
 func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
 	var b := RigidBody2D.new()
 	b.position = pos

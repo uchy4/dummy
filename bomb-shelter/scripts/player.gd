@@ -156,9 +156,17 @@ func _physics_process(delta: float) -> void:
 	if was_stunned:
 		stun_left -= delta
 		if stun_left <= 0.0:
-			stun_left = 0.0
-			rotation = 0.0
-			_clear_stun_ragdoll(true)
+			# Never get up mid-air: a launched body stays ragdolled until
+			# it actually lands, however long the flight takes.
+			var airborne_ragdoll := _stun_ragdoll != null \
+				and is_instance_valid(_stun_ragdoll) \
+				and not _stun_ragdoll.torso_grounded()
+			if airborne_ragdoll:
+				stun_left = 0.05
+			else:
+				stun_left = 0.0
+				rotation = 0.0
+				_clear_stun_ragdoll(true)
 
 	var dir := 0.0
 	var jump_released := false
