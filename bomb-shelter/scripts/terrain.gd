@@ -1268,7 +1268,10 @@ class WaterBody:
 			var wl := t._gget(x - 1, y) == Terrain.Cell.WATER
 			var wr := t._gget(x + 1, y) == Terrain.Cell.WATER
 			var x0 := x * ts - (0.0 if wl else g)
-			var y0 := y * ts - (0.0 if wu else g)
+			# The open surface DIPS below its row (a waterline), it never
+			# puffs above it; only buried tops overlap upward into land.
+			var up_air := not wu and t._gget(x, y - 1) == Terrain.Cell.EMPTY
+			var y0 := y * ts + (4.0 if up_air else (0.0 if wu else -g))
 			var x1 := x * ts + ts + (0.0 if wr else g)
 			var y1 := y * ts + ts + (0.0 if wd else g)
 			# Round only the body's OUTER corners; shared edges stay flush.
@@ -1298,7 +1301,7 @@ class WaterBody:
 						break
 				if sy < 0:
 					continue
-				var wl := float(sy) * Terrain.TILE - g + 1.0  # the raised surface
+				var wl := float(sy) * Terrain.TILE + 4.0  # the dipped waterline
 				for sub in 4:
 					var px := float(cx) * Terrain.TILE + sub * 4.0 + 2.0
 					var dxp := px - origin.x

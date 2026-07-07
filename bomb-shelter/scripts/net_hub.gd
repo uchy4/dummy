@@ -704,7 +704,9 @@ function render(){requestAnimationFrame(render);
    var wc=wi%W,wr=(wi/W)|0;
    var iu=grid[wi-W]===4,idn=wi+W<grid.length&&grid[wi+W]===4,
     il=wc>0&&grid[wi-1]===4,ir=wc<W-1&&grid[wi+1]===4;
-   var x0=wc*TS-(il?0:WG),y0=wr*TS-(iu?0:WG),
+   // an open surface dips below its row (waterline); buried tops overlap up
+   var upAir=!iu&&grid[wi-W]===0;
+   var x0=wc*TS-(il?0:WG),y0=wr*TS+(upAir?4:(iu?0:-WG)),
     x1=wc*TS+TS+(ir?0:WG),y1=wr*TS+TS+(idn?0:WG);
    var rr5=[(iu||il)?0:5,(iu||ir)?0:5,(idn||ir)?0:5,(idn||il)?0:5];
    if(ctx.roundRect)ctx.roundRect(x0,y0,x1-x0,y1-y0,rr5);
@@ -722,7 +724,7 @@ function render(){requestAnimationFrame(render);
      if(cy2<1||cy2>=H)continue;
      if(grid[cy2*W+cx2]===4&&grid[(cy2-1)*W+cx2]!==4){sy2=cy2;break;}}
     if(sy2<0)continue;
-    var wl2=sy2*TS-WG+1;
+    var wl2=sy2*TS+4;
     for(var sb=0;sb<4;sb++){var pxb=cx2*TS+sb*4+2,dxp2=pxb-rp2.x;
      var a2=env2*Math.exp(-Math.abs(dxp2)*0.03)
       *(0.5+0.5*Math.cos(Math.abs(dxp2)*0.26-age2*9));
