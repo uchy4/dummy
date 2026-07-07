@@ -94,19 +94,6 @@ func _build_ui() -> void:
 	if BuildInfo.BUILD > 0:
 		_track_update_status(ver)
 
-
-## Keep the status line honest: update available / up to date / unreachable.
-func _track_update_status(ver: Label) -> void:
-	var refresh := func() -> void:
-		if Updater.update_available():
-			ver.text = "build %d — update available!" % BuildInfo.BUILD
-		elif Updater.latest_build > 0:
-			ver.text = "build %d — up to date" % BuildInfo.BUILD
-		elif Updater.check_finished:
-			ver.text = "build %d — couldn't reach update server" % BuildInfo.BUILD
-	refresh.call()
-	Updater.check_done.connect(func() -> void: refresh.call())
-
 	_name_edit = LineEdit.new()
 	_name_edit.placeholder_text = "Your name (for joining)"
 	_name_edit.text = Settings.join_name
@@ -139,6 +126,19 @@ func _track_update_status(ver: Label) -> void:
 	hint.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.45))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(hint)
+
+
+## Keep the status line honest: update available / up to date / unreachable.
+func _track_update_status(ver: Label) -> void:
+	var refresh := func() -> void:
+		if Updater.update_available():
+			ver.text = "build %d — update available!" % BuildInfo.BUILD
+		elif Updater.latest_build > 0:
+			ver.text = "build %d — up to date" % BuildInfo.BUILD
+		elif Updater.check_finished:
+			ver.text = "build %d — couldn't reach update server" % BuildInfo.BUILD
+	refresh.call()
+	Updater.check_done.connect(func() -> void: refresh.call())
 
 
 func _rebuild_list() -> void:
