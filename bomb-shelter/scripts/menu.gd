@@ -12,6 +12,8 @@ var _name_edit: LineEdit
 var _list: VBoxContainer
 var _scan_label: Label
 var _refresh := 0.0
+var _ver_label: Label
+var _upd_btn: Button
 
 
 func _ready() -> void:
@@ -68,31 +70,31 @@ func _build_ui() -> void:
 
 	# Always-visible build/update status right under the title, so there is
 	# never any doubt which build this device runs.
-	var ver := Label.new()
-	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	ver.add_theme_font_size_override(&"font_size", 13)
-	ver.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.55))
-	ver.text = "dev build" if BuildInfo.BUILD <= 0 \
+	_ver_label = Label.new()
+	_ver_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ver_label.add_theme_font_size_override(&"font_size", 13)
+	_ver_label.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.55))
+	_ver_label.text = "dev build" if BuildInfo.BUILD <= 0 \
 		else "build %d — checking for updates…" % BuildInfo.BUILD
-	box.add_child(ver)
+	box.add_child(_ver_label)
 
 	# In-place update: visible only when the launch check found a newer CI
 	# build. Same signing key every build, so Android installs it right over
-	# this one — no uninstall.
-	var upd := Button.new()
-	upd.visible = Updater.update_available()
-	if upd.visible:
-		upd.text = "⬇ UPDATE AVAILABLE — install build %d" % Updater.latest_build
-	upd.add_theme_font_size_override(&"font_size", 18)
-	upd.add_theme_color_override(&"font_color", Color("1b5e20"))
-	upd.modulate = Color("b9f6ca")
-	upd.pressed.connect(func() -> void: Updater.launch_update())
-	Updater.update_found.connect(func(b: int) -> void:
-		upd.text = "⬇ UPDATE AVAILABLE — install build %d" % b
-		upd.visible = true)
-	box.add_child(upd)
+	# this one — no uninstall. Method connections (never lambdas) to the
+	# Updater autoload: they auto-disconnect when this menu is freed.
+	_upd_btn = Button.new()
+	_upd_btn.visible = Updater.update_available()
+	if _upd_btn.visible:
+		_upd_btn.text = "⬇ UPDATE AVAILABLE — install build %d" % Updater.latest_build
+	_upd_btn.add_theme_font_size_override(&"font_size", 18)
+	_upd_btn.add_theme_color_override(&"font_color", Color("1b5e20"))
+	_upd_btn.modulate = Color("b9f6ca")
+	_upd_btn.pressed.connect(func() -> void: Updater.launch_update())
+	box.add_child(_upd_btn)
 	if BuildInfo.BUILD > 0:
-		_track_update_status(ver)
+		Updater.update_found.connect(_on_update_found)
+		Updater.check_done.connect(_refresh_update_status)
+		_refresh_update_status()
 
 	_name_edit = LineEdit.new()
 	_name_edit.placeholder_text = "Your name (for joining)"
@@ -128,17 +130,23 @@ func _build_ui() -> void:
 	box.add_child(hint)
 
 
+func _on_update_found(b: int) -> void:
+	if is_instance_valid(_upd_btn):
+		_upd_btn.text = "⬇ UPDATE AVAILABLE — install build %d" % b
+		_upd_btn.visible = true
+	_refresh_update_status()
+
+
 ## Keep the status line honest: update available / up to date / unreachable.
-func _track_update_status(ver: Label) -> void:
-	var refresh := func() -> void:
-		if Updater.update_available():
-			ver.text = "build %d — update available!" % BuildInfo.BUILD
-		elif Updater.latest_build > 0:
-			ver.text = "build %d — up to date" % BuildInfo.BUILD
-		elif Updater.check_finished:
-			ver.text = "build %d — couldn't reach update server" % BuildInfo.BUILD
-	refresh.call()
-	Updater.check_done.connect(func() -> void: refresh.call())
+func _refresh_update_status() -> void:
+	if _ver_label == null or not is_instance_valid(_ver_label):
+		return
+	if Updater.update_available():
+		_ver_label.text = "build %d — update available!" % BuildInfo.BUILD
+	elif Updater.latest_build > 0:
+		_ver_label.text = "build %d — up to date" % BuildInfo.BUILD
+	elif Updater.check_finished:
+		_ver_label.text = "build %d — couldn't reach update server" % BuildInfo.BUILD
 
 
 func _rebuild_list() -> void:

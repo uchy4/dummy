@@ -20,6 +20,7 @@ var _qr_overlay: Control
 var _qr_texture: TextureRect
 var _qr_url: Label
 var _touch := false
+var _upd_btn: Button
 
 
 func setup(colors: Array[Color], touch := false) -> void:
@@ -264,17 +265,17 @@ func _build_settings_panel() -> void:
 
 	# In-place update button: only shows when the launch check found a newer
 	# CI build. Same signing key, so Android installs it over this build.
-	var upd := Button.new()
-	upd.visible = Updater.update_available()
-	if upd.visible:
-		upd.text = "⬇ Update available — install build %d" % Updater.latest_build
-	upd.focus_mode = Control.FOCUS_NONE
-	upd.modulate = Color("b9f6ca")
-	upd.pressed.connect(func() -> void: Updater.launch_update())
-	Updater.update_found.connect(func(b: int) -> void:
-		upd.text = "⬇ Update available — install build %d" % b
-		upd.visible = true)
-	vbox.add_child(upd)
+	# Method connection to the autoload — a lambda would outlive this HUD
+	# and crash poking the freed button after a restart.
+	_upd_btn = Button.new()
+	_upd_btn.visible = Updater.update_available()
+	if _upd_btn.visible:
+		_upd_btn.text = "⬇ Update available — install build %d" % Updater.latest_build
+	_upd_btn.focus_mode = Control.FOCUS_NONE
+	_upd_btn.modulate = Color("b9f6ca")
+	_upd_btn.pressed.connect(func() -> void: Updater.launch_update())
+	Updater.update_found.connect(_on_update_found)
+	vbox.add_child(_upd_btn)
 	if BuildInfo.BUILD > 0:
 		var ver := _make_label(12, Color(1, 1, 1, 0.5))
 		ver.text = "this device: build %d" % BuildInfo.BUILD
@@ -390,6 +391,12 @@ func _local_char_screen() -> Vector2:
 	if p == null:
 		return Vector2.INF
 	return p.get_global_transform_with_canvas().origin
+
+
+func _on_update_found(b: int) -> void:
+	if is_instance_valid(_upd_btn):
+		_upd_btn.text = "⬇ Update available — install build %d" % b
+		_upd_btn.visible = true
 
 
 func _local_touch_player() -> Player:
