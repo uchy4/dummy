@@ -419,13 +419,14 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#caa64a";ctx.fillRect(q[0]-9,q[1]-2,18,2);
   ctx.fillStyle="#e8c35c";ctx.fillRect(q[0]-2,q[1]-3,4,5);}
  if(sc)for(var i=0;i<sc.b.length;i++){var b=sc.b[i];
+  var dud=b.length>5&&b[5]===1;
   ctx.fillStyle="rgba(0,0,0,.5)";ctx.beginPath();ctx.arc(b[0],b[1],b[4]+1.5,0,7);ctx.fill();
-  var blink=b[3]<12&&(now/100|0)%2===0;
+  var blink=!dud&&b[3]<12&&(now/100|0)%2===0;
   ctx.fillStyle=blink?"#ff5936":BOMB[b[2]]||"#212126";
   ctx.beginPath();ctx.arc(b[0],b[1],b[4],0,7);ctx.fill();
   ctx.fillStyle="rgba(255,255,255,.2)";ctx.beginPath();ctx.arc(b[0]-b[4]/3,b[1]-b[4]/3,b[4]/4,0,7);ctx.fill();
-  ctx.fillStyle=b[3]<12?"#ff5936":"#fff";ctx.font="bold 11px sans-serif";ctx.textAlign="center";
-  ctx.fillText((b[3]/10).toFixed(1),b[0],b[1]-b[4]-6);}
+  ctx.fillStyle=dud?"#9a9a9a":(b[3]<12?"#ff5936":"#fff");ctx.font="bold 11px sans-serif";ctx.textAlign="center";
+  ctx.fillText(dud?"DUD":(b[3]/10).toFixed(1),b[0],b[1]-b[4]-6);}
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
   var pos=(i===you&&predOK)?{x:PX,y:PY}:lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
   var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;

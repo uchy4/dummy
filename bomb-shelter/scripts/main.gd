@@ -378,7 +378,8 @@ func _net_service() -> void:
 		if bomb == null:
 			continue
 		bs.append([int(bomb.global_position.x), int(bomb.global_position.y),
-			int(bomb.type), int(maxf(bomb.fuse, 0.0) * 10.0), int(bomb._body_radius)])
+			int(bomb.type), int(maxf(bomb.fuse, 0.0) * 10.0), int(bomb._body_radius),
+			1 if bomb.fizzled else 0])
 	var cs := []
 	for ch in get_tree().get_nodes_in_group(&"chests"):
 		cs.append([int(ch.global_position.x), int(ch.global_position.y)])

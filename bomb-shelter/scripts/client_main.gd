@@ -263,6 +263,9 @@ func _apply_snapshot(m: Dictionary) -> void:
 			_btargets.append(bombs[i].position)
 		_btargets[i] = Vector2(float(arr[0]), float(arr[1]))
 		bombs[i].fuse = float(arr[3]) / 10.0
+		if arr.size() > 5:
+			var fz: int = arr[5]
+			bombs[i].fizzled = fz == 1
 
 	var cs: Array = m.get("c", [])
 	while chests.size() > cs.size():

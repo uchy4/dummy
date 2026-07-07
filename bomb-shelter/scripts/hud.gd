@@ -182,6 +182,13 @@ func _build_settings_panel() -> void:
 	one_life.toggled.connect(func(on: bool) -> void: Settings.one_life = on)
 	vbox.add_child(one_life)
 
+	var duds := CheckBox.new()
+	duds.text = "10% duds (fizzle out; blasts can set them off)"
+	duds.button_pressed = Settings.duds_enabled
+	duds.focus_mode = Control.FOCUS_NONE
+	duds.toggled.connect(func(on: bool) -> void: Settings.duds_enabled = on)
+	vbox.add_child(duds)
+
 	if not (OS.has_feature("mode2d") or OS.has_feature("mode3d")):
 		# Flavor APKs are locked to their renderer; only dev builds can switch.
 		var mode3d := CheckBox.new()

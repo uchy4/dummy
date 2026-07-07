@@ -38,6 +38,8 @@ func _physics_process(delta: float) -> void:
 		var bomb := b as Bomb
 		if bomb == null:
 			continue
+		if bomb.fizzled:
+			continue  # a spent dud isn't a threat (until something re-arms it)
 		var d := pos.distance_to(bomb.global_position)
 		var danger: float = Bomb.BLAST_RADIUS * bomb._blast_mult * Settings.blast_scale + 30.0
 		if bomb.fuse < THREAT_FUSE and d < danger and d < tdist:

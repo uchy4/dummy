@@ -44,6 +44,10 @@ static var stun_time := 1.0
 ## to the left from Quick Settings or the on-screen swap icon.
 static var touch_buttons_left := false
 
+## ~10% of bombs are duds: the fuse fizzles out, but concussion from a
+## nearby blast can still set them off.
+static var duds_enabled := true
+
 ## Local players' chosen colors (set from the Quick Settings pickers).
 ## Filled with the defaults by Main on first run.
 static var player_colors: Array[Color] = []

@@ -53,12 +53,17 @@ var _drill_carve_acc := 0.0
 ## the host streams position and fuse.
 var puppet := false
 
+## Duds (Settings.duds_enabled, ~10%): the fuse fizzles out instead of
+## detonating — but a nearby blast's concussion re-arms them.
+var is_dud := false
+var fizzled := false
+var _decay := 12.0  ## seconds a fizzled dud lies around before vanishing
+
 var _body_radius := 9.0
 var _blast_mult := 1.0
 var _body_color := Color(0.13, 0.13, 0.16)
 var _exploded := false
 var _prev_vy := 0.0
-var _tick_timer := 0.0
 var _label: Label
 
 
@@ -66,6 +71,8 @@ func _ready() -> void:
 	add_to_group(&"bombs")
 	z_index = 6
 	can_sleep = false
+	if Settings.duds_enabled and not is_bomblet and not puppet and randf() < 0.1:
+		is_dud = true
 	collision_layer = 4
 	collision_mask = 1 | 2 | 4
 	var pm := PhysicsMaterial.new()
@@ -138,15 +145,39 @@ func _ready() -> void:
 
 
 func ignite(new_fuse: float) -> void:
+	if fizzled:
+		# Concussion from a nearby blast re-arms a spent dud.
+		fizzled = false
+		fuse = new_fuse
+		get_tree().call_group(&"sfx", &"play_snap", global_position)
+		return
+	is_dud = false  # a direct blast always sets the charge off properly
 	if new_fuse < fuse - 0.2:
 		get_tree().call_group(&"sfx", &"play_snap", global_position)
 	fuse = minf(fuse, new_fuse)
+
+
+## A dud reaching zero: pop of smoke, then it just lies there.
+func _fizzle() -> void:
+	fizzled = true
+	is_dud = false
+	get_tree().call_group(&"sfx", &"play_snap", global_position)
+	var d := DustPuff.new()
+	d.amount = 6
+	d.position = global_position
+	get_parent().add_child.call_deferred(d)
+	queue_redraw()
 
 
 func _process(_delta: float) -> void:
 	# Keep the ticker upright and above the (rolling) bomb.
 	_label.rotation = -rotation
 	_label.position = Vector2(-22, -_body_radius - 33.0).rotated(-rotation)
+	if fizzled:
+		_label.text = "DUD"
+		_label.add_theme_color_override(&"font_color", Color(0.65, 0.65, 0.65))
+		queue_redraw()
+		return
 	_label.text = "%.1f" % maxf(fuse, 0.0)
 	if fuse < 1.2:
 		_label.add_theme_color_override(&"font_color",
@@ -163,7 +194,7 @@ func _physics_process(delta: float) -> void:
 		kicker_grace -= delta
 	if type == Type.STICKY:
 		_sticky_logic(delta)
-	if type == Type.DRILL:
+	if type == Type.DRILL and not fizzled:
 		_drill_logic(delta)
 	# A carried sticky bomb has its collision disabled (see _stick_to), but
 	# skip explicitly too: riding a carrier must never impact-stun.
@@ -177,15 +208,20 @@ func _physics_process(delta: float) -> void:
 		angular_velocity += randf_range(-6.0, 6.0)
 	_prev_vy = linear_velocity.y
 
+	if fizzled:
+		# A spent dud: lies around inert until a blast re-arms it (see
+		# ignite) or it quietly decays away.
+		_decay -= delta
+		if _decay <= 0.0:
+			queue_free()
+		return
+
 	fuse -= delta
-	# Audible countdown that accelerates over the last 1.5 seconds.
-	if fuse > 0.0 and fuse < 1.5:
-		_tick_timer -= delta
-		if _tick_timer <= 0.0:
-			_tick_timer = clampf(fuse * 0.22, 0.06, 0.3)
-			get_tree().call_group(&"sfx", &"play_tick", global_position)
 	if fuse <= 0.0:
-		_explode()
+		if is_dud:
+			_fizzle()
+		else:
+			_explode()
 
 
 ## STICKY: glue to whoever brushes it, ride the carrier, and hand off to the
@@ -459,9 +495,11 @@ func _blocked(space: PhysicsDirectSpaceState2D, target: Vector2) -> bool:
 
 func _draw() -> void:
 	var flash := 0.0
-	if fuse < 1.2:
+	if fuse < 1.2 and not fizzled:
 		flash = 0.55 if fmod(maxf(fuse, 0.0) * 5.0, 1.0) < 0.5 else 0.0
 	var body := _body_color.lerp(Color(1, 0.35, 0.2), flash)
+	if fizzled:
+		body = _body_color.darkened(0.35)
 	draw_circle(Vector2.ZERO, _body_radius + 1.5, Color(0, 0, 0, 0.6))
 	draw_circle(Vector2.ZERO, _body_radius, body)
 	draw_circle(Vector2(-_body_radius * 0.33, -_body_radius * 0.33),
