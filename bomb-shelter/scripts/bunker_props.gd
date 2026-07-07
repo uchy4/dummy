@@ -236,6 +236,9 @@ class OuthouseArt:
 		if _dead:
 			return
 		_dead = true
+		if NetHub.has_viewers():  # fx kind 11 = plank debris burst
+			NetHub.broadcast({"t": "fx", "k": 11,
+				"x": int(global_position.x), "y": int(global_position.y - 20.0)})
 		# The hut bursts into tumbling planks plus its roof slab.
 		for i in 9:
 			var plank := Plank.new()

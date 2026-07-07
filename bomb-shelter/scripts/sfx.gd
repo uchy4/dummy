@@ -51,30 +51,36 @@ func play_splat(_pos: Vector2) -> void:
 	_play(_splat, -2.0, randf_range(0.85, 1.25))
 
 
-func play_jump(_pos: Vector2) -> void:
+func play_jump(pos: Vector2) -> void:
+	_fx(0, pos)
 	_play(_jump_s, -11.0, randf_range(0.95, 1.15))
 
 
 ## Kick: the jump chirp slowed way down reads as a heavy whoosh/thock.
-func play_kick(_pos: Vector2) -> void:
+func play_kick(pos: Vector2) -> void:
+	_fx(1, pos)
 	_play(_jump_s, -6.0, randf_range(0.58, 0.72))
 
 
 ## Small, subtle dirt crunch each time a foot plants; a slowed, louder
 ## variant doubles as the landing thud.
-func play_step(_pos: Vector2) -> void:
+func play_step(pos: Vector2) -> void:
+	_fx(3, pos)
 	_play(_step_s, -22.0, randf_range(0.9, 1.2))
 
 
-func play_land(_pos: Vector2) -> void:
+func play_land(pos: Vector2) -> void:
+	_fx(2, pos)
 	_play(_step_s, -13.0, randf_range(0.55, 0.75))
 
 
-func play_pickup(_pos: Vector2) -> void:
+func play_pickup(pos: Vector2) -> void:
+	_fx(6, pos)
 	_play(_pickup_s, -8.0, randf_range(0.98, 1.05))
 
 
-func play_armor_break(_pos: Vector2) -> void:
+func play_armor_break(pos: Vector2) -> void:
+	_fx(5, pos)
 	_play(_clank_s, -4.0, randf_range(0.9, 1.05))
 
 
@@ -89,7 +95,8 @@ func play_tick(_pos: Vector2) -> void:
 
 
 ## The crack of a blast lighting another bomb's fuse.
-func play_snap(_pos: Vector2) -> void:
+func play_snap(pos: Vector2) -> void:
+	_fx(4, pos)
 	_play(_snap_s, -9.0, randf_range(0.9, 1.15))
 
 
@@ -330,3 +337,10 @@ func _wav(data: PackedByteArray) -> AudioStreamWAV:
 	wav.stereo = false
 	wav.data = data
 	return wav
+
+## Mirror a sound-worthy moment to web viewers as a compact fx event —
+## the web client maps the kind to its own synth + particles. Kinds:
+## 0 jump, 1 kick, 2 land, 3 step, 4 snap, 5 armor break, 6 pickup.
+func _fx(k: int, pos: Vector2) -> void:
+	if NetHub.has_viewers():
+		NetHub.broadcast({"t": "fx", "k": k, "x": int(pos.x), "y": int(pos.y)})

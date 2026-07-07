@@ -167,6 +167,10 @@ func die(kick: Vector2) -> void:
 	if not alive:
 		return
 	alive = false
+	if NetHub.has_viewers():  # fx kind 12 = critter death burst
+		NetHub.broadcast({"t": "fx", "k": 12, "x": int(global_position.x),
+			"y": int(global_position.y),
+			"c": "h" if kind == Kind.CHICKEN else "p"})
 	_end_ragdoll_silently()
 	var rd := _make_ragdoll(kick)
 	rd.persist = false  # fades out like a player's death ragdoll

@@ -19,6 +19,11 @@ const _FADE_START := 0.5
 
 func _ready() -> void:
 	z_index = 7
+	# Mirror the squirt to web viewers (fx kind 8 = water spray).
+	if NetHub.has_viewers():
+		NetHub.broadcast({"t": "fx", "k": 8, "x": int(global_position.x),
+			"y": int(global_position.y), "dx": snappedf(dir.x, 0.1),
+			"dy": snappedf(dir.y, 0.1), "a": amount})
 	var p := CPUParticles2D.new()
 	p.one_shot = true
 	p.emitting = true

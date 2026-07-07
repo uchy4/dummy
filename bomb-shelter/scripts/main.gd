@@ -33,6 +33,7 @@ var web_players := {}  # NetHub client id -> Player
 var _bounds := Rect2()
 var _roster_dirty := true
 var _snap_tick := 0
+var _center_msg := ""  ## mirrored to web viewers so they see the countdown
 
 ## The all-dead ending is declared after a short delay so the final death's
 ## ragdoll gets to tumble before the world freezes.
@@ -202,12 +203,13 @@ func _process(delta: float) -> void:
 	if Settings.one_life:
 		_check_elimination()
 
+	var msg := ""
 	if elapsed < GRACE:
-		hud.set_center("First bomb in %d — take cover!" % ceili(GRACE - elapsed))
+		msg = "First bomb in %d — take cover!" % ceili(GRACE - elapsed)
 	elif elapsed < GRACE + 6.0:
-		hud.set_center("Race to the FINISH line at the bottom!")
-	else:
-		hud.set_center("")
+		msg = "Race to the FINISH line at the bottom!"
+	_center_msg = msg
+	hud.set_center(msg)
 
 
 func _build_backdrops() -> void:
@@ -385,6 +387,8 @@ func _net_service() -> void:
 		NetHub.broadcast(_roster_msg())
 		NetHub.broadcast_all(_colors_msg())
 	_snap_tick += 1
+	if _snap_tick % 30 == 0:  # 2 Hz: center message + match timer for web HUDs
+		NetHub.broadcast({"t": "hud", "m": _center_msg, "tm": int(elapsed)})
 	if _snap_tick % 2 != 0:  # 30 Hz position stream (was 15) - less felt lag
 		return
 	var ps := []

@@ -9,6 +9,10 @@ var _age := 0.0
 
 func _ready() -> void:
 	z_index = 7
+	# Mirror to web viewers (fx kind 9 = dust puff).
+	if NetHub.has_viewers():
+		NetHub.broadcast({"t": "fx", "k": 9, "x": int(global_position.x),
+			"y": int(global_position.y), "a": amount})
 	var p := CPUParticles2D.new()
 	p.one_shot = true
 	p.emitting = true

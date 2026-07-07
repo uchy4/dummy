@@ -129,7 +129,7 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
 var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6d4826"];
-var SCORCH={};var PIPE=null;var WTRANS={};
+var SCORCH={};var PIPE=null;var WTRANS={};var HUDMSG="";var HTIME=-1;
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -159,13 +159,37 @@ function splat(){if(!AC)return;var t=AC.currentTime;
  lp.frequency.exponentialRampToValueAtTime(120,t+0.2);
  var g=AC.createGain();g.gain.setValueAtTime(0.5,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
  s.connect(lp);lp.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+0.25);}
-function tone(freq,start,dur,vol){var t=AC.currentTime+start;
+function tone(freq,start,dur,vol){if(!AC)return;var t=AC.currentTime+start;
  var o=AC.createOscillator();o.type="triangle";o.frequency.value=freq;
  var g=AC.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(vol,t+0.02);
  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
  o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur);}
 function fanfare(){if(!AC)return;[523.25,659.25,784.0,1046.5].forEach(function(f,i){
  tone(f,i*0.16,i===3?0.6:0.2,0.28);});}
+function crunch(vol,pitch){if(!AC)return;var t=AC.currentTime;
+ var s=AC.createBufferSource();s.buffer=noiseBuf(0.06);s.playbackRate.value=pitch||1;
+ var hp=AC.createBiquadFilter();hp.type="highpass";hp.frequency.value=800;
+ var g=AC.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.07);
+ s.connect(hp);hp.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+0.08);}
+// Generic host fx events: one table row per effect kind = parity for free.
+// 0 jump 1 kick 2 land 3 step 4 snap 5 armor 6 pickup 8 spray 9 dust
+// 11 plank debris 12 critter death.
+function puffAt(x,y,col,n,spd){for(var i=0;i<n;i++)sparks.push({x:x,y:y,c:col,
+ vx:(Math.random()-0.5)*spd*2,vy:-Math.random()*spd,t:performance.now()});}
+function fxPlay(m){var k=m.k,x=m.x,y=m.y;
+ if(k===0){tone(620,0,0.1,0.14);puffAt(x,y+10,"#a1866a",3,80);}
+ else if(k===1)tone(170,0,0.16,0.24);
+ else if(k===2){crunch(0.28,0.6);puffAt(x,y+10,"#a1866a",5,100);}
+ else if(k===3)crunch(0.09,1.1);
+ else if(k===4)tone(1250,0,0.05,0.13);
+ else if(k===5){tone(330,0,0.22,0.28);tone(215,0.07,0.3,0.26);}
+ else if(k===6){tone(540,0,0.09,0.2);tone(810,0.09,0.12,0.2);}
+ else if(k===8){var n=m.a||10;for(var i=0;i<n;i++)sparks.push({x:x,y:y,c:"#7fd4ff",
+  vx:(m.dx||0)*170+(Math.random()-0.5)*90,vy:(m.dy||-1)*170+(Math.random()-0.5)*70,
+  t:performance.now()});}
+ else if(k===9)puffAt(x,y,"#a1866a",m.a||6,110);
+ else if(k===11){crunch(0.4,0.5);puffAt(x,y,"#6d4c2f",12,190);}
+ else if(k===12){splat();puffAt(x,y,m.c==="p"?"#f4a7b9":"#f5f5f0",10,160);}}
 // Size the canvas from the *visual* viewport in real pixels. CSS 100vh/100%
 // is unreliable on iOS Safari (collapsing URL bar, stale post-rotation
 // layout) and produced a broken "slice" — this is the robust fix.
@@ -209,13 +233,15 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};WTRANS={};predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
    if(!joined){if(!selKey||!opts.some(function(o){return key(o)===selKey;}))
     selKey=opts.length?key(opts[0]):null;
    renderSw();}}
+  else if(m.t==="fx"){fxPlay(m);}
+  else if(m.t==="hud"){HUDMSG=m.m||"";HTIME=(m.tm!=null)?m.tm:-1;}
   else if(m.t==="win"){win=m;fanfare();}};
 }
 function key(o){return o.join("|");}
@@ -662,6 +688,12 @@ function render(){requestAnimationFrame(render);
  ctx.textAlign="left";ctx.font="12px sans-serif";
  for(var i=0;i<roster.length;i++){ctx.fillStyle="#"+roster[i].c;
   ctx.fillText(roster[i].n,10,18+i*15);}
+ if(HTIME>=0){ctx.textAlign="right";ctx.font="bold 13px sans-serif";
+  ctx.fillStyle="#fff";var hs=HTIME%60;
+  ctx.fillText(Math.floor(HTIME/60)+":"+(hs<10?"0":"")+hs,cw-10,18);}
+ if(HUDMSG){ctx.textAlign="center";ctx.font="bold 15px sans-serif";
+  ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(cw/2-160,34,320,24);
+  ctx.fillStyle="#ffe9a8";ctx.fillText(HUDMSG,cw/2,51);}
  ctx.textAlign="center";
  if(sc&&you>=0&&sc.p[you]&&sc.p[you][2]===0){
   ctx.fillStyle="rgba(0,0,0,.5)";ctx.fillRect(cw/2-130,ch*0.35-24,260,36);
