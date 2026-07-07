@@ -404,7 +404,15 @@ func _on_gesture_jump() -> void:
 
 
 func _on_gesture_kick(dir: Vector2, power: float) -> void:
+	var d := dir
+	if d == Vector2.ZERO:
+		# Double-tap "use facing" kick: aim it with our puppet's facing.
+		var f := 1.0
+		if my_index >= 0 and my_index < players.size() \
+				and is_instance_valid(players[my_index]):
+			f = float(players[my_index]._facing)
+		d = Vector2(f, -1).normalized()
 	if ws and ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		ws.send_text(JSON.stringify({"t": "k",
-			"dx": snappedf(dir.x, 0.01), "dy": snappedf(dir.y, 0.01),
+			"dx": snappedf(d.x, 0.01), "dy": snappedf(d.y, 0.01),
 			"p": snappedf(power, 0.01)}))

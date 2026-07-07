@@ -198,7 +198,18 @@ function myScreen(){if(you<0||!sc||!sc.p[you]||sc.p[you][2]!==1)return null;
  var m=(predOK)?{x:PX,y:PY}:lerpP(you);
  return{x:(m.x-cam.x)*scrZoom+VW/2,y:(m.y-cam.y)*scrZoom+VH/2};}
 function jumpPulse(){JHELD=true;upd();setTimeout(function(){JHELD=false;upd();},90);}
-function mkTouch(e){return{id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};}
+function mkTouch(e){return{id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now(),jarm:true};}
+var lastTap={t:-1e9,x:0,y:0};
+// A tap jumps; a second tap within 300ms fires an instant full-power kick
+// in the facing direction. Enables one-thumb jump-kick play.
+function tap(x,y){var now=performance.now();
+ if(now-lastTap.t<300&&Math.hypot(x-lastTap.x,y-lastTap.y)<60){
+  lastTap.t=-1e9;
+  var f=(anim[you]&&anim[you].face)||1;
+  if(ws&&ws.readyState===1&&joined)
+   ws.send(JSON.stringify({t:"k",dx:f*0.707,dy:-0.707,p:1}));
+  return;}
+ lastTap={t:now,x:x,y:y};jumpPulse();}
 cv.addEventListener("pointerdown",function(e){e.preventDefault();
  if(!joined||!grid)return;
  var ms=myScreen();
@@ -210,19 +221,23 @@ cv.addEventListener("pointerdown",function(e){e.preventDefault();
 cv.addEventListener("pointermove",function(e){e.preventDefault();
  if(moveT&&e.pointerId===moveT.id){moveT.x=e.clientX;moveT.y=e.clientY;
   var dx=moveT.x-moveT.ox;
-  AXV=Math.abs(dx)<8?0:Math.max(-1,Math.min(1,dx/44));upd();}
+  AXV=Math.abs(dx)<8?0:Math.max(-1,Math.min(1,dx/44));upd();
+  // One-thumb jump: push the stick up; re-arms when it drops back.
+  var dy=moveT.y-moveT.oy;
+  if(moveT.jarm&&dy<-45){moveT.jarm=false;jumpPulse();}
+  else if(dy>-25)moveT.jarm=true;}
  else if(kickT&&e.pointerId===kickT.id){kickT.x=e.clientX;kickT.y=e.clientY;}
  else if(gestT&&e.pointerId===gestT.id){gestT.x=e.clientX;gestT.y=e.clientY;}});
 function tapOrKick(t){var dx=t.x-t.ox,dy=t.y-t.oy,d=Math.hypot(dx,dy);
  var held=performance.now()-t.t0;
- if(d<12){if(held<220)jumpPulse();return;}
+ if(d<12){if(held<220)tap(t.x,t.y);return;}
  var p=Math.max(0.25,Math.min(1,d/90));
  if(ws&&ws.readyState===1&&joined)
   ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}
 function endPtr(e){
  if(moveT&&e.pointerId===moveT.id){
   var quick=performance.now()-moveT.t0<220&&Math.hypot(moveT.x-moveT.ox,moveT.y-moveT.oy)<12;
-  moveT=null;AXV=0;upd();if(quick)jumpPulse();}
+  var tx=moveT.x,ty=moveT.y;moveT=null;AXV=0;upd();if(quick)tap(tx,ty);}
  else if(kickT&&e.pointerId===kickT.id){var t=kickT;kickT=null;tapOrKick(t);}
  else if(gestT&&e.pointerId===gestT.id){var t=gestT;gestT=null;tapOrKick(t);}}
 cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
@@ -419,8 +434,8 @@ function render(){requestAnimationFrame(render);
  if(joinT&&now-joinT<8000){ctx.fillStyle="rgba(0,0,0,.45)";
   ctx.fillRect(cw/2-170,ch-96,340,46);
   ctx.fillStyle="#fff";ctx.font="12px sans-serif";ctx.textAlign="center";
-  ctx.fillText("drag = move   •   tap = jump (2nd finger too)",cw/2,ch-78);
-  ctx.fillText("swipe 2nd finger (or from your player) = charged kick",cw/2,ch-60);}
+  ctx.fillText("drag = move  •  tap or stick-up = jump  •  double-tap = kick",cw/2,ch-78);
+  ctx.fillText("swipe 2nd finger (or from your player) = aimed charged kick",cw/2,ch-60);}
  ctx.textAlign="left";ctx.font="12px sans-serif";
  for(var i=0;i<roster.length;i++){ctx.fillStyle="#"+roster[i].c;
   ctx.fillText(roster[i].n,10,18+i*15);}

@@ -58,7 +58,7 @@ func setup(colors: Array[Color], touch := false) -> void:
 	help.offset_right = -10
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if touch:
-		help.text = "Drag = move   •   tap = jump (2nd finger too)   •   swipe 2nd finger (or from your player) = charged kick"
+		help.text = "Drag = move  •  tap or stick-up = jump  •  double-tap = kick  •  swipe 2nd finger = aimed kick"
 	else:
 		help.text = "P1 A/D W S-kick    P2 arrows ↓-kick    P3 J/L I K-kick    P4 F/H T G-kick    R restart    Esc settings\nKick bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)

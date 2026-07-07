@@ -19,6 +19,10 @@ const AXIS_RANGE := 46.0     ## px of drag for a full-speed axis
 const CHAR_GRAB := 60.0      ## px around the character that starts a kick
 const FULL_CHARGE := 95.0    ## swipe px for a 100% power kick
 const MIN_POWER := 0.25
+const FLICK_UP := 45.0       ## push the stick this far up = jump (one thumb)
+const FLICK_REARM := 25.0    ## drop back under this to arm the next jump
+const DTAP_TIME := 300       ## ms between taps for a double-tap kick
+const DTAP_DIST := 60.0      ## px between taps for a double-tap kick
 
 ## Returns the local character's screen position, or Vector2.INF when there
 ## isn't one (dead, not spawned). Supplied by the owner.
@@ -41,6 +45,9 @@ var _gest_origin := Vector2.ZERO
 var _gest_pos := Vector2.ZERO
 var _gest_ms := 0
 var _axis := 0.0
+var _jump_armed := true  ## stick-up jump re-arms after dropping back down
+var _last_tap_ms := -100000
+var _last_tap_pos := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -79,6 +86,7 @@ func _touch_down(idx: int, pos: Vector2) -> void:
 		_move_origin = pos
 		_move_pos = pos
 		_move_ms = Time.get_ticks_msec()
+		_jump_armed = true
 		return
 	if _gest_idx == -1:
 		_gest_idx = idx
@@ -95,6 +103,13 @@ func _touch_move(idx: int, pos: Vector2) -> void:
 		if v != _axis:
 			_axis = v
 			axis_changed.emit(v)
+		# One-thumb jump: push the stick up. Re-arms when it drops back.
+		var dy := pos.y - _move_origin.y
+		if _jump_armed and dy < -FLICK_UP:
+			_jump_armed = false
+			jump_tapped.emit()
+		elif dy > -FLICK_REARM:
+			_jump_armed = true
 	elif idx == _kick_idx:
 		_kick_pos = pos
 	elif idx == _gest_idx:
@@ -110,30 +125,43 @@ func _touch_up(idx: int) -> void:
 			_axis = 0.0
 			axis_changed.emit(0.0)
 		if quick:
-			jump_tapped.emit()
+			_tap(_move_pos)
 		queue_redraw()
 	elif idx == _kick_idx:
 		var d := _kick_pos - _kick_origin
 		var quick := Time.get_ticks_msec() - _kick_ms < TAP_TIME * 1000.0
 		_kick_idx = -1
-		_end_tap_or_kick(d, quick)
+		_end_tap_or_kick(d, quick, _kick_pos)
 	elif idx == _gest_idx:
 		var d := _gest_pos - _gest_origin
 		var quick := Time.get_ticks_msec() - _gest_ms < TAP_TIME * 1000.0
 		_gest_idx = -1
-		_end_tap_or_kick(d, quick)
+		_end_tap_or_kick(d, quick, _gest_pos)
 
 
 ## Shared release logic for the on-character press and the second finger:
-## a short tap jumps, a swipe fires a charged kick along the swipe.
-func _end_tap_or_kick(d: Vector2, quick: bool) -> void:
+## a short tap jumps (or double-tap kicks), a swipe fires a charged kick.
+func _end_tap_or_kick(d: Vector2, quick: bool, pos: Vector2) -> void:
 	if d.length() < TAP_SLOP:
 		if quick:
-			jump_tapped.emit()
+			_tap(pos)
 	else:
 		kick_charged.emit(d.normalized(),
 			clampf(d.length() / FULL_CHARGE, MIN_POWER, 1.0))
 	queue_redraw()
+
+
+## A tap jumps; a second tap right after (double-tap) fires an instant
+## full-power kick in the facing direction (dir ZERO = "use facing").
+func _tap(pos: Vector2) -> void:
+	var now := Time.get_ticks_msec()
+	if now - _last_tap_ms < DTAP_TIME and pos.distance_to(_last_tap_pos) < DTAP_DIST:
+		_last_tap_ms = -100000
+		kick_charged.emit(Vector2.ZERO, 1.0)
+		return
+	_last_tap_ms = now
+	_last_tap_pos = pos
+	jump_tapped.emit()
 
 
 func _draw() -> void:
