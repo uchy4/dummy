@@ -603,16 +603,16 @@ function limbW(x,y,ax,ay,ang,len,col,f){ctx.save();ctx.translate(x+ax*f,y+ay);ct
  ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);ctx.restore();}
 function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  var c=rgbOf(col),armc=mul(c,0.85),legc=mul(c,0.65);
- var ra,la,rl,ll,lx;
+ var ra,la,rl,ll,lx,llen=12;
  if(stun){ctx.save();ctx.translate(x,y);ctx.rotate(stAng||1.1*face);ctx.translate(-x,-y);
   var wb=Math.sin(performance.now()/95)*0.45,wb2=Math.cos(performance.now()/120)*0.4;
   ra=-2.0+wb;la=1.4+wb2;rl=-0.9-wb2;ll=0.5+wb;lx=2;}
- else if(kick){ra=-0.6;la=0.6;rl=0.3;ll=-1.9;lx=2.5;}// leg out toward facing
+ else if(kick){ra=-0.6;la=0.6;rl=0;ll=-1.6;lx=3;llen=14;}// support leg straight, kick leg out
  else if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
  else{ra=swing;la=-swing;rl=-swing;ll=swing;lx=3;}
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
  limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
- limbW(x,y,-lx,2,ll,12,legc,face);               // front leg
+ limbW(x,y,-lx,2,ll,llen,legc,face);             // front leg
  ctx.fillStyle="#000";                            // torso/head silhouette
  ctx.fillRect(x-7,y-8,14,12);ctx.fillRect(x-6,y-16,12,11);ctx.fillRect(x-7,y-18,14,6);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);

@@ -583,6 +583,7 @@ func _draw() -> void:
 	var r_leg: float
 	var l_leg: float
 	var leg_x := 3.0
+	var l_leg_len := 12.0
 	var stunned := stun_left > 0.0 or puppet_stunned
 	if stunned:
 		# Ragdoll tumble: limbs splayed at odd angles (overrides airborne pose).
@@ -592,13 +593,15 @@ func _draw() -> void:
 		l_leg = 0.5
 		leg_x = 2.0
 	elif kick_anim > 0.0 or puppet_kicking:
-		# Kick: the front leg snaps out toward the facing side, arms
-		# counter-swinging (mirrored with the rest of the pose by f).
+		# Kick: BOTH legs read clearly — the support leg planted straight
+		# down, the kicking leg fully extended out horizontal toward the
+		# facing side (and a touch longer), arms counter-swinging.
 		r_arm = -0.6
 		l_arm = 0.6
-		r_leg = 0.3
-		l_leg = -1.9
-		leg_x = 2.5
+		r_leg = 0.0
+		l_leg = -1.6
+		l_leg_len = 14.0
+		leg_x = 3.0
 	elif airborne:
 		# Jump: arms up in a Y, feet together and straight.
 		r_arm = -2.5
@@ -615,7 +618,7 @@ func _draw() -> void:
 	# Back arm and both legs (behind the torso).
 	_limb(Vector2(5, -6), r_arm, 10, arm_c.darkened(0.2), f)
 	_limb(Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
-	_limb(Vector2(-leg_x, 2), l_leg, 12, leg_c, f)
+	_limb(Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
 	# Torso and head in body space (symmetric), black silhouette first.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
