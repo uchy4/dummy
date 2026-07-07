@@ -17,7 +17,10 @@ const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER, CLAY, STONE, DEEP }
-enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP }
+enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP, WATER_TOP }
+
+## One solid translucent water color — surface cells use the partial tile.
+const WATER_COLOR := Color(0.24, 0.5, 0.88, 0.55)
 
 ## Strata: the ground changes character with depth — dirt, then clay, then
 ## stone, then deep slate, down to the bedrock frame.
@@ -51,6 +54,7 @@ var finish_room := Rect2i()
 var _grid := PackedByteArray()
 var _src_id := 0
 var _water_acc := 0.0
+var _flow_dir := {}  ## water cell index -> current flow heading (-1 / +1)
 
 
 ## Client mode: no generation — the grid arrives from the host over the
@@ -81,7 +85,7 @@ func load_from_string(s: String) -> void:
 # ---------------------------------------------------------------- tileset ---
 
 func _build_tileset() -> void:
-	var img := Image.create(TILE * 8, TILE, false, Image.FORMAT_RGBA8)
+	var img := Image.create(TILE * 9, TILE, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -94,18 +98,14 @@ func _build_tileset() -> void:
 		for x in TILE:
 			var g := Color("4caf50").lerp(Color("2e7d32"), rng.randf() * 0.8)
 			img.set_pixel(Tile.GRASS * TILE + x, y, g)
-	# Water: translucent droplet-speckled blue — reads as particles, and the
-	# cellular flow makes the particles pour and settle.
-	_fill_tile(img, Tile.WATER, Color(0.16, 0.42, 0.78, 0.58), Color(0.13, 0.36, 0.7, 0.58), 0.25)
-	for i in 5:
-		var dx := rng.randi_range(1, TILE - 3)
-		var dy := rng.randi_range(2, TILE - 3)
-		for py in 2:
-			for px in 2:
-				img.set_pixel(Tile.WATER * TILE + dx + px, dy + py,
-					Color(0.5, 0.76, 1.0, 0.66))
-	for x in TILE:
-		img.set_pixel(Tile.WATER * TILE + x, 0, Color(0.62, 0.85, 1.0, 0.75))
+	# Water: one flat translucent color. Full tile for submerged cells,
+	# WATER_TOP (top 5px clear) for the surface so pools have a waterline.
+	for y in TILE:
+		for x in TILE:
+			img.set_pixel(Tile.WATER * TILE + x, y, WATER_COLOR)
+	for y in range(5, TILE):
+		for x in TILE:
+			img.set_pixel(Tile.WATER_TOP * TILE + x, y, WATER_COLOR)
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -121,9 +121,9 @@ func _build_tileset() -> void:
 	var square := PackedVector2Array([
 		Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h),
 	])
-	for i in 8:
+	for i in 9:
 		src.create_tile(Vector2i(i, 0))
-		if i == Tile.WATER:
+		if i == Tile.WATER or i == Tile.WATER_TOP:
 			continue  # water is swim-through: no collision polygon
 		var td := src.get_tile_data(Vector2i(i, 0), 0)
 		td.add_collision_polygon(0)
@@ -396,7 +396,7 @@ func _paint_all() -> void:
 				Cell.BEDROCK:
 					t = Tile.BEDROCK
 				Cell.WATER:
-					t = Tile.WATER
+					t = Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
 				Cell.CLAY:
 					t = Tile.CLAY
 				Cell.STONE:
@@ -433,9 +433,11 @@ func _process(delta: float) -> void:
 		_tick_water()
 
 
-## Falling-water cellular step: water drops into empty cells, slides off
-## ledges diagonally, and stacked water spreads sideways until it levels
-## out — then it sits perfectly still (and costs no bandwidth).
+## Flowing-water cellular step. Each drop: falls into air below; slides
+## down open ledges; if stacked on water it spills sideways to flatten; on
+## a solid floor it keeps flowing in its remembered direction while BOTH
+## sides are open, and settles once it touches a wall or other water.
+## Settled water is perfectly still and costs no bandwidth.
 func _tick_water() -> void:
 	var moves := []
 	# Bottom-up scan: lower water settles first, columns compact naturally.
@@ -444,40 +446,55 @@ func _tick_water() -> void:
 			continue
 		var x := idx % W
 		var y := idx / W
+		var below := _gget(x, y + 1)
+		var la := _gget(x - 1, y) == Cell.EMPTY
+		var ra := _gget(x + 1, y) == Cell.EMPTY
+		var d := int(_flow_dir.get(idx, 0))
 		var to := -1
-		if _gget(x, y + 1) == Cell.EMPTY:
-			to = (y + 1) * W + x
+		if below == Cell.EMPTY:
+			to = idx + W
 		else:
-			var dl := _gget(x - 1, y + 1) == Cell.EMPTY and _gget(x - 1, y) == Cell.EMPTY
-			var dr := _gget(x + 1, y + 1) == Cell.EMPTY and _gget(x + 1, y) == Cell.EMPTY
-			if dl and dr:
-				if rng.randf() < 0.5:
-					dr = false
+			var dl := la and _gget(x - 1, y + 1) == Cell.EMPTY
+			var dr := ra and _gget(x + 1, y + 1) == Cell.EMPTY
+			if dl or dr:
+				# A downhill ledge: slide diagonally, keeping our heading
+				# when it's still open.
+				if dl and dr:
+					if d == 0:
+						d = 1 if rng.randf() < 0.5 else -1
+				elif dl:
+					d = -1
 				else:
-					dl = false
-			if dl:
-				to = (y + 1) * W + (x - 1)
-			elif dr:
-				to = (y + 1) * W + (x + 1)
-			elif _gget(x, y + 1) == Cell.WATER:
-				# Stacked: pressure pushes the top layer sideways to level.
-				var l := _gget(x - 1, y) == Cell.EMPTY
-				var r := _gget(x + 1, y) == Cell.EMPTY
-				if l and r:
-					if rng.randf() < 0.5:
-						r = false
-					else:
-						l = false
-				if l:
-					to = y * W + (x - 1)
-				elif r:
-					to = y * W + (x + 1)
-		if to < 0:
-			continue
+					d = 1
+				to = idx + W + d
+			elif below == Cell.WATER and (la or ra):
+				# Stacked on water: spill sideways to flatten the pool.
+				if la and ra:
+					if d == 0:
+						d = 1 if rng.randf() < 0.5 else -1
+				elif la:
+					d = -1
+				else:
+					d = 1
+				to = idx + d
+			elif la and ra:
+				# Solid floor, open on both sides: keep flowing until we
+				# find a wall, a hole, or other water.
+				if d == 0:
+					d = 1 if rng.randf() < 0.5 else -1
+				to = idx + d
+			else:
+				# Bottom filled and at least one side backed by wall or
+				# water: this drop is home.
+				_flow_dir.erase(idx)
+				continue
+		_flow_dir.erase(idx)
+		if d != 0:
+			_flow_dir[to] = d
 		_grid[idx] = Cell.EMPTY
 		_grid[to] = Cell.WATER
 		erase_cell(Vector2i(x, y))
-		set_cell(Vector2i(to % W, to / W), _src_id, Vector2i(Tile.WATER, 0))
+		_repaint_water_around(idx, to)
 		moves.append([idx, to])
 		if moves.size() >= WATER_MAX_MOVES:
 			break
@@ -498,7 +515,22 @@ func apply_water_moves(moves: Array) -> void:
 			erase_cell(Vector2i(f % W, f / W))
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
-			set_cell(Vector2i(t % W, t / W), _src_id, Vector2i(Tile.WATER, 0))
+			_repaint_water_around(f, t)
+
+
+## Repaint a moved drop and its vertical neighbors: covered water uses the
+## full tile, surface water the partial one (visible waterline).
+func _repaint_water_around(from_idx: int, to_idx: int) -> void:
+	_paint_water_cell(to_idx % W, to_idx / W)
+	_paint_water_cell(to_idx % W, to_idx / W + 1)
+	_paint_water_cell(from_idx % W, from_idx / W + 1)
+
+
+func _paint_water_cell(x: int, y: int) -> void:
+	if _gget(x, y) != Cell.WATER:
+		return
+	var t := Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
+	set_cell(Vector2i(x, y), _src_id, Vector2i(t, 0))
 
 
 ## Blow a circular hole (world-space position and radius). Bedrock survives.

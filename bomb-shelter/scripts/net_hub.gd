@@ -194,10 +194,9 @@ function connect(){
    sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();syncBombs(m);}
   else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
    boom(Math.min(0.55,0.2+m.r/240));}
-  else if(m.t==="w"){if(grid&&octx)for(var i=0;i<m.m.length;i++){var f=m.m[i][0],t2=m.m[i][1];
-   if(f>=0&&f<grid.length){grid[f]=0;octx.clearRect(f%W,(f/W)|0,1,1);}
-   if(t2>=0&&t2<grid.length){grid[t2]=4;
-    octx.fillStyle=(Math.random()<0.3)?CELL2[4]:CELL[4];octx.fillRect(t2%W,(t2/W)|0,1,1);}}}
+  else if(m.t==="w"){if(grid)for(var i=0;i<m.m.length;i++){var f=m.m[i][0],t2=m.m[i][1];
+   if(f>=0&&f<grid.length)grid[f]=0;
+   if(t2>=0&&t2<grid.length)grid[t2]=4;}}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
@@ -325,8 +324,9 @@ document.getElementById("fs").addEventListener("click",function(){
 setInterval(send,2000);
 function buildTerrain(){off=document.createElement("canvas");off.width=W;off.height=H;
  octx=off.getContext("2d");grassCells=[];
- for(var r=0;r<H;r++)for(var c=0;c<W;c++){var v=grid[r*W+c];if(!v)continue;
+ for(var r=0;r<H;r++)for(var c=0;c<W;c++){var v=grid[r*W+c];if(!v||v===4)continue;
   // Grass blocks are dirt-bodied; a thin green cap is drawn on top at render.
+  // Water (4) is skipped: it renders live each frame with a waterline.
   var dv=(v===3)?1:v;
   octx.fillStyle=(Math.random()<0.3)?CELL2[dv]:CELL[dv];octx.fillRect(c,r,1,1);
   if(v===3)grassCells.push(r*W+c);}}
@@ -501,6 +501,12 @@ function render(){requestAnimationFrame(render);
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
   ctx.fillStyle="#3f9143";ctx.fillRect(gx,gy+4,TS,1.5);}
+ // Water: one flat translucent color, drawn live; surface cells start 5px
+ // down so pools show a waterline.
+ if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
+  for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
+   var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS,wo=grid[wi-W]!==4?5:0;
+   ctx.fillRect(wx2,wy2+wo,TS,TS-wo);}}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
   ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
