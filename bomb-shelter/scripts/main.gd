@@ -409,7 +409,8 @@ func _net_service() -> void:
 		var resp := -1 if Settings.one_life else int(maxf(p.respawn_left, 0.0) * 10.0)
 		ps.append([int(p.global_position.x), int(p.global_position.y),
 			1 if p.alive else 0, resp, p.deaths,
-			1 if p.armor else 0, 1 if p.stun_left > 0.0 else 0])
+			1 if p.armor else 0, 1 if p.stun_left > 0.0 else 0,
+			1 if p.kick_anim > 0.0 else 0])
 	var bs := []
 	for b in get_tree().get_nodes_in_group(&"bombs"):
 		var bomb := b as Bomb

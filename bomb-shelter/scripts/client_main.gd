@@ -302,6 +302,7 @@ func _apply_snapshot(m: Dictionary) -> void:
 			p.puppet_stunned = stun_flag == 1
 		else:
 			p.puppet_stunned = false
+		p.puppet_kicking = arr.size() > 7 and int(arr[7]) == 1
 		if was and not p.alive:
 			var rd := Ragdoll.new()
 			rd.color = p.player_color

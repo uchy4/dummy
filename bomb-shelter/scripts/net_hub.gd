@@ -303,6 +303,7 @@ var lastTap={t:-1e9,x:0,y:0};
 // in the facing direction. Enables one-thumb jump-kick play.
 function sendKick(dx,dy,p){
  if(ws&&ws.readyState===1&&joined)
+  KANIM=performance.now();
   ws.send(JSON.stringify({t:"k",dx:Math.round(dx*100)/100,dy:Math.round(dy*100)/100,p:p}));
  predictKick(dx,dy,p);}
 function tap(x,y){var now=performance.now();
@@ -375,10 +376,10 @@ document.getElementById("fs").addEventListener("click",function(){
  }catch(err){}});
 setInterval(send,2000);
 // Offscreen pixels per cell: room to chamfer corners (3 subpx = 6 world px).
-var PXC=8;var TSCORCH={};var RIPPLES=[];
+var PXC=8;var TSCORCH={};var RIPPLES=[];var KANIM=0;
 function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
 // (Re)paint one cell: deterministic light/dark speckle, blast-scorch
-// darkening (50%), 45-degree chamfered corners wherever both adjacent
+// darkening (25%), 45-degree chamfered corners wherever both adjacent
 // sides are open, and anti-bevel fills in empty inside corners — matches
 // the native tiles.
 function paintCell(r,c){var i=r*W+c,v=grid[i];
@@ -394,7 +395,7 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
   var colFor=function(rr2,cc2){var cf;
    if(rr2<0||rr2>=H||cc2<0||cc2>=W)cf=CELL[2];
    else{var vv=grid[rr2*W+cc2];vv=(vv===3)?1:vv;cf=CELL[vv]||CELL[1];}
-   return sc2?shade(cf,0.5):cf;};
+   return sc2?shade(cf,0.75):cf;};
   var tri=function(a,b,c3){octx.beginPath();octx.moveTo(a[0],a[1]);
    octx.lineTo(b[0],b[1]);octx.lineTo(c3[0],c3[1]);octx.closePath();octx.fill();};
   var fb=3,fx3=c*PXC,fy3=r*PXC,fs=PXC;
@@ -409,7 +410,7 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
   return;}
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
  var col=(hh%100<30)?CELL2[dv]:CELL[dv];
- octx.fillStyle=TSCORCH[i]?shade(col,0.5):col;
+ octx.fillStyle=TSCORCH[i]?shade(col,0.75):col;
  var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
  var bd=3,bnw=up&&lf?bd:0,bne=up&&rt?bd:0,bse=dn&&rt?bd:0,bsw=dn&&lf?bd:0;
  var bx=c*PXC,by=r*PXC,s=PXC;
@@ -600,12 +601,13 @@ function lw(c,f){return "rgb("+((c[0]+(255-c[0])*f)|0)+","+((c[1]+(255-c[1])*f)|
 function limbW(x,y,ax,ay,ang,len,col,f){ctx.save();ctx.translate(x+ax*f,y+ay);ctx.rotate(ang*f);
  ctx.fillStyle="#000";ctx.fillRect(-3,-1,6,len+2);
  ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);ctx.restore();}
-function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng){
+function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  var c=rgbOf(col),armc=mul(c,0.85),legc=mul(c,0.65);
  var ra,la,rl,ll,lx;
  if(stun){ctx.save();ctx.translate(x,y);ctx.rotate(stAng||1.1*face);ctx.translate(-x,-y);
   var wb=Math.sin(performance.now()/95)*0.45,wb2=Math.cos(performance.now()/120)*0.4;
   ra=-2.0+wb;la=1.4+wb2;rl=-0.9-wb2;ll=0.5+wb;lx=2;}
+ else if(kick){ra=-0.6;la=0.6;rl=0.3;ll=-1.9;lx=2.5;}// leg out toward facing
  else if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
  else{ra=swing;la=-swing;rl=-swing;ll=swing;lx=3;}
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
@@ -788,7 +790,8 @@ function render(){requestAnimationFrame(render);
    a.tum=(a.tum||0)+pdt*(2.5+Math.min(spd*0.03,9))*(a.face||1);
    stAng=spd>50?a.tum:1.1*(a.face||1);}
   else a.tum=0;
-  drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air,stn,stAng);
+  var kck=(p.length>7&&p[7]===1)||(i===you&&t0-KANIM<250);
+  drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air,stn,stAng,kck);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;

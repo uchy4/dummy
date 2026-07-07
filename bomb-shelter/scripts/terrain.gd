@@ -71,7 +71,7 @@ var _grid := PackedByteArray()
 var _src_id := 0
 var _water_acc := 0.0
 ## Blast scorch per surviving cell: index -> 1. Blocks the blast touched
-## but didn't destroy darken to 50% brightness, permanently.
+## but didn't destroy darken by 25%, permanently.
 var _scorch := {}
 ## Draws the liquid: every water cell as an enlarged rounded quad
 ## (overlapping neighbors by a third of a tile) inside a CanvasGroup, so
@@ -138,7 +138,7 @@ const BEVEL_R := 6.0
 func _build_tileset() -> void:
 	# 12 materials wide x 64 rows tall: rows 0-15 are the corner-mask
 	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW cut), rows 16-31
-	# repeat them blast-scorched (x0.5 brightness), rows 32-47 are the
+	# repeat them blast-scorched (x0.75 brightness), rows 32-47 are the
 	# anti-bevel fills — JUST the cut triangles, painted into empty
 	# inside-corner cells so facing bevels join into one continuous slant —
 	# and rows 48-63 are those fills scorched. Land cuts are 45-degree
@@ -184,7 +184,8 @@ func _build_tileset() -> void:
 					if _corner_cut(mask, x, y):
 						col = Color(0, 0, 0, 0)
 					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
-	# Scorch: rows 16-31 are the mask rows at half brightness. Anti-bevel
+	# Scorch: rows 16-31 are the mask rows lightly sooted (25% darker).
+	# Anti-bevel
 	# fills: rows 32-47 keep ONLY the chamfer-triangle pixels; rows 48-63
 	# are those fills at half brightness (chips inside blast range char
 	# like everything else).
@@ -196,14 +197,14 @@ func _build_tileset() -> void:
 				for x in TILE:
 					var col := img.get_pixel(mat * TILE + x, mask * TILE + y)
 					img.set_pixel(mat * TILE + x, (16 + mask) * TILE + y,
-						Color(col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a))
+						Color(col.r * 0.75, col.g * 0.75, col.b * 0.75, col.a))
 					if mask > 0:
 						var base := img.get_pixel(mat * TILE + x, y)
 						if not _corner_cut(mask, x, y):
 							base = Color(0, 0, 0, 0)
 						img.set_pixel(mat * TILE + x, (32 + mask) * TILE + y, base)
 						img.set_pixel(mat * TILE + x, (48 + mask) * TILE + y,
-							Color(base.r * 0.5, base.g * 0.5, base.b * 0.5, base.a))
+							Color(base.r * 0.75, base.g * 0.75, base.b * 0.75, base.a))
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -1140,9 +1141,9 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) <= radius:
 				_gset(x, y, Cell.EMPTY)
 				erase_cell(Vector2i(x, y))
-	# Everything the blast touched (one tile past the carve edge) scorches
-	# to 50% brightness, permanently — including empty cells, so their
-	# anti-bevel fill chips char along with the blocks around them.
+	# Everything the blast touched (one tile past the carve edge) soots
+	# 25% darker, permanently — including empty cells, so their anti-bevel
+	# fill chips char along with the blocks around them.
 	var r1 := r + 1
 	for y in range(maxi(c.y - r1, 0), mini(c.y + r1 + 1, H)):
 		for x in range(maxi(c.x - r1, 0), mini(c.x + r1 + 1, W)):

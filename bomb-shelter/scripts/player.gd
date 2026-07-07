@@ -77,6 +77,11 @@ var _was_on_floor := true
 var _fall_speed := 0.0
 var _step_sign := 0
 var _dizzy_phase := 0.0  ## orbit angle for the stunned dizzy-stars doodle
+## Kick pose timer: the leading leg snaps out toward the facing direction
+## for a beat. Streamed to clients as snapshot flag index 7; puppets set
+## puppet_kicking from it instead.
+var kick_anim := 0.0
+var puppet_kicking := false
 var _impact_stun_cd := 0.0  ## grace so the slide-loop and bomb contacts don't double-stun
 var _a_left: StringName
 var _a_right: StringName
@@ -191,6 +196,7 @@ func _physics_process(delta: float) -> void:
 			modulate.a = 1.0
 
 	_impact_stun_cd -= delta
+	kick_anim = maxf(kick_anim - delta, 0.0)
 
 	var was_stunned := stun_left > 0.0
 	if was_stunned:
@@ -369,6 +375,8 @@ func queue_kick(dir: Vector2, power: float) -> void:
 func _do_kick_dir(dir: Vector2, power: float) -> void:
 	if absf(dir.x) > 0.2:
 		_facing = 1 if dir.x > 0.0 else -1
+	kick_anim = 0.25
+	queue_redraw()
 	var center := global_position + Vector2(_facing * 10.0, 0.0)
 	var hit := false
 	for b in get_tree().get_nodes_in_group(&"bombs"):
@@ -583,6 +591,14 @@ func _draw() -> void:
 		r_leg = -0.9
 		l_leg = 0.5
 		leg_x = 2.0
+	elif kick_anim > 0.0 or puppet_kicking:
+		# Kick: the front leg snaps out toward the facing side, arms
+		# counter-swinging (mirrored with the rest of the pose by f).
+		r_arm = -0.6
+		l_arm = 0.6
+		r_leg = 0.3
+		l_leg = -1.9
+		leg_x = 2.5
 	elif airborne:
 		# Jump: arms up in a Y, feet together and straight.
 		r_arm = -2.5
