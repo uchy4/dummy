@@ -186,22 +186,24 @@ func _draw_bathroom(r: Rect2) -> void:
 	draw_rect(Rect2(tx, r.position.y + 18, 7, 2), Color("a84a41"))
 
 
-## Pens: warm barn wall strewn with hay, plus support beams.
+## Pens: horizontal wooden slat cladding, like the inside of a barn.
 func _draw_pen(r: Rect2) -> void:
-	draw_rect(r, Color("6b4a26"))
-	var yy := r.position.y + 5.0
+	draw_rect(r, Color("5a3d22"))
+	var yy := r.position.y
 	var row := 0
-	while yy < r.end.y - 3.0:
-		var xx := r.position.x + (4.0 if row % 2 == 0 else 10.0)
-		while xx < r.end.x - 7.0:
-			draw_line(Vector2(xx, yy + 3), Vector2(xx + 6, yy),
-				Color(0.9, 0.77, 0.4, 0.85), 1.4)
-			draw_line(Vector2(xx + 2, yy), Vector2(xx + 7, yy + 3),
-				Color(0.82, 0.68, 0.32, 0.65), 1.2)
-			xx += 12.0
+	while yy < r.end.y:
+		var h := minf(9.0, r.end.y - yy)
+		var plank := Color("7a5230") if row % 2 == 0 else Color("6d4826")
+		draw_rect(Rect2(r.position.x, yy, r.size.x, h - 1.5), plank)
+		# Board seams and a few nail heads.
+		var seam_x := r.position.x + (14.0 if row % 2 == 0 else 34.0)
+		while seam_x < r.end.x - 4.0:
+			draw_line(Vector2(seam_x, yy), Vector2(seam_x, yy + h - 1.5),
+				Color("4a3118"), 1.2)
+			draw_circle(Vector2(seam_x - 4.0, yy + h * 0.45), 0.9, Color("3c2917"))
+			seam_x += 40.0
 		yy += 9.0
 		row += 1
-	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 4.0), Color("54381f"))
 	draw_rect(Rect2(r.position.x + r.size.x * 0.5 - 2, r.position.y, 4.0, r.size.y),
 		Color("4a3118"))
 

@@ -85,6 +85,38 @@ func _build_outhouse() -> void:
 	marker.position = _outhouse_local
 	add_child(marker)
 
+	# The well: hand pump on the surface, pipe straight down to the buried
+	# reservoir (pipe is pure cutaway art, drawn over the ground).
+	if terrain.pump_cell != Vector2i.ZERO:
+		var pump := Fixture.new()
+		pump.kind = Fixture.Kind.PUMP
+		pump.position = Vector2((float(terrain.pump_cell.x) + 0.5) * TILE,
+			float(terrain.pump_cell.y) * TILE - 10.0)
+		add_child(pump)
+		if terrain.reservoir_rect.size.x > 0:
+			var pipe := PipeArt.new()
+			pipe.top = Vector2(pump.position.x, float(terrain.pump_cell.y) * TILE)
+			pipe.bottom_y = float(terrain.reservoir_rect.position.y) * TILE + 4.0
+			add_child(pipe)
+
+
+## Cutaway art: the well pipe running from the pump down into the ground.
+class PipeArt:
+	extends Node2D
+	var top := Vector2.ZERO
+	var bottom_y := 0.0
+
+	func _ready() -> void:
+		z_index = 1  # over terrain, under players/bombs
+
+	func _draw() -> void:
+		draw_line(top, Vector2(top.x, bottom_y), Color("23303a"), 6.0)
+		draw_line(top, Vector2(top.x, bottom_y), Color("41525f"), 3.0)
+		var y := top.y + 22.0
+		while y < bottom_y - 8.0:
+			draw_rect(Rect2(top.x - 4.0, y, 8.0, 3.0), Color("2c3c48"))
+			y += 34.0
+
 
 # -------------------------------------------------------------- kitchen ---
 
@@ -144,8 +176,8 @@ func _build_bathroom(rect: Rect2i) -> void:
 	var left := float(rect.position.x) * TILE
 	var right := float(rect.end.x) * TILE
 
-	var toilet := Fixture.new()
-	toilet.kind = Fixture.Kind.TOILET
+	# Fully physical: falls, tips, launches — and squirts on every hit.
+	var toilet := Toilet.new()
 	toilet.position = Vector2(left + 14.0, floor_y - 9.0)
 	add_child(toilet)
 

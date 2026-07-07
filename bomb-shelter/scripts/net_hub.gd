@@ -128,8 +128,8 @@ var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
-var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6b4a26"];
-var SCORCH={};
+var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6d4826"];
+var SCORCH={};var PIPE=null;
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -198,7 +198,7 @@ function connect(){
   else if(m.t==="w"){if(grid)for(var i=0;i<m.m.length;i++){var f=m.m[i][0],t2=m.m[i][1];
    if(f>=0&&f<grid.length)grid[f]=0;
    if(t2>=0&&t2<grid.length)grid[t2]=4;}}
-  else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];
+  else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
    buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];SCORCH={};predOK=false;}
@@ -505,6 +505,10 @@ function render(){requestAnimationFrame(render);
  ctx.fillStyle="rgba(0,0,0,0.5)";
  for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
+ // Well pipe: cutaway art from the pump down to the reservoir.
+ if(PIPE){var px2=(PIPE[0]+0.5)*TS;
+  ctx.fillStyle="#23303a";ctx.fillRect(px2-3,PIPE[1]*TS,6,(PIPE[2]-PIPE[1])*TS+4);
+  ctx.fillStyle="#41525f";ctx.fillRect(px2-1.5,PIPE[1]*TS,3,(PIPE[2]-PIPE[1])*TS+4);}
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
@@ -643,7 +647,12 @@ function drawProp(k){
   ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-18,36,42);
   ctx.fillStyle="#6d4423";ctx.fillRect(-19,-24,38,7);
   ctx.fillStyle="#241a10";ctx.fillRect(-7,-6,14,30);
-  ctx.fillStyle="#f4e6b0";ctx.beginPath();ctx.arc(0,-11,2.5,0,7);ctx.fill();}}
+  ctx.fillStyle="#f4e6b0";ctx.beginPath();ctx.arc(0,-11,2.5,0,7);ctx.fill();}
+ else if(k===10){ctx.fillStyle="#000";ctx.fillRect(-4,-10,8,20);
+  ctx.fillStyle="#3e6b4f";ctx.fillRect(-3,-9,6,18);
+  ctx.fillStyle="#2f523c";ctx.fillRect(-8,-7,6,3);ctx.fillRect(-8,-4,2.5,2);
+  ctx.strokeStyle="#263e2e";ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(2,-9);ctx.lineTo(8,-13);ctx.stroke();}}
 // Show the "Add to Home Screen" hint only in a normal browser tab, not when
 // already launched as an installed home-screen app.
 (function(){try{var standalone=window.navigator.standalone===true||

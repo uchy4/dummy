@@ -370,6 +370,8 @@ func _net_service() -> void:
 				"t": "init", "w": Terrain.W, "h": Terrain.H, "ts": Terrain.TILE,
 				"surf": Terrain.SURFACE_ROW, "fin": int(terrain.finish_line_rect().position.y),
 				"grid": terrain.grid_string(), "rooms": rooms,
+				"pipe": [terrain.pump_cell.x, terrain.pump_cell.y,
+					terrain.reservoir_rect.position.y],
 			})
 			NetHub.send_to(id, _roster_msg())
 			if web_players.has(id):

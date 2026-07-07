@@ -50,6 +50,12 @@ var bunker_rooms := {}
 var outhouse_cell := Vector2i.ZERO
 ## The 5x5 checkered finish chamber at the bottom center.
 var finish_room := Rect2i()
+## The hand pump beside the outhouse and the reservoir its pipe feeds from.
+var pump_cell := Vector2i.ZERO
+var reservoir_rect := Rect2i()
+## Random generation (caves/shafts/tunnels) never carves inside this zone —
+## the bunker must not give way to pits.
+var _gen_guard := Rect2i()
 
 var _grid := PackedByteArray()
 var _src_id := 0
@@ -171,10 +177,11 @@ func _generate() -> void:
 	for band: Array in bands:
 		var centers: Array[Vector2i] = []
 		for i in rng.randi_range(2, 3):
+			# Wide, flat caverns: caves (and their pools) spread horizontally.
 			var room := {
-				"c": Vector2i(rng.randi_range(10, W - 10), rng.randi_range(band[0] + 4, band[1] - 4)),
-				"rw": rng.randi_range(5, 9),
-				"rh": rng.randi_range(3, 5),
+				"c": Vector2i(rng.randi_range(14, W - 14), rng.randi_range(band[0] + 3, band[1] - 3)),
+				"rw": rng.randi_range(9, 16),
+				"rh": rng.randi_range(2, 3),
 			}
 			_carve_ellipse(room.c, room.rw, room.rh)
 			all_rooms.append(room)
@@ -315,6 +322,30 @@ func _build_bunker() -> void:
 	for y in range(pen_top + 2, pen_top + room_h):
 		_gset(fence_x, y, Cell.STONE)
 
+	# Protect the whole complex from random generation: caves, shafts and
+	# tunnels must never open pits into (or under) the bunker.
+	var gmin := Vector2i(1000000, SURFACE_ROW)
+	var gmax := Vector2i(-1000000, 0)
+	for guard_name in bunker_rooms:
+		var gr: Rect2i = bunker_rooms[guard_name]
+		gmin.x = mini(gmin.x, gr.position.x)
+		gmax.x = maxi(gmax.x, gr.end.x)
+		gmax.y = maxi(gmax.y, gr.end.y)
+	_gen_guard = Rect2i(gmin.x - 2, SURFACE_ROW,
+		(gmax.x - gmin.x) + 4, (gmax.y - SURFACE_ROW) + 3)
+
+	# The well: a hand pump on the far side of the outhouse, a pipe straight
+	# down (drawn by the props layer), and a wide underground reservoir.
+	var px := maxi(outhouse_cell.x - 4, 2)
+	pump_cell = Vector2i(px, SURFACE_ROW)
+	reservoir_rect = Rect2i(maxi(px - 6, 2), 46, 13, 3)
+	for y in range(reservoir_rect.position.y, reservoir_rect.end.y):
+		for x in range(reservoir_rect.position.x, reservoir_rect.end.x):
+			if _gget(x, y) != Cell.BEDROCK:
+				_gset(x, y, Cell.WATER)
+	# The guard also shields the well system from random generation.
+	_gen_guard = _gen_guard.merge(reservoir_rect.grow(2))
+
 
 ## The finish chamber: a 5x5 checkered room at the bottom center, floored
 ## by bedrock. Reaching it IS winning the depth race.
@@ -390,6 +421,9 @@ func _carve_cell(x: int, y: int) -> void:
 	# Generation never touches the sky or the crust — the top CRUST_ROWS of
 	# ground stay solid until bombs excavate them at runtime.
 	if y < SURFACE_ROW + CRUST_ROWS:
+		return
+	# ...and never undermines the bunker: no pits or caves give way there.
+	if _gen_guard.has_point(Vector2i(x, y)):
 		return
 	if _gget(x, y) != Cell.BEDROCK:
 		_gset(x, y, Cell.EMPTY)

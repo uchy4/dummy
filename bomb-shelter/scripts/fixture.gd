@@ -13,7 +13,7 @@ extends StaticBody2D
 ## The lead's kick loop should call `kicked()` on group "fixtures" members in
 ## range; the blast loop already calls `blast_destroy()` on group "chests".
 
-enum Kind { TOILET, SHOWER }
+enum Kind { TOILET, SHOWER, PUMP }
 
 var kind := Kind.TOILET
 ## Streamed to web viewers as [x, y, kind, rotation]; kept in sync with `kind`.
@@ -33,7 +33,13 @@ var _dribble_accum := 0.0
 
 
 func _ready() -> void:
-	prop_kind = 4 if kind == Kind.TOILET else 5
+	match kind:
+		Kind.TOILET:
+			prop_kind = 4
+		Kind.SHOWER:
+			prop_kind = 5
+		Kind.PUMP:
+			prop_kind = 10
 	add_to_group(&"props")
 	add_to_group(&"fixtures")
 	add_to_group(&"chests")  # blast loop calls blast_destroy() on this group
@@ -43,7 +49,13 @@ func _ready() -> void:
 
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
-	rs.size = Vector2(16, 18) if kind == Kind.TOILET else Vector2(6, 26)
+	match kind:
+		Kind.TOILET:
+			rs.size = Vector2(16, 18)
+		Kind.SHOWER:
+			rs.size = Vector2(6, 26)
+		Kind.PUMP:
+			rs.size = Vector2(10, 20)
 	cs.shape = rs
 	add_child(cs)
 
@@ -71,6 +83,8 @@ func kicked() -> void:
 	match kind:
 		Kind.TOILET:
 			_squirt()
+		Kind.PUMP:
+			_pump_squirt()
 		Kind.SHOWER:
 			if _shower_timer >= 0.0:
 				_shower_timer = -1.0
@@ -85,9 +99,22 @@ func blast_destroy() -> void:
 	match kind:
 		Kind.TOILET:
 			_squirt()
+		Kind.PUMP:
+			_pump_squirt(2.0)
 		Kind.SHOWER:
 			_spray_down(1.6)
 			_dribbling = true
+
+
+## The well pump gushes from its spout when kicked.
+func _pump_squirt(mult := 1.0) -> void:
+	var spray := WaterSpray.new()
+	spray.dir = Vector2(-0.55, -0.85).normalized()
+	spray.amount = int(16 * mult)
+	spray.spread = 0.45
+	spray.speed = 210.0 * mult
+	spray.global_position = global_position + Vector2(-6, -5)
+	get_parent().add_child.call_deferred(spray)
 
 
 func _squirt() -> void:
@@ -120,6 +147,18 @@ func _draw() -> void:
 			_draw_toilet()
 		Kind.SHOWER:
 			_draw_shower()
+		Kind.PUMP:
+			_draw_pump()
+
+
+func _draw_pump() -> void:
+	draw_rect(Rect2(-4, -10, 8, 20), Color.BLACK)                # outline
+	draw_rect(Rect2(-3, -9, 6, 18), Color("3e6b4f"))             # cast body
+	draw_rect(Rect2(-8, -7, 6, 3), Color("2f523c"))              # spout
+	draw_rect(Rect2(-8, -4, 2.5, 2), Color("2f523c"))            # spout lip
+	draw_line(Vector2(2, -9), Vector2(8, -13), Color("263e2e"), 2.5)  # handle
+	draw_circle(Vector2(8, -13), 1.6, Color("263e2e"))
+	draw_rect(Rect2(-6, 9, 12, 2), Color("54381f"))              # base plank
 
 
 func _draw_toilet() -> void:
