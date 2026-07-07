@@ -23,6 +23,8 @@ var _status: Label
 var _win_label: Label
 var _hud: CanvasLayer
 var _sent_a := 0.0
+var _snap_dt := 0.033
+var _last_snap_ms := 0
 var _sent_j := false
 var _sent_k := false
 
@@ -98,6 +100,8 @@ func _animate_puppets(delta: float) -> void:
 		var p := players[i]
 		if not is_instance_valid(p):
 			continue
+		if i == my_index and not p.puppet and not p.remote_hold:
+			continue  # locally simulated: it moves and animates itself
 		var target := _ptargets[i]
 		if p.global_position.distance_to(target) > 150.0:
 			p.global_position = target
@@ -125,14 +129,7 @@ func _animate_puppets(delta: float) -> void:
 		else:
 			p.rotation = 0.0
 		p.queue_redraw()
-	for i in bombs.size():
-		var b := bombs[i]
-		if not is_instance_valid(b):
-			continue
-		if b.global_position.distance_to(_btargets[i]) > 120.0:
-			b.global_position = _btargets[i]
-		else:
-			b.global_position = b.global_position.lerp(_btargets[i], k)
+	# Bombs are physics-simulated locally now — no lerp needed.
 
 
 func _send_inputs() -> void:
@@ -142,6 +139,8 @@ func _send_inputs() -> void:
 		a = 0.0
 	var j := Input.is_action_pressed(&"p1_jump")
 	var kk := Input.is_action_pressed(&"p1_kick")
+	if kk and not _sent_k:
+		_predict_kick(Vector2.ZERO, 1.0)  # classic kick: instant local feedback
 	if a != _sent_a or j != _sent_j or kk != _sent_k:
 		_sent_a = a
 		_sent_j = j
@@ -208,12 +207,20 @@ func _apply_roster(list: Array) -> void:
 
 
 func _apply_snapshot(m: Dictionary) -> void:
+	var now_ms := Time.get_ticks_msec()
+	if _last_snap_ms > 0:
+		_snap_dt = clampf(float(now_ms - _last_snap_ms) / 1000.0, 0.016, 0.12)
+	_last_snap_ms = now_ms
+	_ensure_local_player()
 	var ps: Array = m.get("p", [])
 	for i in mini(ps.size(), players.size()):
 		var arr: Array = ps[i]
 		_plast[i] = _ptargets[i]
 		_ptargets[i] = Vector2(float(arr[0]), float(arr[1]))
 		var p := players[i]
+		if i == my_index and not p.puppet:
+			_reconcile_local(p, arr)
+			continue
 		var was := p.alive
 		p.alive = int(arr[2]) == 1
 		p.visible = p.alive
@@ -256,11 +263,26 @@ func _apply_snapshot(m: Dictionary) -> void:
 		elif i >= bombs.size():
 			bombs.append(_make_puppet_bomb(btype, brad, Vector2(float(arr[0]), float(arr[1]))))
 			_btargets.append(bombs[i].position)
-		_btargets[i] = Vector2(float(arr[0]), float(arr[1]))
-		bombs[i].fuse = float(arr[3]) / 10.0
+		# Locally-simulated bombs: derive velocity from successive snapshot
+		# positions, correct drift, and let the physics engine roll them at
+		# 60fps between corrections.
+		var nt := Vector2(float(arr[0]), float(arr[1]))
+		var bb := bombs[i]
+		var vel := (nt - _btargets[i]) / _snap_dt
+		if vel.length() > 900.0:
+			vel = vel.normalized() * 900.0
+		bb.linear_velocity = vel
+		var berr := nt - bb.global_position
+		if berr.length() > 70.0:
+			bb.global_position = nt
+			bb.reset_physics_interpolation()
+		else:
+			bb.global_position += berr * 0.3
+		_btargets[i] = nt
+		bb.fuse = float(arr[3]) / 10.0
 		if arr.size() > 5:
 			var fz: int = arr[5]
-			bombs[i].fizzled = fz == 1
+			bb.fizzled = fz == 1
 
 	var cs: Array = m.get("c", [])
 	while chests.size() > cs.size():
@@ -279,12 +301,98 @@ func _apply_snapshot(m: Dictionary) -> void:
 
 func _make_puppet_bomb(btype: int, brad: float, pos: Vector2) -> Bomb:
 	var b := Bomb.new()
-	b.puppet = true
+	b.sim_puppet = true  # real local physics, host-corrected
+	b.terrain = terrain
 	b.type = btype as Bomb.Type
 	b.is_bomblet = btype == Bomb.Type.CLUSTER and brad < 7.0
 	b.position = pos
 	world.add_child(b)
 	return b
+
+
+## Swap this device's roster puppet for a real, locally-simulated Player:
+## input applies instantly with full native movement feel (coyote time,
+## water, everything) and the host stream just reconciles — the same
+## treatment the web client already has.
+func _ensure_local_player() -> void:
+	if my_index < 0 or my_index >= players.size():
+		return
+	var pup := players[my_index]
+	if not is_instance_valid(pup) or not pup.puppet:
+		return
+	var lp := Player.new()
+	lp.name = "LocalPlayer"
+	lp.setup(0, pup.player_color)  # drives from the p1_* input actions
+	lp.set_colors(pup.player_color, pup.color2)
+	lp.display_name = pup.display_name
+	lp.world_bounds = Rect2(-100000, -100000, 200000, 200000)  # host decides deaths
+	lp.position = pup.position
+	world.add_child(lp)
+	pup.queue_free()
+	players[my_index] = lp
+	if camera:
+		camera.focus_target = lp
+
+
+## Reconcile the locally-simulated player against the host snapshot.
+func _reconcile_local(p: Player, arr: Array) -> void:
+	var target := Vector2(float(arr[0]), float(arr[1]))
+	var was := p.alive
+	var alive_now := int(arr[2]) == 1
+	if arr.size() > 5:
+		p.armor = int(arr[5]) == 1
+	var stunned := arr.size() > 6 and int(arr[6]) == 1
+	var had_hold := p.remote_hold
+	p.alive = alive_now
+	p.visible = alive_now
+	p.puppet_stunned = stunned
+	p.remote_hold = (not alive_now) or stunned
+	if was and not alive_now:
+		var rd := Ragdoll.new()
+		rd.color = p.player_color
+		rd.color2 = p.color2
+		rd.position = target
+		world.add_child(rd)
+		get_tree().call_group(&"sfx", &"play_splat", target)
+	if not alive_now:
+		_status.text = "ELIMINATED — spectating" if int(arr[3]) < 0 \
+			else "respawn in %.1f" % (float(arr[3]) / 10.0)
+	else:
+		_status.text = ""
+	if p.remote_hold:
+		return  # _animate_puppets lerps us along the host stream
+	if had_hold:
+		# Just got back control (respawn / stun over): resume from host truth.
+		p.global_position = target
+		p.velocity = Vector2.ZERO
+		p.rotation = 0.0
+		p.reset_physics_interpolation()
+		return
+	var err := target - p.global_position
+	if err.length() > 90.0:
+		p.global_position = target
+		p.velocity = Vector2.ZERO
+		p.reset_physics_interpolation()
+	else:
+		p.global_position += err * 0.22
+
+
+## Local kick feedback: fling nearby simulated bombs the moment we kick —
+## the host snapshot corrects any difference a beat later.
+func _predict_kick(dir: Vector2, power: float) -> void:
+	if my_index < 0 or my_index >= players.size():
+		return
+	var p := players[my_index]
+	if not is_instance_valid(p) or p.puppet or p.remote_hold:
+		return
+	var fdir := dir
+	if fdir == Vector2.ZERO:
+		fdir = Vector2(float(p._facing), -1).normalized()
+	var center := p.global_position + Vector2(float(p._facing) * 10.0, 0)
+	for b in bombs:
+		if is_instance_valid(b) \
+				and center.distance_to(b.global_position) <= 30.0 + b._body_radius:
+			b.linear_velocity = fdir * Settings.kick_bomb_power * power
 
 
 func _clear_entities() -> void:
@@ -416,3 +524,4 @@ func _on_gesture_kick(dir: Vector2, power: float) -> void:
 		ws.send_text(JSON.stringify({"t": "k",
 			"dx": snappedf(d.x, 0.01), "dy": snappedf(d.y, 0.01),
 			"p": snappedf(power, 0.01)}))
+	_predict_kick(d, power)

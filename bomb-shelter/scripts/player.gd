@@ -48,6 +48,11 @@ var puppet := false
 var puppet_on_floor := true
 var puppet_stunned := false  ## host says this puppet is ragdoll-stunned
 
+## Client prediction hold: while the host owns this body's motion (dead,
+## or riding a stun ragdoll), the local simulation pauses and the client
+## lerps us along the snapshot stream instead.
+var remote_hold := false
+
 ## Ragdoll-stun: seconds left before the player gets back up. Set via
 ## apply_stun()/apply_impact_stun(); input is ignored while it's positive.
 var stun_left := 0.0
@@ -141,6 +146,9 @@ func on_ground() -> bool:
 
 func _physics_process(delta: float) -> void:
 	if puppet:
+		return
+	if remote_hold:
+		queue_redraw()
 		return
 	if not alive:
 		if not Settings.one_life:

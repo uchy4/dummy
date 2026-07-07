@@ -52,6 +52,11 @@ var _drill_carve_acc := 0.0
 ## Puppet: display-only mirror on a LAN-join client. Frozen, no fuse logic —
 ## the host streams position and fuse.
 var puppet := false
+## Client-side simulated puppet: real physics run locally (gravity, rolls,
+## terrain bounces at 60fps, water drag) so motion is smooth between host
+## snapshots — but no fuse/blast/type logic; the host owns outcomes and
+## its stream corrects position.
+var sim_puppet := false
 
 ## Duds (Settings.duds_enabled, ~10%): the fuse fizzles out instead of
 ## detonating — but a nearby blast's concussion re-arms them. Fizzled duds
@@ -121,6 +126,9 @@ func _ready() -> void:
 		freeze = true
 		collision_layer = 0
 		collision_mask = 0
+	elif sim_puppet:
+		collision_layer = 0
+		collision_mask = 1  # rolls off terrain; never blocks anyone locally
 	else:
 		# Lets us catch the reverse impact-stun case: a fast bomb slamming
 		# into a standing player, which never shows up in the player's own
@@ -189,6 +197,17 @@ func _process(_delta: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _exploded or puppet:
+		return
+	if sim_puppet:
+		# Physics only: water drag mirrors the host, everything else is
+		# the engine rolling us around between snapshot corrections.
+		if terrain != null:
+			if terrain.is_water(global_position):
+				linear_damp = 3.0
+				gravity_scale = 0.4
+			else:
+				linear_damp = 0.0
+				gravity_scale = 1.0
 		return
 	if kicker_grace > 0.0:
 		kicker_grace -= delta
