@@ -607,12 +607,12 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  if(stun){ctx.save();ctx.translate(x,y);ctx.rotate(stAng||1.1*face);ctx.translate(-x,-y);
   var wb=Math.sin(performance.now()/95)*0.45,wb2=Math.cos(performance.now()/120)*0.4;
   ra=-2.0+wb;la=1.4+wb2;rl=-0.9-wb2;ll=0.5+wb;lx=2;}
- else if(kick){ra=-0.6;la=0.6;rl=0;ll=-1.6;lx=3;llen=14;}// support leg straight, kick leg out
+ else if(kick){ra=-0.6;la=0.6;rl=0;ll=-0.79;lx=3;llen=14;}// support straight, kick leg 45deg
  else if(air){ra=-2.5;la=2.5;rl=0;ll=0;lx=1.5;}
  else{ra=swing;la=-swing;rl=-swing;ll=swing;lx=3;}
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
  limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
- limbW(x,y,-lx,2,ll,llen,legc,face);             // front leg
+ if(!kick)limbW(x,y,-lx,2,ll,llen,legc,face);    // front leg
  ctx.fillStyle="#000";                            // torso/head silhouette
  ctx.fillRect(x-7,y-8,14,12);ctx.fillRect(x-6,y-16,12,11);ctx.fillRect(x-7,y-18,14,6);
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
@@ -624,6 +624,7 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
  ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);
  limbW(x,y,-5,-6,la,10,armc,face);               // front arm
+ if(kick)limbW(x,y,-lx,2,ll,llen,legc,face);     // kicking leg tops the stack
  if(stun){ctx.restore();                          // dizzy stars, drawn upright
   var ph=performance.now()/180;
   ctx.fillStyle="rgba(255,255,255,.9)";
