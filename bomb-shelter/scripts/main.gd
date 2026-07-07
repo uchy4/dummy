@@ -34,11 +34,10 @@ var _bounds := Rect2()
 var _roster_dirty := true
 var _snap_tick := 0
 
-## Elimination wins are declared after a short delay so the final death's
+## The all-dead ending is declared after a short delay so the final death's
 ## ragdoll gets to tumble before the world freezes.
 const WIN_DELAY := 1.8
 var _win_timer := -1.0
-var _win_player: Player = null
 
 
 func _enter_tree() -> void:
@@ -258,20 +257,16 @@ func _reset_players() -> void:
 
 
 func _build_finish() -> void:
+	# The checkered chamber is painted by RoomDecor; this is the win sensor.
 	var fr := terrain.finish_line_rect()
-
-	var strip := FinishLine.new()
-	strip.rect = fr
-	world.add_child(strip)
-
 	var area := Area2D.new()
 	area.collision_layer = 0
 	area.collision_mask = 2
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
-	rs.size = fr.size + Vector2(0, 12)  # a bit taller so a running player can't skip it
+	rs.size = fr.size
 	cs.shape = rs
-	area.position = fr.get_center() - Vector2(0, 6)
+	area.position = fr.get_center()
 	area.add_child(cs)
 	area.body_entered.connect(_on_finish_entered)
 	world.add_child(area)
@@ -281,55 +276,53 @@ func _on_finish_entered(body: Node2D) -> void:
 	var p := body as Player
 	if game_over or p == null or not p.alive:
 		return
-	_declare_winner(p, "Reached the finish line")
+	# Reaching the checkered chamber IS maximum depth: instant podium.
+	p.deepest_y += 100000.0
+	_finish_match("%s reached the finish chamber!" % p.display_name)
 
 
-## Elimination mode: last one standing wins; everyone dead is a draw. The
-## actual declaration waits WIN_DELAY so the last ragdoll finishes flying.
+## The race never ends early: a lone survivor keeps digging. The match is
+## over only when someone reaches the finish chamber or everyone is dead —
+## then the podium ranks everyone by how deep they got. The all-dead path
+## waits WIN_DELAY so the final ragdoll finishes flying.
 func _check_elimination() -> void:
 	if game_over:
 		return
 	if _win_timer >= 0.0:
 		_win_timer -= get_process_delta_time()
 		if _win_timer < 0.0:
-			# The pending winner can still die to a chain during the delay.
-			if _win_player != null and is_instance_valid(_win_player) and _win_player.alive:
-				_declare_winner(_win_player, "Last one standing")
-			else:
-				_declare_deepest()
+			_finish_match("Everyone died — deepest digger wins")
 		return
-	var living: Array[Player] = []
+	var living := 0
 	for p in players:
 		if p.alive:
-			living.append(p)
-	if living.size() == 1 and players.size() >= 2:
+			living += 1
+	if living == 0:
 		_win_timer = WIN_DELAY
-		_win_player = living[0]
-	elif living.is_empty():
-		_win_timer = WIN_DELAY
-		_win_player = null
 
 
-## Everyone died: whoever made it lowest takes the match.
-func _declare_deepest() -> void:
-	var best: Player = null
-	for p in players:
-		if best == null or p.deepest_y > best.deepest_y:
-			best = p
-	if best != null and best.deepest_y > -99999.0:
-		_declare_winner(best, "Everyone died — made it the deepest")
-		return
+## Match over: rank every player by deepest point reached, crown the top
+## three on the podium, and freeze the world.
+func _finish_match(reason: String) -> void:
 	game_over = true
-	hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
-	NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})
-	get_tree().call_group(&"sfx", &"play_womp", Vector2.ZERO)
-	get_tree().paused = true
-
-
-func _declare_winner(p: Player, reason: String) -> void:
-	game_over = true
-	hud.show_winner(p.display_name, p.player_color, elapsed, reason)
-	NetHub.broadcast({"t": "win", "n": p.display_name, "c": p.player_color.to_html(false)})
+	var ranking := players.duplicate()
+	ranking.sort_custom(func(a: Player, b: Player) -> bool:
+		return a.deepest_y > b.deepest_y)
+	var entries: Array[Dictionary] = []
+	for p: Player in ranking:
+		entries.append({
+			"n": p.display_name, "c": p.player_color, "c2": p.color2,
+			"d": maxi(0, int(minf(p.deepest_y, float(Terrain.H * Terrain.TILE))
+				/ Terrain.TILE) - Terrain.SURFACE_ROW),
+		})
+	hud.show_podium(entries, elapsed, reason)
+	var wire := []
+	for e in entries.slice(0, 3):
+		wire.append([e.n, (e.c as Color).to_html(false), e.d])
+	var win_name: String = entries[0].n if not entries.is_empty() else "Nobody"
+	var win_col: String = (entries[0].c as Color).to_html(false) \
+		if not entries.is_empty() else "aaaaaa"
+	NetHub.broadcast({"t": "win", "n": win_name, "c": win_col, "podium": wire})
 	get_tree().call_group(&"sfx", &"play_fanfare", Vector2.ZERO)
 	get_tree().paused = true
 
@@ -362,10 +355,21 @@ func _net_service() -> void:
 			continue
 		if c.pending_init:
 			c.pending_init = false
+			# Room list for wallpaper tints: [x, y, w, h, kind]; kinds:
+			# 0 stairs 1 kitchen 2 bedroom 3 bathroom 4 pen 5 finish.
+			var rooms := []
+			var kind_of := {"stairs": 0, "kitchen": 1, "bedroom": 2,
+				"bathroom": 3, "chicken_pen": 4, "pig_pen": 4}
+			for rn in terrain.bunker_rooms:
+				var rr: Rect2i = terrain.bunker_rooms[rn]
+				rooms.append([rr.position.x, rr.position.y, rr.size.x, rr.size.y,
+					int(kind_of.get(rn, 0))])
+			var fr := terrain.finish_room
+			rooms.append([fr.position.x, fr.position.y, fr.size.x, fr.size.y, 5])
 			NetHub.send_to(id, {
 				"t": "init", "w": Terrain.W, "h": Terrain.H, "ts": Terrain.TILE,
 				"surf": Terrain.SURFACE_ROW, "fin": int(terrain.finish_line_rect().position.y),
-				"grid": terrain.grid_string(),
+				"grid": terrain.grid_string(), "rooms": rooms,
 			})
 			NetHub.send_to(id, _roster_msg())
 			if web_players.has(id):

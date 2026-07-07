@@ -53,6 +53,8 @@ func _draw() -> void:
 		_draw_pen(_px(rooms["pig_pen"]))
 	for s in _straw:
 		draw_rect(s, Color(0.85, 0.72, 0.35))
+	if terrain.finish_room.size.x > 0:
+		_draw_finish(_px(terrain.finish_room))
 
 
 # --- room painters -----------------------------------------------------------
@@ -156,13 +158,44 @@ func _draw_bathroom(r: Rect2) -> void:
 	draw_rect(Rect2(tx, r.position.y + 18, 7, 2), Color("a84a41"))
 
 
-## Pens: warm dark-earth back wall with a support beam.
+## Pens: warm barn wall strewn with hay, plus support beams.
 func _draw_pen(r: Rect2) -> void:
-	draw_rect(r, Color("3c281545"))
-	draw_rect(r, Color("38251360"))
+	draw_rect(r, Color("6b4a26"))
+	var yy := r.position.y + 5.0
+	var row := 0
+	while yy < r.end.y - 3.0:
+		var xx := r.position.x + (4.0 if row % 2 == 0 else 10.0)
+		while xx < r.end.x - 7.0:
+			draw_line(Vector2(xx, yy + 3), Vector2(xx + 6, yy),
+				Color(0.9, 0.77, 0.4, 0.85), 1.4)
+			draw_line(Vector2(xx + 2, yy), Vector2(xx + 7, yy + 3),
+				Color(0.82, 0.68, 0.32, 0.65), 1.2)
+			xx += 12.0
+		yy += 9.0
+		row += 1
 	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 4.0), Color("54381f"))
 	draw_rect(Rect2(r.position.x + r.size.x * 0.5 - 2, r.position.y, 4.0, r.size.y),
 		Color("4a3118"))
+
+
+## The finish chamber: black-and-white checkered wallpaper with a podium.
+func _draw_finish(r: Rect2) -> void:
+	var sq := 8.0
+	var rows := int(ceil(r.size.y / sq))
+	var cols := int(ceil(r.size.x / sq))
+	for row in rows:
+		for col in cols:
+			var c := Color(0.92, 0.92, 0.92) if (row + col) % 2 == 0 \
+				else Color(0.08, 0.08, 0.08)
+			draw_rect(Rect2(r.position.x + col * sq, r.position.y + row * sq,
+				minf(sq, r.end.x - (r.position.x + col * sq)),
+				minf(sq, r.end.y - (r.position.y + row * sq))), c)
+	# Gold / silver / bronze podium steps on the floor.
+	var cx := r.get_center().x
+	var base := r.end.y
+	draw_rect(Rect2(cx - 22, base - 11, 14, 11), Color("b7bec9"))
+	draw_rect(Rect2(cx - 7, base - 17, 14, 17), Color("c9a227"))
+	draw_rect(Rect2(cx + 8, base - 7, 14, 7), Color("a06a3d"))
 
 
 ## Wooden trim along the bottom of a papered wall.

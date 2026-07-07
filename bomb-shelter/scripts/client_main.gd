@@ -18,7 +18,6 @@ var chests: Array[Node2D] = []
 var _ptargets: Array[Vector2] = []
 var _plast: Array[Vector2] = []
 var _btargets: Array[Vector2] = []
-var _finish: FinishLine
 
 var _status: Label
 var _win_label: Label
@@ -156,12 +155,6 @@ func _handle(m: Dictionary) -> void:
 			terrain.load_from_string(str(m.get("grid", "")))
 			_clear_entities()
 			_win_label.get_parent().visible = false
-			if _finish:
-				_finish.queue_free()
-			_finish = FinishLine.new()
-			_finish.rect = Rect2(3 * Terrain.TILE, float(m.get("fin", 0)),
-				(Terrain.W - 6) * Terrain.TILE, 14)
-			world.add_child(_finish)
 			_status.text = ""
 		"roster":
 			_apply_roster(m.get("p", []))

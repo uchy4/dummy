@@ -16,8 +16,14 @@ const SHELTER_H := 7
 const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
-enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER }
-enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER }
+enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER, CLAY, STONE, DEEP }
+enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP }
+
+## Strata: the ground changes character with depth — dirt, then clay, then
+## stone, then deep slate, down to the bedrock frame.
+const CLAY_TOP := 40
+const STONE_TOP := 65
+const DEEP_TOP := 90
 
 ## Emitted for every blast so web clients can mirror the destruction.
 signal carved(world_pos: Vector2, radius: float)
@@ -35,9 +41,12 @@ var chest_cells: Array[Vector2i] = []  # dead-end pockets where chests may spawn
 
 ## Bunker complex under the surface crust: room name -> Rect2i (cells).
 ## Keys: stairs, kitchen, bedroom, bathroom, chicken_pen, pig_pen.
+## Layout is randomized every match (room order and widths, min 5 wide).
 var bunker_rooms := {}
 ## Surface cell where the outhouse (stair entrance) stands.
 var outhouse_cell := Vector2i.ZERO
+## The 5x5 checkered finish chamber at the bottom center.
+var finish_room := Rect2i()
 
 var _grid := PackedByteArray()
 var _src_id := 0
@@ -72,10 +81,13 @@ func load_from_string(s: String) -> void:
 # ---------------------------------------------------------------- tileset ---
 
 func _build_tileset() -> void:
-	var img := Image.create(TILE * 5, TILE, false, Image.FORMAT_RGBA8)
+	var img := Image.create(TILE * 8, TILE, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
+	_fill_tile(img, Tile.CLAY, Color("a5623b"), Color("874e2e"), 0.2)
+	_fill_tile(img, Tile.STONE, Color("6e7681"), Color("59616b"), 0.24)
+	_fill_tile(img, Tile.DEEP, Color("553f4d"), Color("42313c"), 0.24)
 	# Grass: dirt base with a green top edge.
 	_fill_tile(img, Tile.GRASS, Color("7a5230"), Color("5e3d22"), 0.16)
 	for y in 5:
@@ -109,7 +121,7 @@ func _build_tileset() -> void:
 	var square := PackedVector2Array([
 		Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h),
 	])
-	for i in 5:
+	for i in 8:
 		src.create_tile(Vector2i(i, 0))
 		if i == Tile.WATER:
 			continue  # water is swim-through: no collision polygon
@@ -134,8 +146,15 @@ func _generate() -> void:
 	_grid.fill(Cell.EMPTY)
 
 	for y in range(SURFACE_ROW, H):
+		var stratum := Cell.DIRT
+		if y >= DEEP_TOP:
+			stratum = Cell.DEEP
+		elif y >= STONE_TOP:
+			stratum = Cell.STONE
+		elif y >= CLAY_TOP:
+			stratum = Cell.CLAY
 		for x in W:
-			_gset(x, y, Cell.DIRT)
+			_gset(x, y, stratum)
 	# Indestructible frame: side walls and floor. The side walls rise above
 	# the surface so players can't hop off the edge of the map.
 	for y in range(SURFACE_ROW - 6, H):
@@ -187,10 +206,11 @@ func _generate() -> void:
 				if nx * nx + ny * ny <= 1.0 and _gget(x, y) == Cell.EMPTY:
 					_gset(x, y, Cell.WATER)
 
-	# Finish hall along the bottom; tunnels into it are plugged too.
-	_carve_rect(Rect2i(3, FINISH_TOP, W - 6, H - 4 - FINISH_TOP))
+	# The finish chamber at the bottom center; tunnels toward it are
+	# plugged like everything else.
+	_build_finish_room()
 	for c in prev_centers:
-		_carve_tunnel(c, Vector2i(c.x, FINISH_TOP))
+		_carve_tunnel(c, Vector2i(W / 2, finish_room.position.y))
 
 	# A couple of buried shafts away from the shelter — useful drops once the
 	# crust above them is blown open, but they start below it and end in dirt.
@@ -218,42 +238,100 @@ func _generate() -> void:
 
 
 ## The homestead: an outhouse on the surface hiding a staircase down into a
-## furnished bunker (kitchen/bedroom/bathroom), with animal pens one level
-## below. Carved directly so the crust guard doesn't apply.
+## furnished bunker, with animal pens one level below. Layout is random
+## every match: room order shuffles and widths vary (always >= 5 cells).
+## Every divider has a doorway — nothing is sealed off. Carved directly so
+## the crust guard doesn't apply.
 func _build_bunker() -> void:
-	bunker_rooms = {
-		"stairs": Rect2i(10, 24, 9, 6),
-		"kitchen": Rect2i(19, 24, 7, 6),
-		"bedroom": Rect2i(27, 24, 7, 6),
-		"bathroom": Rect2i(35, 24, 5, 6),
-		"chicken_pen": Rect2i(3, 31, 8, 6),
-		"pig_pen": Rect2i(12, 31, 8, 6),
-	}
-	outhouse_cell = Vector2i(11, SURFACE_ROW)
+	bunker_rooms = {}
+	var top := 24
+	var room_h := 6
+	var bx := rng.randi_range(3, 7)
+	outhouse_cell = Vector2i(bx + 1, SURFACE_ROW)
+
+	# Stair landing first (the staircase must land in it), then the living
+	# rooms in a random order with random widths.
+	var stairs_w := rng.randi_range(7, 8)
+	bunker_rooms["stairs"] = Rect2i(bx, top, stairs_w, room_h)
+	var cur_x := bx + stairs_w + 1
+	var order: Array[String] = ["kitchen", "bedroom", "bathroom"]
+	order.shuffle()
+	for room_name in order:
+		var w := rng.randi_range(5, 8)
+		bunker_rooms[room_name] = Rect2i(cur_x, top, w, room_h)
+		cur_x += w + 1
+
+	# Pens one level below, under the left half of the bunker.
+	var pen_top := top + 7
+	var pen_x := maxi(bx - rng.randi_range(0, 2), 3)
+	var pens: Array[String] = ["chicken_pen", "pig_pen"]
+	pens.shuffle()
+	var pw1 := rng.randi_range(5, 8)
+	var pw2 := rng.randi_range(5, 8)
+	bunker_rooms[pens[0]] = Rect2i(pen_x, pen_top, pw1, room_h)
+	bunker_rooms[pens[1]] = Rect2i(pen_x + pw1 + 1, pen_top, pw2, room_h)
+
+	# Stone framing: solid ground within one cell of a room becomes stone,
+	# so the bunker reads as built, not dug. Never fills carved space.
+	for room_name in bunker_rooms:
+		var r: Rect2i = bunker_rooms[room_name]
+		var g := r.grow(1)
+		for y in range(g.position.y, g.end.y):
+			for x in range(g.position.x, g.end.x):
+				var cv := _gget(x, y)
+				if cv != Cell.BEDROCK and cv != Cell.EMPTY and cv != Cell.WATER:
+					_gset(x, y, Cell.STONE)
+	# Carve the room interiors.
 	for room_name in bunker_rooms:
 		var r: Rect2i = bunker_rooms[room_name]
 		for y in range(r.position.y, r.end.y):
 			for x in range(r.position.x, r.end.x):
 				if _gget(x, y) != Cell.BEDROCK:
 					_gset(x, y, Cell.EMPTY)
-	# Doorways between the living rooms: 2 cells tall at floor level.
-	for wx: int in [26, 34]:
-		for y in range(28, 30):
-			_gset(wx, y, Cell.EMPTY)
+
+	# Doorways through every INTERIOR divider (not the outer wall): 3 tall
+	# at floor level, so nothing is ever sealed off.
+	var walls: Array[int] = [bx + stairs_w]
+	for i in order.size() - 1:
+		var r: Rect2i = bunker_rooms[order[i]]
+		walls.append(r.end.x)
+	for wall_x in walls:
+		for y in range(top + 3, top + room_h):
+			if _gget(wall_x, y) != Cell.BEDROCK:
+				_gset(wall_x, y, Cell.EMPTY)
+
 	# Staircase from the outhouse down to the landing (1-cell steps).
 	for step in 6:
 		var sx := outhouse_cell.x + step
 		for dy in 3:
 			_gset(sx, SURFACE_ROW + step + dy, Cell.EMPTY)
-	# Hole in the landing floor down into the pens, with climb-out steps.
-	for hx in range(16, 18):
-		_gset(hx, 30, Cell.EMPTY)
-	_gset(19, 35, Cell.DIRT)
-	_gset(19, 36, Cell.DIRT)
-	_gset(18, 36, Cell.DIRT)
+
+	# Hole in the landing floor down into the pens, plus climb-out steps at
+	# the pens' right edge (players can jump them, critters can't).
+	var stairs_r: Rect2i = bunker_rooms["stairs"]
+	var pen2_r: Rect2i = bunker_rooms[pens[1]]
+	var hole_x := clampi(stairs_r.position.x + 2, pen_x + 1, pen2_r.end.x - 3)
+	for hx in range(hole_x, hole_x + 2):
+		_gset(hx, top + room_h, Cell.EMPTY)
+	var step_x := pen2_r.end.x - 1
+	_gset(step_x, pen_top + 4, Cell.STONE)
+	_gset(step_x, pen_top + 5, Cell.STONE)
+	_gset(step_x - 1, pen_top + 5, Cell.STONE)
 	# Fence wall between the pens: hop-over gap at the top.
-	for y in range(33, 37):
-		_gset(11, y, Cell.DIRT)
+	var fence_x := pen_x + pw1
+	for y in range(pen_top + 2, pen_top + room_h):
+		_gset(fence_x, y, Cell.STONE)
+
+
+## The finish chamber: a 5x5 checkered room at the bottom center, floored
+## by bedrock. Reaching it IS winning the depth race.
+func _build_finish_room() -> void:
+	var cx := W / 2
+	finish_room = Rect2i(cx - 2, H - 9, 5, 5)
+	for y in range(finish_room.position.y, finish_room.end.y):
+		for x in range(finish_room.position.x, finish_room.end.x):
+			if _gget(x, y) != Cell.BEDROCK:
+				_gset(x, y, Cell.EMPTY)
 
 
 func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
@@ -319,6 +397,12 @@ func _paint_all() -> void:
 					t = Tile.BEDROCK
 				Cell.WATER:
 					t = Tile.WATER
+				Cell.CLAY:
+					t = Tile.CLAY
+				Cell.STONE:
+					t = Tile.STONE
+				Cell.DEEP:
+					t = Tile.DEEP
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
 					t = Tile.DIRT_DARK if rng.randf() < dark_chance else Tile.DIRT
@@ -478,10 +562,10 @@ func chest_positions() -> Array[Vector2]:
 	return out
 
 
-## The gold strip resting on the bedrock floor of the finish hall.
+## The finish chamber interior in world px — entering it wins the race.
 func finish_line_rect() -> Rect2:
-	var floor_top := (H - 4) * TILE
-	return Rect2(3 * TILE, floor_top - 14, (W - 6) * TILE, 14)
+	return Rect2(finish_room.position.x * TILE, finish_room.position.y * TILE,
+		finish_room.size.x * TILE, finish_room.size.y * TILE)
 
 
 ## Public read access to the cell grid (Cell enum), used by bot navigation.

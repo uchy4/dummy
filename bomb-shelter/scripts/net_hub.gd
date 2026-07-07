@@ -126,7 +126,9 @@ function applySide(){
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
-var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9"],CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5"];
+var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
+var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
+var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6b4a26"];
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -196,7 +198,7 @@ function connect(){
    if(f>=0&&f<grid.length){grid[f]=0;octx.clearRect(f%W,(f/W)|0,1,1);}
    if(t2>=0&&t2<grid.length){grid[t2]=4;
     octx.fillStyle=(Math.random()<0.3)?CELL2[4]:CELL[4];octx.fillRect(t2%W,(t2/W)|0,1,1);}}}
-  else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
+  else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
    buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];predOK=false;}
@@ -486,18 +488,19 @@ function render(){requestAnimationFrame(render);
  ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-cam.x,-cam.y);
  ctx.imageSmoothingEnabled=false;
  ctx.fillStyle="#2b1a0c";ctx.fillRect(0,SURF*TS,W*TS,(H-SURF)*TS);
- // Bunker room wallpaper tints (fixed layout, mirrors RoomDecor).
- var RBG=[[10,24,9,6,"#54381f"],[19,24,7,6,"#e4d3ac"],[27,24,7,6,"#aebccd"],
-  [35,24,5,6,"#dcebec"],[3,31,8,6,"#3d2914"],[12,31,8,6,"#3d2914"]];
- for(var i=0;i<RBG.length;i++){var q=RBG[i];
-  ctx.fillStyle=q[4];ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}
+ // Room wallpaper tints from the host's dynamic layout; kind 5 = the
+ // checkered finish chamber.
+ for(var i=0;i<ROOMS.length;i++){var q=ROOMS[i];
+  if(q[4]===5){for(var rr=0;rr<q[3]*2;rr++)for(var cc=0;cc<q[2]*2;cc++){
+    ctx.fillStyle=((rr+cc)%2===0)?"#ebebeb":"#141414";
+    ctx.fillRect(q[0]*TS+cc*8,q[1]*TS+rr*8,8,8);}}
+  else{ctx.fillStyle=ROOMTINT[q[4]]||"#54381f";
+   ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
   ctx.fillStyle="#3f9143";ctx.fillRect(gx,gy+4,TS,1.5);}
- for(var fx=3*TS,k=0;fx<(W-3)*TS;fx+=8,k++){
-  ctx.fillStyle=(k%2===0)?"#ffd54f":"#1a1a1a";ctx.fillRect(fx,FIN,8,14);}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
   ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
@@ -579,11 +582,16 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#ff8a80";ctx.font="bold 18px sans-serif";
   var msg=sc.p[you][3]<0?"eliminated — spectating":"respawn in "+(sc.p[you][3]/10).toFixed(1);
   ctx.fillText(msg,cw/2,ch*0.35);}
- if(win){ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,ch*0.3,cw,90);
+ if(win){var ph=90+(win.podium?win.podium.length*20+8:0);
+  ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,ch*0.28,cw,ph);
   ctx.fillStyle="#"+win.c;ctx.font="bold 26px sans-serif";
-  ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,ch*0.3+38);
-  ctx.fillStyle="#ddd";ctx.font="14px sans-serif";
-  ctx.fillText("waiting for host rematch…",cw/2,ch*0.3+66);}}
+  ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,ch*0.28+38);
+  if(win.podium){var MEDAL=["#ffd54f","#cfd8dc","#d29a63"];
+   for(var i=0;i<win.podium.length;i++){var e=win.podium[i];
+    ctx.fillStyle=MEDAL[i]||"#fff";ctx.font="bold 15px sans-serif";
+    ctx.fillText((i+1)+".  "+e[0]+"  ·  "+e[2]+" deep",cw/2,ch*0.28+62+i*20);}}
+  ctx.fillStyle="#ddd";ctx.font="13px sans-serif";
+  ctx.fillText("waiting for host rematch…",cw/2,ch*0.28+ph-10);}}
 function y0(py){return py-20;}
 // Homestead props by kind id: 0 table 1 chair 2 bed 3 pillow 4 toilet
 // 5 shower 6 chicken 7 pig 8 fence 9 outhouse. Drawn centered.
