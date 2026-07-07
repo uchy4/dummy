@@ -1,7 +1,7 @@
 class_name Terrain
 extends TileMapLayer
 ## Destructible tile terrain. Builds its own TileSet at runtime, generates the
-## level (flat grass surface, shelter, plugged cavern systems, finish hall) and
+## level (flat grass surface, shelter, isolated cave networks, finish hall) and
 ## lets explosions carve circular holes out of anything that isn't bedrock.
 
 const TILE := 16
@@ -14,7 +14,6 @@ const SHELTER_HALF_W := 7
 const SHELTER_TOP := SURFACE_ROW + CRUST_ROWS  # buried just below the crust
 const SHELTER_H := 7
 const FINISH_TOP := 106 # finish hall rows 106..115, bedrock floor at 116
-const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER, CLAY, STONE, DEEP }
 enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER, CLAY, STONE, DEEP, WATER_TOP,
@@ -194,33 +193,55 @@ func _generate() -> void:
 	_build_bunker()
 	_build_surface()
 
-	# Cavern bands going down. Every room is reached by a tunnel from above that
-	# stops short of it — a dead end that needs a bomb to open.
-	var bands := [[41, 52], [58, 70], [76, 88], [92, 104]]
+	# One cave layer per stratum, and 2-3 SEPARATE networks per layer (the
+	# thin dirt layer gets just one). Each network is a cluster of caverns
+	# joined by open walkable tunnels inside its own horizontal slot, with
+	# solid ground between slots. Layers keep well clear of the stratum
+	# boundaries and NEVER connect to each other, to the bunker, or to the
+	# finish hall — bombs (and the surface cave mouth) are the only ways in.
+	var layers := [
+		[34, 35, 1],                       # dirt pocket under the crust
+		[45, 59, rng.randi_range(2, 3)],   # clay
+		[70, 84, rng.randi_range(2, 3)],   # stone
+		[96, 100, rng.randi_range(2, 3)],  # deep — stops short of the finish hall
+	]
 	var all_rooms: Array[Dictionary] = []
 	var first_centers: Array[Vector2i] = []
-	var prev_centers: Array[Vector2i] = [Vector2i(cx, SHELTER_TOP + 4)]
-	for band: Array in bands:
-		var centers: Array[Vector2i] = []
-		for i in rng.randi_range(2, 3):
-			# Wide, flat caverns: caves (and their pools) spread horizontally.
-			var room := {
-				"c": Vector2i(rng.randi_range(14, W - 14), rng.randi_range(band[0] + 3, band[1] - 3)),
-				"rw": rng.randi_range(9, 16),
-				"rh": rng.randi_range(2, 3),
-			}
-			_carve_blob(room.c, room.rw, room.rh)
-			all_rooms.append(room)
-			centers.append(room.c)
-			room_count += 1
-			var from := _nearest(prev_centers, room.c)
-			_carve_tunnel(from, Vector2i(room.c.x, room.c.y - room.rh))
-		if first_centers.is_empty():
-			first_centers = centers.duplicate()
-		prev_centers = centers
+	for li in layers.size():
+		var lay: Array = layers[li]
+		var nets: int = lay[2]
+		# The dirt layer shares its depth with the buried shelter, so its
+		# single network stays on the cave mouth's side of the map — the
+		# walk-in passage never cuts through the shelter or the bunker.
+		var base_x0 := 12
+		var base_x1 := W - 12
+		if li == 0:
+			base_x0 = 58 if cave_mouth.x > cx else 12
+			base_x1 = 88 if cave_mouth.x > cx else 42
+		var slot := (base_x1 - base_x0) / nets
+		for k in nets:
+			var sx0: int = base_x0 + k * slot + 3
+			var sx1: int = base_x0 + (k + 1) * slot - 3
+			var centers: Array[Vector2i] = []
+			for i in rng.randi_range(2, 3):
+				# Wide, flat caverns: caves (and their pools) spread sideways.
+				var rh := 2 if li == 0 else rng.randi_range(2, 3)
+				var rw := rng.randi_range(6, 10) if nets == 1 else rng.randi_range(4, 7)
+				rw = mini(rw, (sx1 - sx0) / 2 - 1)
+				var c := Vector2i(rng.randi_range(sx0 + rw, sx1 - rw),
+					rng.randi_range(lay[0], lay[1]))
+				_carve_blob(c, rw, rh)
+				all_rooms.append({"c": c, "rw": rw, "rh": rh,
+					"y0": int(lay[0]), "y1": int(lay[1]), "x0": sx0, "x1": sx1})
+				room_count += 1
+				if not centers.is_empty():
+					_carve_tunnel(_nearest(centers, c), c)
+				centers.append(c)
+				if li == 0:
+					first_centers.append(c)
 
 	# The cave mouth: a walk-in entrance on the side opposite the outhouse,
-	# sloping gently down through the crust into the nearest first-band cavern.
+	# sloping gently down through the crust into the first-layer network.
 	_carve_cave_mouth(_nearest(first_centers, cave_mouth))
 
 	# Underground aquifers: a couple of the cavern rooms keep a pool of
@@ -238,28 +259,21 @@ func _generate() -> void:
 				if nx * nx + ny * ny <= 1.0 and _gget(x, y) == Cell.EMPTY:
 					_gset(x, y, Cell.WATER)
 
-	# The finish chamber at the bottom center; tunnels toward it are
-	# plugged like everything else.
+	# The finish chamber at the bottom center. NOTHING carves toward it —
+	# the deep layer stops short, so only bombs open the way in.
 	_build_finish_room()
-	for c in prev_centers:
-		_carve_tunnel(c, Vector2i(W / 2, finish_room.position.y))
 
-	# A couple of buried shafts away from the shelter — useful drops once the
-	# crust above them is blown open, but they start below it and end in dirt.
-	for i in 2:
-		var sx := rng.randi_range(24, W - 8)  # min 24: never through the bunker flank
-		if absi(sx - cx) < 14:
-			sx = cx + 20 * (1 if rng.randf() < 0.5 else -1)
-		_carve_rect(Rect2i(sx - 1, SURFACE_ROW + CRUST_ROWS, 3, rng.randi_range(20, 28)))
-
-	# Decoy side tunnels that just stop in the dirt.
-	for i in 4:
+	# Decoy side tunnels that just stop in the dirt — chest pockets. Each
+	# stays inside its own layer's band so it never bridges strata, and the
+	# deep ones keep a solid lid above the finish hall.
+	for i in 6:
 		var room: Dictionary = all_rooms.pick_random()
 		var p := Vector2(room.c)
 		var dir := 1.0 if rng.randf() < 0.5 else -1.0
+		var y_max := minf(float(int(room.y1)) + 3.0, float(FINISH_TOP - 4))
 		for step in rng.randi_range(7, 13):
-			p.x = clampf(p.x + dir, 4, W - 5)
-			p.y = clampf(p.y + rng.randf_range(-0.4, 0.8), SURFACE_ROW + CRUST_ROWS + 1, H - 6)
+			p.x = clampf(p.x + dir, float(int(room.x0)), float(int(room.x1)))
+			p.y = clampf(p.y + rng.randf_range(-0.4, 0.8), float(int(room.y0)) - 1.0, y_max)
 			_carve_disk(Vector2i(p), 1)
 		chest_cells.append(Vector2i(p))
 
@@ -467,29 +481,24 @@ func _stratum_at(y: int) -> int:
 	return Cell.DIRT
 
 
-## Tunnels stretch horizontally: they descend at most one row per two cells
-## across, switchbacking off the map walls, so the cave network is a maze of
-## gentle slopes with little to no vertical drops. Still plugged — carving
-## stops PLUG_ROWS short of the destination so a bomb must open the last bit.
+## Connects two caverns of the SAME network with an open, walkable tunnel:
+## mostly horizontal, drifting at most one row per two cells toward the
+## destination's depth, so there are little to no vertical drops. The path
+## never leaves the span between the two rooms, keeping every network
+## inside its own slot.
 func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
 	var p := Vector2i(from)
 	var dir := 1 if to.x > from.x else -1
 	var steps := 0
-	while p.distance_to(to) > PLUG_ROWS + 1.0 and steps < 400:
+	while p.distance_to(to) > 2.0 and steps < 300:
 		steps += 1
 		_carve_disk(p, 1)
-		var at_depth := p.y >= to.y - 1
-		if at_depth:
+		if absi(p.x - to.x) > 1:
 			dir = 1 if to.x > p.x else -1
-		elif p.x + dir <= 4 or p.x + dir >= W - 5 \
-				or (absi(p.x - to.x) <= 2 and rng.randf() < 0.5):
-			dir = -dir  # switchback: off a wall, or meander above the target
 		p.x = clampi(p.x + dir, 4, W - 5)
-		if not at_depth and (steps & 1) == 0:
-			p.y += 1
-	# Widen the dead end into a pocket a bomb can sit in.
-	_carve_disk(p, 2)
-	chest_cells.append(p)
+		if p.y != to.y and (steps & 1) == 0:
+			p.y += signi(to.y - p.y)
+	_carve_disk(p, 1)
 
 
 func _carve_rect(r: Rect2i) -> void:
