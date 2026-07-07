@@ -126,7 +126,7 @@ function applySide(){
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
-var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
+var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9"],CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5"];
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -349,16 +349,22 @@ function solidBox(cx,cy){var l=cx-6,rt=cx+6,tp=cy-12,bt=cy+12;
  var c0=Math.floor(l/TS),c1=Math.floor((rt-0.01)/TS),r0=Math.floor(tp/TS),r1=Math.floor((bt-0.01)/TS);
  for(var r=r0;r<=r1;r++)for(var c=c0;c<=c1;c++){
   if(c<0||c>=W)return true;if(r<0||r>=H)continue;
-  if(grid[r*W+c]!==0)return true;}return false;}
+  var g=grid[r*W+c];if(g!==0&&g!==4)return true;}return false;}
+function waterAt(px,py){if(!grid)return false;
+ var c=Math.floor(px/TS),r=Math.floor(py/TS);
+ if(c<0||c>=W||r<0||r>=H)return false;return grid[r*W+c]===4;}
 function predict(dt){if(dt>0.05)dt=0.05;
  onG=solidBox(PX,PY+1);
  var steps=Math.max(1,Math.ceil(Math.max(Math.abs(VX),Math.abs(VY))*dt/6));
  var sdt=dt/steps;
  for(var s=0;s<steps;s++){
   var dir=AXV;
-  VX=mv(VX,dir*230,1900*sdt);
-  VY=Math.min(VY+980*sdt,900);
-  if(JHELD&&!prevJ&&onG){VY=-430;onG=false;}
+  var hw=waterAt(PX,PY-8),fw=waterAt(PX,PY+10);
+  VX=mv(VX,dir*230*(fw?0.65:1),1900*sdt);
+  if(hw)VY=mv(VY,-110,2200*sdt);
+  else if(fw)VY=mv(VY,35,1500*sdt);
+  else VY=Math.min(VY+980*sdt,900);
+  if(JHELD&&!prevJ&&(onG||fw)){VY=fw?-300:-430;onG=false;}
   prevJ=JHELD;
   var nx=PX+VX*sdt;
   if(!solidBox(nx,PY))PX=nx;
@@ -394,16 +400,17 @@ function solidR(cx,cy,r){if(!grid)return false;
  var r0=Math.floor((cy-r)/TS),r1=Math.floor((cy+r-0.01)/TS);
  for(var rr=r0;rr<=r1;rr++)for(var cc=c0;cc<=c1;cc++){
   if(cc<0||cc>=W)return true;if(rr<0||rr>=H)continue;
-  if(grid[rr*W+cc]!==0)return true;}return false;}
+  var g=grid[rr*W+cc];if(g!==0&&g!==4)return true;}return false;}
 function ptSolid(px,py){if(!grid)return false;
  var c=Math.floor(px/TS),r=Math.floor(py/TS);
  if(c<0||c>=W)return true;if(r<0||r>=H)return false;
- return grid[r*W+c]!==0;}
+ var g=grid[r*W+c];return g!==0&&g!==4;}
 function stepBombs(dt){if(dt>0.05)dt=0.05;
  for(var i=0;i<bsim.length;i++){var e=bsim[i];
   var below=e.y+e.r+2;
   var rest=ptSolid(e.x,below)||ptSolid(e.x-e.r*0.6,below)||ptSolid(e.x+e.r*0.6,below);
   if(rest){e.vx*=Math.pow(0.05,dt);if(e.vy>0)e.vy=0;}
+  else if(waterAt(e.x,e.y)){e.vy=Math.min(e.vy+390*dt,95);e.vx*=Math.pow(0.15,dt);}
   else e.vy=Math.min(e.vy+980*dt,900);
   var nx=e.x+e.vx*dt,ny=e.y+e.vy*dt;
   if(!solidR(nx,e.y,e.r))e.x=nx;else e.vx*=-0.3;
@@ -489,6 +496,8 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#8a6238";ctx.fillRect(q[0]-9,q[1]-7,18,6);
   ctx.fillStyle="#caa64a";ctx.fillRect(q[0]-9,q[1]-2,18,2);
   ctx.fillStyle="#e8c35c";ctx.fillRect(q[0]-2,q[1]-3,4,5);}
+ if(sc&&sc.e)for(var i=0;i<sc.e.length;i++){var q=sc.e[i];
+  ctx.save();ctx.translate(q[0],q[1]);ctx.rotate((q[3]||0)/10);drawProp(q[2]);ctx.restore();}
  stepBombs(pdt);
  for(var i=0;i<bsim.length;i++){var e=bsim[i];
   var fu=e.dud?0:Math.max(e.fuse-(now-e.ft)/1000,0);
@@ -567,6 +576,43 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#ddd";ctx.font="14px sans-serif";
   ctx.fillText("waiting for host rematch…",cw/2,ch*0.3+66);}}
 function y0(py){return py-20;}
+// Homestead props by kind id: 0 table 1 chair 2 bed 3 pillow 4 toilet
+// 5 shower 6 chicken 7 pig 8 fence 9 outhouse. Drawn centered.
+function drawProp(k){
+ if(k===0){ctx.fillStyle="#000";ctx.fillRect(-19,-11,38,22);
+  ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-10,36,5);
+  ctx.fillRect(-15,-5,4,15);ctx.fillRect(11,-5,4,15);}
+ else if(k===1){ctx.fillStyle="#000";ctx.fillRect(-9,-12,18,24);
+  ctx.fillStyle="#a06a33";ctx.fillRect(-8,-2,14,4);ctx.fillRect(-8,-11,4,13);
+  ctx.fillRect(-8,2,3,9);ctx.fillRect(3,2,3,9);}
+ else if(k===2){ctx.fillStyle="#000";ctx.fillRect(-23,-9,46,18);
+  ctx.fillStyle="#6d4c2f";ctx.fillRect(-22,-2,44,10);
+  ctx.fillStyle="#d9d4c8";ctx.fillRect(-22,-8,44,7);
+  ctx.fillStyle="#8a5a2b";ctx.fillRect(-22,-8,5,16);}
+ else if(k===3){ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,10,6,0,0,7);ctx.fill();
+  ctx.fillStyle="#f4efe2";ctx.beginPath();ctx.ellipse(0,0,9,5,0,0,7);ctx.fill();}
+ else if(k===4){ctx.fillStyle="#000";ctx.fillRect(-9,-10,18,20);
+  ctx.fillStyle="#e8ecf1";ctx.fillRect(-8,-9,7,16);ctx.fillRect(-8,3,16,6);
+  ctx.beginPath();ctx.ellipse(3,0,6,4,0,0,7);ctx.fill();}
+ else if(k===5){ctx.fillStyle="#000";ctx.fillRect(-5,-15,10,30);
+  ctx.fillStyle="#9aa5b1";ctx.fillRect(-2,-14,4,28);ctx.fillRect(-8,-14,12,4);
+  ctx.fillStyle="#c9d2dc";ctx.fillRect(2,-2,5,3);}
+ else if(k===6){ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,6.5,6,0,0,7);ctx.fill();
+  ctx.fillStyle="#f2f2ee";ctx.beginPath();ctx.ellipse(0,0,5.5,5,0,0,7);ctx.fill();
+  ctx.fillStyle="#e53935";ctx.fillRect(-1,-7,3,3);
+  ctx.fillStyle="#fbc02d";ctx.fillRect(4,-2,4,2);
+  ctx.fillStyle="#c98d29";ctx.fillRect(-2,5,2,3);ctx.fillRect(1,5,2,3);}
+ else if(k===7){ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,9.5,6.5,0,0,7);ctx.fill();
+  ctx.fillStyle="#f2a3b3";ctx.beginPath();ctx.ellipse(0,0,8.5,5.5,0,0,7);ctx.fill();
+  ctx.fillStyle="#d98795";ctx.fillRect(6,-2,4,4);
+  ctx.fillStyle="#c9868f";ctx.fillRect(-6,4,2,3);ctx.fillRect(4,4,2,3);}
+ else if(k===8){ctx.fillStyle="#000";ctx.fillRect(-2,-9,5,18);
+  ctx.fillStyle="#7a5230";ctx.fillRect(-1,-8,3,16);}
+ else if(k===9){ctx.fillStyle="#000";ctx.fillRect(-19,-24,38,48);
+  ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-18,36,42);
+  ctx.fillStyle="#6d4423";ctx.fillRect(-19,-24,38,7);
+  ctx.fillStyle="#241a10";ctx.fillRect(-7,-6,14,30);
+  ctx.fillStyle="#f4e6b0";ctx.beginPath();ctx.arc(0,-11,2.5,0,7);ctx.fill();}}
 // Show the "Add to Home Screen" hint only in a normal browser tab, not when
 // already launched as an installed home-screen app.
 (function(){try{var standalone=window.navigator.standalone===true||

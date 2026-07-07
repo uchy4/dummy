@@ -192,6 +192,14 @@ func _physics_process(delta: float) -> void:
 		return
 	if kicker_grace > 0.0:
 		kicker_grace -= delta
+	# Groundwater: bombs do sink, just slower — heavy drag, weak gravity.
+	if terrain != null and not freeze:
+		if terrain.is_water(global_position):
+			linear_damp = 3.0
+			gravity_scale = 0.4
+		else:
+			linear_damp = 0.0
+			gravity_scale = 1.0
 	if type == Type.STICKY:
 		_sticky_logic(delta)
 	if type == Type.DRILL and not fizzled:
@@ -393,6 +401,20 @@ func _explode() -> void:
 			dir = Vector2.UP
 		part.apply_central_impulse(
 			dir * BOMB_IMPULSE * launch_mult * (0.6 + (1.0 - d / blast)) * part.mass)
+
+	# Critters get punted by blasts too (they expose shove()).
+	for n in get_tree().get_nodes_in_group(&"props"):
+		var node := n as Node2D
+		if node == null or not node.has_method(&"shove"):
+			continue
+		var nd := global_position.distance_to(node.global_position)
+		if nd > blast or _blocked(space, node.global_position):
+			continue
+		var ndir := global_position.direction_to(node.global_position)
+		if ndir == Vector2.ZERO:
+			ndir = Vector2.UP
+		node.call(&"shove",
+			ndir * PLAYER_KNOCKBACK * launch_mult * (0.4 + (1.0 - nd / blast)))
 
 	# Untyped on purpose: naming Chest here would create a Bomb -> Chest ->
 	# Player -> Bomb class-loading cycle.

@@ -16,8 +16,8 @@ const SHELTER_H := 7
 const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
-enum Cell { EMPTY, DIRT, BEDROCK, GRASS }
-enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK }
+enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER }
+enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER }
 
 ## Emitted for every blast so web clients can mirror the destruction.
 signal carved(world_pos: Vector2, radius: float)
@@ -25,6 +25,12 @@ signal carved(world_pos: Vector2, radius: float)
 var rng := RandomNumberGenerator.new()
 var room_count := 0
 var chest_cells: Array[Vector2i] = []  # dead-end pockets where chests may spawn
+
+## Bunker complex under the surface crust: room name -> Rect2i (cells).
+## Keys: stairs, kitchen, bedroom, bathroom, chicken_pen, pig_pen.
+var bunker_rooms := {}
+## Surface cell where the outhouse (stair entrance) stands.
+var outhouse_cell := Vector2i.ZERO
 
 var _grid := PackedByteArray()
 var _src_id := 0
@@ -36,6 +42,7 @@ var client_mode := false
 
 
 func _ready() -> void:
+	add_to_group(&"terrain")
 	rng.randomize()
 	_build_tileset()
 	if client_mode:
@@ -57,7 +64,7 @@ func load_from_string(s: String) -> void:
 # ---------------------------------------------------------------- tileset ---
 
 func _build_tileset() -> void:
-	var img := Image.create(TILE * 4, TILE, false, Image.FORMAT_RGBA8)
+	var img := Image.create(TILE * 5, TILE, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -67,6 +74,10 @@ func _build_tileset() -> void:
 		for x in TILE:
 			var g := Color("4caf50").lerp(Color("2e7d32"), rng.randf() * 0.8)
 			img.set_pixel(Tile.GRASS * TILE + x, y, g)
+	# Water: translucent blue with a lighter ripple line on top.
+	_fill_tile(img, Tile.WATER, Color(0.16, 0.42, 0.78, 0.62), Color(0.2, 0.5, 0.85, 0.62), 0.2)
+	for x in TILE:
+		img.set_pixel(Tile.WATER * TILE + x, 0, Color(0.55, 0.8, 1.0, 0.8))
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -82,8 +93,10 @@ func _build_tileset() -> void:
 	var square := PackedVector2Array([
 		Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h),
 	])
-	for i in 4:
+	for i in 5:
 		src.create_tile(Vector2i(i, 0))
+		if i == Tile.WATER:
+			continue  # water is swim-through: no collision polygon
 		var td := src.get_tile_data(Vector2i(i, 0), 0)
 		td.add_collision_polygon(0)
 		td.set_collision_polygon_points(0, 0, square)
@@ -120,6 +133,8 @@ func _generate() -> void:
 	# The shelter is buried under the crust — bombs must excavate the way in.
 	_carve_rect(Rect2i(cx - SHELTER_HALF_W, SHELTER_TOP, SHELTER_HALF_W * 2, SHELTER_H))
 
+	_build_bunker()
+
 	# Cavern bands going down. Every room is reached by a tunnel from above that
 	# stops PLUG_ROWS short — a dead end that needs a bomb to open.
 	var bands := [[41, 52], [58, 70], [76, 88], [92, 104]]
@@ -141,6 +156,21 @@ func _generate() -> void:
 			_carve_tunnel(from, Vector2i(room.c.x, room.c.y - room.rh))
 		prev_centers = centers
 
+	# Underground aquifers: a couple of the cavern rooms keep a pool of
+	# groundwater in their lower half. Players bob on it; bombs sink slowly.
+	all_rooms.shuffle()
+	for i in mini(2, all_rooms.size()):
+		var room: Dictionary = all_rooms[i]
+		var c: Vector2i = room.c
+		var rw: int = room.rw
+		var rh: int = room.rh
+		for y in range(c.y + 1, c.y + rh + 1):
+			for x in range(c.x - rw, c.x + rw + 1):
+				var nx := float(x - c.x) / rw
+				var ny := float(y - c.y) / rh
+				if nx * nx + ny * ny <= 1.0 and _gget(x, y) == Cell.EMPTY:
+					_gset(x, y, Cell.WATER)
+
 	# Finish hall along the bottom; tunnels into it are plugged too.
 	_carve_rect(Rect2i(3, FINISH_TOP, W - 6, H - 4 - FINISH_TOP))
 	for c in prev_centers:
@@ -149,7 +179,7 @@ func _generate() -> void:
 	# A couple of buried shafts away from the shelter — useful drops once the
 	# crust above them is blown open, but they start below it and end in dirt.
 	for i in 2:
-		var sx := rng.randi_range(8, W - 8)
+		var sx := rng.randi_range(24, W - 8)  # min 24: never through the pens
 		if absi(sx - cx) < 14:
 			sx = cx + 20 * (1 if rng.randf() < 0.5 else -1)
 		_carve_rect(Rect2i(sx - 1, SURFACE_ROW + CRUST_ROWS, 3, rng.randi_range(20, 28)))
@@ -169,6 +199,45 @@ func _generate() -> void:
 	for x in W:
 		if _gget(x, SURFACE_ROW) == Cell.DIRT and _gget(x, SURFACE_ROW - 1) == Cell.EMPTY:
 			_gset(x, SURFACE_ROW, Cell.GRASS)
+
+
+## The homestead: an outhouse on the surface hiding a staircase down into a
+## furnished bunker (kitchen/bedroom/bathroom), with animal pens one level
+## below. Carved directly so the crust guard doesn't apply.
+func _build_bunker() -> void:
+	bunker_rooms = {
+		"stairs": Rect2i(10, 24, 9, 6),
+		"kitchen": Rect2i(19, 24, 7, 6),
+		"bedroom": Rect2i(27, 24, 7, 6),
+		"bathroom": Rect2i(35, 24, 5, 6),
+		"chicken_pen": Rect2i(3, 31, 8, 6),
+		"pig_pen": Rect2i(12, 31, 8, 6),
+	}
+	outhouse_cell = Vector2i(11, SURFACE_ROW)
+	for room_name in bunker_rooms:
+		var r: Rect2i = bunker_rooms[room_name]
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				if _gget(x, y) != Cell.BEDROCK:
+					_gset(x, y, Cell.EMPTY)
+	# Doorways between the living rooms: 2 cells tall at floor level.
+	for wx: int in [26, 34]:
+		for y in range(28, 30):
+			_gset(wx, y, Cell.EMPTY)
+	# Staircase from the outhouse down to the landing (1-cell steps).
+	for step in 6:
+		var sx := outhouse_cell.x + step
+		for dy in 3:
+			_gset(sx, SURFACE_ROW + step + dy, Cell.EMPTY)
+	# Hole in the landing floor down into the pens, with climb-out steps.
+	for hx in range(16, 18):
+		_gset(hx, 30, Cell.EMPTY)
+	_gset(19, 35, Cell.DIRT)
+	_gset(19, 36, Cell.DIRT)
+	_gset(18, 36, Cell.DIRT)
+	# Fence wall between the pens: hop-over gap at the top.
+	for y in range(33, 37):
+		_gset(11, y, Cell.DIRT)
 
 
 func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
@@ -232,6 +301,8 @@ func _paint_all() -> void:
 					t = Tile.GRASS
 				Cell.BEDROCK:
 					t = Tile.BEDROCK
+				Cell.WATER:
+					t = Tile.WATER
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
 					t = Tile.DIRT_DARK if rng.randf() < dark_chance else Tile.DIRT
@@ -321,6 +392,12 @@ func finish_line_rect() -> Rect2:
 ## Public read access to the cell grid (Cell enum), used by bot navigation.
 func cell(x: int, y: int) -> int:
 	return _gget(x, y)
+
+
+## True when the world-space point sits in groundwater.
+func is_water(world_pos: Vector2) -> bool:
+	var c := local_to_map(to_local(world_pos))
+	return _gget(c.x, c.y) == Cell.WATER
 
 
 # -------------------------------------------------------------------- grid ---

@@ -77,6 +77,7 @@ var _a_right: StringName
 var _a_jump: StringName
 var _a_kick: StringName
 var _shape: CollisionShape2D
+var _terrain: Terrain  ## cached for water queries
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 
@@ -194,12 +195,21 @@ func _physics_process(delta: float) -> void:
 				_do_kick_dir(_queued_kick, _queued_kick_power)
 			_queued_kick = Vector2.ZERO
 
-		velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
-		_coyote = 0.15 if is_on_floor() else _coyote - delta
+		# Groundwater: you bob at the surface instead of sinking — submerged
+		# you float up, feet-wet you settle, and jumping paddles you out.
+		var head_water := _water_at(Vector2(0, -8))
+		var feet_water := _water_at(Vector2(0, 10))
+		if head_water:
+			velocity.y = move_toward(velocity.y, -110.0, 2200.0 * delta)
+		elif feet_water:
+			velocity.y = move_toward(velocity.y, 35.0, 1500.0 * delta)
+		else:
+			velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
+		_coyote = 0.15 if (is_on_floor() or feet_water) else _coyote - delta
 		_jump_buffer = 0.1 if jump_pressed else _jump_buffer - delta
 
 		if _jump_buffer > 0.0 and _coyote > 0.0:
-			velocity.y = JUMP_VELOCITY
+			velocity.y = JUMP_VELOCITY * (0.7 if feet_water else 1.0)
 			_jump_buffer = 0.0
 			_coyote = 0.0
 			get_tree().call_group(&"sfx", &"play_jump", global_position)
@@ -207,7 +217,8 @@ func _physics_process(delta: float) -> void:
 		if jump_released and velocity.y < 0.0:
 			velocity.y *= 0.55  # variable jump height
 
-		velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
+		var swim_speed := SPEED * (0.65 if feet_water else 1.0)
+		velocity.x = move_toward(velocity.x, dir * swim_speed, ACCEL * delta)
 	else:
 		# Stunned: the body is a tumbling physics ragdoll — ride its torso so
 		# the camera, snapshots, and blasts all track where it's flung.
@@ -280,6 +291,14 @@ func _physics_process(delta: float) -> void:
 		die()
 
 
+func _water_at(offset: Vector2) -> bool:
+	if _terrain == null:
+		_terrain = get_tree().get_first_node_in_group(&"terrain") as Terrain
+		if _terrain == null:
+			return false
+	return _terrain.is_water(global_position + offset)
+
+
 ## Queue a directional kick with a 0.2..1.0 power scale (charged gesture
 ## kicks and web clients use this; the classic kick button stays 45 degrees
 ## at full power).
@@ -319,6 +338,25 @@ func _do_kick_dir(dir: Vector2, power: float) -> void:
 				and center.distance_to(other.global_position) <= KICK_RANGE + 8.0:
 			other.velocity += dir * Settings.kick_player_power * power
 			other._coyote = 0.0
+			hit = true
+	# Furniture flies, critters get punted, fixtures (toilet/shower) react.
+	for n in get_tree().get_nodes_in_group(&"props"):
+		var node := n as Node2D
+		if node == null or center.distance_to(node.global_position) > KICK_RANGE + 12.0:
+			continue
+		var rb := node as RigidBody2D
+		if rb != null:
+			rb.linear_velocity = dir * Settings.kick_bomb_power * power * 0.8
+			rb.angular_velocity = _facing * 6.0
+			hit = true
+		elif node.has_method(&"shove"):
+			node.call(&"shove", dir * Settings.kick_player_power * power)
+			hit = true
+	for f in get_tree().get_nodes_in_group(&"fixtures"):
+		var fx := f as Node2D
+		if fx and fx.has_method(&"kicked") \
+				and center.distance_to(fx.global_position) <= KICK_RANGE + 12.0:
+			fx.call(&"kicked")
 			hit = true
 	get_tree().call_group(&"sfx", &"play_kick", global_position)
 	if hit:

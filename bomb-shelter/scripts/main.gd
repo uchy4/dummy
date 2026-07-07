@@ -142,6 +142,11 @@ func _ready() -> void:
 		ch.position = pos
 		world.add_child(ch)
 
+	# The homestead: outhouse, furnished bunker, animal pens.
+	var props := BunkerProps.new()
+	props.terrain = terrain
+	world.add_child(props)
+
 	_build_finish()
 
 	hud = Hud.new()
@@ -390,8 +395,19 @@ func _net_service() -> void:
 			1 if bomb.fizzled else 0])
 	var cs := []
 	for ch in get_tree().get_nodes_in_group(&"chests"):
-		cs.append([int(ch.global_position.x), int(ch.global_position.y)])
-	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs, "z": Settings.zoom_scale})
+		if not "prop_kind" in ch:
+			cs.append([int(ch.global_position.x), int(ch.global_position.y)])
+	# Homestead props (furniture, fixtures, critters, markers) for web view.
+	var es := []
+	for n in get_tree().get_nodes_in_group(&"props"):
+		var node := n as Node2D
+		if node == null:
+			continue
+		var pk: int = node.get(&"prop_kind")
+		es.append([int(node.global_position.x), int(node.global_position.y),
+			pk, int(node.rotation * 10.0)])
+	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs, "e": es,
+		"z": Settings.zoom_scale})
 
 
 func _pair_key(a: Color, b: Color) -> String:
