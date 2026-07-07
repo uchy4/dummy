@@ -8,8 +8,10 @@ static var ramp_time := 120.0     ## seconds until the bombardment reaches max d
 static var blast_scale := 1.0     ## multiplier on blast/kill/carve radius
 
 ## Which bomb types spawn, indexed by Bomb.Type: NORMAL, BIG, CLUSTER,
-## BOUNCY, STICKY, SHOCKWAVE.
-static var type_enabled: Array[bool] = [true, true, true, true, true, true]
+## BOUNCY, STICKY, SHOCKWAVE, DRILL, ANVIL.
+static var type_enabled: Array[bool] = [
+	true, true, true, true, true, true, true, true,
+]
 
 ## 2.5D rendering: the 2D sim runs unchanged, drawn with KayKit 3D assets.
 ## Applies on restart. Untick for the classic flat look.

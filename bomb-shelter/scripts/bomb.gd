@@ -9,13 +9,19 @@ extends RigidBody2D
 ## bomblets); BOUNCY (ricochets around); STICKY (glues itself to whoever
 ## touches it — kick to launch it, or brush another player to pass it on);
 ## SHOCKWAVE (almost no destructive potency, but launches everything nearby
-## with 5x force — a launcher, not an excavator).
+## with 5x force — a launcher, not an excavator); DRILL (burrows ~5 blocks
+## into the ground on landing, then detonates a chamber); ANVIL (its blast
+## fires straight DOWN, carving a rectangular column).
 ## Blast sizes scale with Settings.blast_scale, tunable in-game.
 
-enum Type { NORMAL, BIG, CLUSTER, BOUNCY, STICKY, SHOCKWAVE }
+enum Type { NORMAL, BIG, CLUSTER, BOUNCY, STICKY, SHOCKWAVE, DRILL, ANVIL }
 
 const BLAST_RADIUS := 80.0
 const CARVE_RADIUS := 66.0
+const DRILL_DEPTH := 5.0 * 16.0  ## px burrowed before detonating (~5 blocks)
+const DRILL_SPEED := 95.0
+const ANVIL_HALF_W := 26.0       ## half-width of the downward blast column
+const ANVIL_DEPTH := 7.0 * 16.0  ## how far down the column reaches
 const KILL_RADIUS := 48.0
 const BOMB_IMPULSE := 300.0
 const PLAYER_KNOCKBACK := 430.0
@@ -36,6 +42,12 @@ var _pass_cd := 0.0     ## brief hand-off cooldown so it can't ping-pong
 ## immune to it. A kick must never ragdoll or launch its own kicker.
 var kicker: Player = null
 var kicker_grace := 0.0
+
+## DRILL: burrowing state — frozen, tunneling straight down, carving as it
+## goes; detonates once DRILL_DEPTH has been chewed through.
+var _drilling := false
+var _drill_left := 0.0
+var _drill_carve_acc := 0.0
 
 ## Puppet: display-only mirror on a LAN-join client. Frozen, no fuse logic —
 ## the host streams position and fuse.
@@ -87,6 +99,16 @@ func _ready() -> void:
 			mass = 1.2
 			_body_color = Color(0.16, 0.32, 0.78)  # deep metallic blue
 			pm.bounce = 0.4
+		Type.DRILL:
+			mass = 2.0
+			_body_color = Color(0.38, 0.4, 0.46)  # gunmetal
+			pm.bounce = 0.05
+			pm.friction = 1.0
+		Type.ANVIL:
+			mass = 3.4
+			_body_color = Color(0.2, 0.21, 0.26)  # cast iron
+			pm.bounce = 0.0
+			pm.friction = 1.0
 	physics_material_override = pm
 	if puppet:
 		freeze = true
@@ -141,6 +163,8 @@ func _physics_process(delta: float) -> void:
 		kicker_grace -= delta
 	if type == Type.STICKY:
 		_sticky_logic(delta)
+	if type == Type.DRILL:
+		_drill_logic(delta)
 	# A carried sticky bomb has its collision disabled (see _stick_to), but
 	# skip explicitly too: riding a carrier must never impact-stun.
 	if carrier == null and linear_velocity.length() > IMPACT_STUN_SPEED:
@@ -217,6 +241,40 @@ func kicked_by(p: Player) -> void:
 	kicker_grace = 0.6
 
 
+## DRILL: once the falling body touches ground it locks in place and chews
+## straight down, carving a narrow shaft, then detonates at depth.
+func _drill_logic(delta: float) -> void:
+	if not _drilling:
+		if linear_velocity.y < -10.0:
+			return  # still on the way up
+		var space := get_world_2d().direct_space_state
+		var q := PhysicsRayQueryParameters2D.create(global_position,
+			global_position + Vector2(0, _body_radius + 5.0), 1)
+		if space.intersect_ray(q).is_empty():
+			return
+		_drilling = true
+		_drill_left = DRILL_DEPTH
+		freeze = true
+		rotation = 0.0
+		linear_velocity = Vector2.ZERO
+		angular_velocity = 0.0
+		collision_layer = 0
+		collision_mask = 0
+		get_tree().call_group(&"sfx", &"play_snap", global_position)
+		return
+	var step := DRILL_SPEED * delta
+	global_position.y += step
+	_drill_left -= step
+	_drill_carve_acc += step
+	# Carve in chunks, not every frame — keeps the carve stream sane.
+	if _drill_carve_acc >= 10.0 and terrain:
+		_drill_carve_acc = 0.0
+		terrain.carve_circle(global_position + Vector2(0, _body_radius * 0.4),
+			_body_radius + 3.0)
+	if _drill_left <= 0.0:
+		_explode()
+
+
 ## Reverse case for impact-stun: a fast bomb slamming into a standing
 ## player wouldn't show up in the player's own slide-collision loop (the
 ## player isn't the one moving), so watch our own contacts instead. The
@@ -246,6 +304,9 @@ func _touching_player(exclude: Player) -> Player:
 
 func _explode() -> void:
 	_exploded = true
+	if type == Type.ANVIL:
+		_explode_anvil()
+		return
 	# SHOCKWAVE: barely destructive, but launches everything nearby at 5x
 	# force and is never lethal on its own.
 	var launch_mult := 5.0 if type == Type.SHOCKWAVE else 1.0
@@ -333,6 +394,60 @@ func _explode() -> void:
 	queue_free()
 
 
+## ANVIL: the blast fires straight DOWN — everything in a rectangular
+## column below the bomb gets slammed, and the column is carved out.
+func _explode_anvil() -> void:
+	var half_w := ANVIL_HALF_W * Settings.blast_scale
+	var depth := ANVIL_DEPTH * Settings.blast_scale
+	var rect := Rect2(global_position.x - half_w, global_position.y - 10.0,
+		half_w * 2.0, depth + 10.0)
+
+	for p in get_tree().get_nodes_in_group(&"players"):
+		var pl := p as Player
+		if pl == null or not pl.alive:
+			continue
+		if pl == kicker and kicker_grace > 0.0:
+			continue
+		if rect.has_point(pl.global_position):
+			var dirx := signf(pl.global_position.x - global_position.x)
+			pl.take_blast(Vector2(dirx * 140.0, 520.0), true)
+
+	for b in get_tree().get_nodes_in_group(&"bombs"):
+		var bomb := b as Bomb
+		if bomb == null or bomb == self or bomb._exploded:
+			continue
+		if rect.has_point(bomb.global_position):
+			bomb.apply_central_impulse(Vector2(0, BOMB_IMPULSE * 1.2) * bomb.mass)
+			bomb.ignite(randf_range(0.25, 0.7))
+
+	for rp in get_tree().get_nodes_in_group(&"ragdoll_parts"):
+		var part := rp as RigidBody2D
+		if part == null or not is_instance_valid(part):
+			continue
+		if rect.has_point(part.global_position):
+			part.apply_central_impulse(Vector2(0, BOMB_IMPULSE * 1.3) * part.mass)
+
+	for ch: Node2D in get_tree().get_nodes_in_group(&"chests"):
+		if rect.has_point(ch.global_position):
+			ch.call(&"blast_destroy")
+
+	# Carve the column as a stack of overlapping circles.
+	if terrain:
+		var y := 0.0
+		while y <= depth:
+			terrain.carve_circle(global_position + Vector2(0, y), half_w + 4.0)
+			y += half_w
+
+	var fx := ExplosionFx.new()
+	fx.radius = half_w * 2.2
+	fx.position = global_position + Vector2(0, depth * 0.3)
+	get_parent().add_child.call_deferred(fx)
+	get_tree().call_group(&"camera", &"add_trauma", 0.5)
+	get_tree().call_group(&"sfx", &"play_explosion", global_position,
+		1.3 * Settings.blast_scale, int(Type.BIG))
+	queue_free()
+
+
 ## True when solid terrain sits between the bomb and the target — the whole
 ## point of hiding in the shelter.
 func _blocked(space: PhysicsDirectSpaceState2D, target: Vector2) -> bool:
@@ -368,13 +483,30 @@ func _draw() -> void:
 			draw_circle(Vector2(0, _body_radius * 0.85), 1.8, goo)
 		Type.SHOCKWAVE:
 			# Metallic shell: bright silver rim + a specular crescent over
-			# the blue body, plus shock rings ("launcher, not excavator").
+			# the blue body.
 			draw_arc(Vector2.ZERO, _body_radius - 1.2, -2.7, -0.5, 16,
 				Color(0.9, 0.94, 1.0, 0.95), 2.6)
 			draw_arc(Vector2.ZERO, _body_radius - 4.5, 0.5, 2.1, 12,
 				Color(0.72, 0.8, 0.95, 0.5), 2.0)
-			var ring := Color(0.72, 0.9, 1.0, 0.8)
-			draw_arc(Vector2.ZERO, _body_radius * 1.5, 0.0, TAU, 24, ring, 1.4)
-			draw_arc(Vector2.ZERO, _body_radius * 2.1, 0.0, TAU, 24, ring, 1.0)
+		Type.DRILL:
+			# Drill tip pointing down + thread chevrons on the body.
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(-_body_radius * 0.7, _body_radius * 0.6),
+				Vector2(_body_radius * 0.7, _body_radius * 0.6),
+				Vector2(0, _body_radius + 7.0),
+			]), Color(0.68, 0.7, 0.76))
+			for i in 2:
+				var yy := -2.0 + i * 4.5
+				draw_line(Vector2(-_body_radius * 0.55, yy + 2.0),
+					Vector2(_body_radius * 0.55, yy - 2.0), Color(0.6, 0.62, 0.7), 1.6)
+		Type.ANVIL:
+			# Anvil silhouette: wide cap + narrow waist over the body.
+			draw_rect(Rect2(-_body_radius, -_body_radius * 0.75,
+				_body_radius * 2.0, 4.0), Color(0.55, 0.57, 0.64))
+			draw_rect(Rect2(-3.0, -_body_radius * 0.75 + 4.0, 6.0,
+				_body_radius * 0.8), Color(0.42, 0.44, 0.5))
+			draw_line(Vector2(-_body_radius * 0.6, _body_radius * 0.55),
+				Vector2(_body_radius * 0.6, _body_radius * 0.55),
+				Color(0.1, 0.1, 0.13), 2.0)
 	draw_rect(Rect2(-2.5, -_body_radius - 4, 5, 5), Color(0.35, 0.32, 0.3))
 	draw_circle(Vector2(0, -_body_radius - 5), 1.8, Color(1.0, 0.7, 0.2))
