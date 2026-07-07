@@ -34,6 +34,12 @@ var _kick_idx := -1
 var _kick_origin := Vector2.ZERO
 var _kick_pos := Vector2.ZERO
 var _kick_ms := 0
+## Second finger while the joystick is held: tap = jump, swipe = charged
+## kick — so you can jump and kick without stopping.
+var _gest_idx := -1
+var _gest_origin := Vector2.ZERO
+var _gest_pos := Vector2.ZERO
+var _gest_ms := 0
 var _axis := 0.0
 
 
@@ -43,7 +49,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _move_idx != -1 or _kick_idx != -1:
+	if _move_idx != -1 or _kick_idx != -1 or _gest_idx != -1:
 		queue_redraw()
 
 
@@ -61,7 +67,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _touch_down(idx: int, pos: Vector2) -> void:
 	var cs: Vector2 = char_screen.call()
-	if _kick_idx == -1 and cs != Vector2.INF and pos.distance_to(cs) <= CHAR_GRAB:
+	if _kick_idx == -1 and _gest_idx == -1 \
+			and cs != Vector2.INF and pos.distance_to(cs) <= CHAR_GRAB:
 		_kick_idx = idx
 		_kick_origin = pos
 		_kick_pos = pos
@@ -72,6 +79,12 @@ func _touch_down(idx: int, pos: Vector2) -> void:
 		_move_origin = pos
 		_move_pos = pos
 		_move_ms = Time.get_ticks_msec()
+		return
+	if _gest_idx == -1:
+		_gest_idx = idx
+		_gest_origin = pos
+		_gest_pos = pos
+		_gest_ms = Time.get_ticks_msec()
 
 
 func _touch_move(idx: int, pos: Vector2) -> void:
@@ -84,6 +97,8 @@ func _touch_move(idx: int, pos: Vector2) -> void:
 			axis_changed.emit(v)
 	elif idx == _kick_idx:
 		_kick_pos = pos
+	elif idx == _gest_idx:
+		_gest_pos = pos
 
 
 func _touch_up(idx: int) -> void:
@@ -101,13 +116,24 @@ func _touch_up(idx: int) -> void:
 		var d := _kick_pos - _kick_origin
 		var quick := Time.get_ticks_msec() - _kick_ms < TAP_TIME * 1000.0
 		_kick_idx = -1
-		if d.length() < TAP_SLOP:
-			if quick:
-				jump_tapped.emit()  # tapping your own character still jumps
-		else:
-			kick_charged.emit(d.normalized(),
-				clampf(d.length() / FULL_CHARGE, MIN_POWER, 1.0))
-		queue_redraw()
+		_end_tap_or_kick(d, quick)
+	elif idx == _gest_idx:
+		var d := _gest_pos - _gest_origin
+		var quick := Time.get_ticks_msec() - _gest_ms < TAP_TIME * 1000.0
+		_gest_idx = -1
+		_end_tap_or_kick(d, quick)
+
+
+## Shared release logic for the on-character press and the second finger:
+## a short tap jumps, a swipe fires a charged kick along the swipe.
+func _end_tap_or_kick(d: Vector2, quick: bool) -> void:
+	if d.length() < TAP_SLOP:
+		if quick:
+			jump_tapped.emit()
+	else:
+		kick_charged.emit(d.normalized(),
+			clampf(d.length() / FULL_CHARGE, MIN_POWER, 1.0))
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -116,9 +142,11 @@ func _draw() -> void:
 		draw_arc(_move_origin, 40.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0, true)
 		var knob_x := clampf(_move_pos.x - _move_origin.x, -40.0, 40.0)
 		draw_circle(_move_origin + Vector2(knob_x, 0), 20.0, Color(1, 1, 1, 0.3))
-	# Kick charge: power bar over the character + dotted trajectory preview.
-	if _kick_idx != -1:
-		var d := _kick_pos - _kick_origin
+	# Kick charge: power bar over the character + dotted trajectory preview
+	# (from the on-character press or the second finger, whichever is live).
+	if _kick_idx != -1 or _gest_idx != -1:
+		var d := _kick_pos - _kick_origin if _kick_idx != -1 \
+			else _gest_pos - _gest_origin
 		if d.length() < TAP_SLOP:
 			return
 		var cs: Vector2 = char_screen.call()

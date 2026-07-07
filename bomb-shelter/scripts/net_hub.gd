@@ -88,7 +88,7 @@ Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></di
 var ws=null,joined=false,st={a:0,j:0,k:0};
 // Gesture input: AXV = analog move axis, JHELD = jump held (both fed by the
 // invisible thumb-joystick + tap gestures below).
-var AXV=0,JHELD=false,moveT=null,kickT=null,joinT=0,scrZoom=1;
+var AXV=0,JHELD=false,moveT=null,kickT=null,gestT=null,joinT=0,scrZoom=1;
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
@@ -198,28 +198,33 @@ function myScreen(){if(you<0||!sc||!sc.p[you]||sc.p[you][2]!==1)return null;
  var m=(predOK)?{x:PX,y:PY}:lerpP(you);
  return{x:(m.x-cam.x)*scrZoom+VW/2,y:(m.y-cam.y)*scrZoom+VH/2};}
 function jumpPulse(){JHELD=true;upd();setTimeout(function(){JHELD=false;upd();},90);}
+function mkTouch(e){return{id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};}
 cv.addEventListener("pointerdown",function(e){e.preventDefault();
  if(!joined||!grid)return;
  var ms=myScreen();
- if(ms&&!kickT&&Math.hypot(e.clientX-ms.x,e.clientY-ms.y)<52){
-  kickT={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};return;}
- if(!moveT){moveT={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY,t0:performance.now()};}});
+ if(ms&&!kickT&&!gestT&&Math.hypot(e.clientX-ms.x,e.clientY-ms.y)<52){
+  kickT=mkTouch(e);return;}
+ if(!moveT)moveT=mkTouch(e);
+ // Second finger while the joystick is held: tap = jump, swipe = kick.
+ else if(!gestT)gestT=mkTouch(e);});
 cv.addEventListener("pointermove",function(e){e.preventDefault();
  if(moveT&&e.pointerId===moveT.id){moveT.x=e.clientX;moveT.y=e.clientY;
   var dx=moveT.x-moveT.ox;
   AXV=Math.abs(dx)<8?0:Math.max(-1,Math.min(1,dx/44));upd();}
- else if(kickT&&e.pointerId===kickT.id){kickT.x=e.clientX;kickT.y=e.clientY;}});
+ else if(kickT&&e.pointerId===kickT.id){kickT.x=e.clientX;kickT.y=e.clientY;}
+ else if(gestT&&e.pointerId===gestT.id){gestT.x=e.clientX;gestT.y=e.clientY;}});
+function tapOrKick(t){var dx=t.x-t.ox,dy=t.y-t.oy,d=Math.hypot(dx,dy);
+ var held=performance.now()-t.t0;
+ if(d<12){if(held<220)jumpPulse();return;}
+ var p=Math.max(0.25,Math.min(1,d/90));
+ if(ws&&ws.readyState===1&&joined)
+  ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}
 function endPtr(e){
  if(moveT&&e.pointerId===moveT.id){
   var quick=performance.now()-moveT.t0<220&&Math.hypot(moveT.x-moveT.ox,moveT.y-moveT.oy)<12;
   moveT=null;AXV=0;upd();if(quick)jumpPulse();}
- else if(kickT&&e.pointerId===kickT.id){
-  var dx=kickT.x-kickT.ox,dy=kickT.y-kickT.oy,d=Math.hypot(dx,dy);
-  var held=performance.now()-kickT.t0;kickT=null;
-  if(d<12){if(held<220)jumpPulse();return;}
-  var p=Math.max(0.25,Math.min(1,d/90));
-  if(ws&&ws.readyState===1&&joined)
-   ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}}
+ else if(kickT&&e.pointerId===kickT.id){var t=kickT;kickT=null;tapOrKick(t);}
+ else if(gestT&&e.pointerId===gestT.id){var t=gestT;gestT=null;tapOrKick(t);}}
 cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
 document.getElementById("colorbtn").addEventListener("click",function(){
  if(!ws||ws.readyState!==1||!joined||opts.length===0)return;
@@ -390,7 +395,8 @@ function render(){requestAnimationFrame(render);
   ctx.fillRect(sx-2,sy-2,4,4);ctx.globalAlpha=1;}
  // Charged-kick trajectory preview (world space): dotted arc along the path
  // a kicked bomb would fly at the current charge.
- if(kickT){var kdx=kickT.x-kickT.ox,kdy=kickT.y-kickT.oy,kd=Math.hypot(kdx,kdy);
+ var chT=kickT||gestT;
+ if(chT){var kdx=chT.x-chT.ox,kdy=chT.y-chT.oy,kd=Math.hypot(kdx,kdy);
   var meW=(you>=0&&predOK)?{x:PX,y:PY}:(you>=0&&sc&&sc.p[you]?lerpP(you):null);
   if(meW&&kd>=12){var kp=Math.max(0.25,Math.min(1,kd/90));
    var kvx=kdx/kd*430*kp,kvy=kdy/kd*430*kp;
@@ -405,7 +411,7 @@ function render(){requestAnimationFrame(render);
   var knx=Math.max(-40,Math.min(40,moveT.x-moveT.ox));
   ctx.fillStyle="rgba(255,255,255,.3)";
   ctx.beginPath();ctx.arc(moveT.ox+knx,moveT.oy,20,0,7);ctx.fill();}
- if(kickT){var bdx=kickT.x-kickT.ox,bdy=kickT.y-kickT.oy,bd=Math.hypot(bdx,bdy);
+ if(chT){var bdx=chT.x-chT.ox,bdy=chT.y-chT.oy,bd=Math.hypot(bdx,bdy);
   if(bd>=12){var bp=Math.max(0.25,Math.min(1,bd/90));var ms2=myScreen();
    if(ms2){ctx.fillStyle="rgba(0,0,0,.55)";ctx.fillRect(ms2.x-26,ms2.y-56,52,9);
     ctx.fillStyle=bp>0.8?"#ff5252":(bp>0.5?"#ffca28":"#9ccc65");
@@ -413,8 +419,8 @@ function render(){requestAnimationFrame(render);
  if(joinT&&now-joinT<8000){ctx.fillStyle="rgba(0,0,0,.45)";
   ctx.fillRect(cw/2-170,ch-96,340,46);
   ctx.fillStyle="#fff";ctx.font="12px sans-serif";ctx.textAlign="center";
-  ctx.fillText("drag anywhere = move   •   quick tap = jump",cw/2,ch-78);
-  ctx.fillText("press your player + swipe = charged kick",cw/2,ch-60);}
+  ctx.fillText("drag = move   •   tap = jump (2nd finger too)",cw/2,ch-78);
+  ctx.fillText("swipe 2nd finger (or from your player) = charged kick",cw/2,ch-60);}
  ctx.textAlign="left";ctx.font="12px sans-serif";
  for(var i=0;i<roster.length;i++){ctx.fillStyle="#"+roster[i].c;
   ctx.fillText(roster[i].n,10,18+i*15);}
