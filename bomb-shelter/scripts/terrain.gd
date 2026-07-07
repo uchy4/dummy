@@ -73,9 +73,10 @@ var _water_acc := 0.0
 ## Blast scorch per surviving cell: index -> 1. Blocks the blast touched
 ## but didn't destroy darken to 50% brightness, permanently.
 var _scorch := {}
-## Land cells whose corner wedges are flooded (water on both adjacent
-## sides): index -> corner mask. Drawn as water triangles in _draw.
-var _water_wedges := {}
+## Draws the liquid: every water cell as an enlarged rounded quad
+## (overlapping neighbors by a third of a tile) inside a CanvasGroup, so
+## the translucency composites once with no seams.
+var _wb: WaterBody
 var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
 var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
 var _drop_trail := {} ## per-drop visited cells: revisiting one = loop = evaporate
@@ -101,10 +102,20 @@ func _ready() -> void:
 	add_to_group(&"terrain")
 	rng.randomize()
 	_build_tileset()
+	# The liquid body renders through a CanvasGroup: all the overlapping
+	# rounded quads composite as ONE shape, then fade to water translucency
+	# in a single blend — no double-dark seams where they overlap.
+	var grp := CanvasGroup.new()
+	grp.self_modulate = Color(1, 1, 1, WATER_COLOR.a)
+	add_child(grp)
+	_wb = WaterBody.new()
+	_wb.t = self
+	grp.add_child(_wb)
 	if client_mode:
 		return
 	_generate()
 	_paint_all()
+	_wb.queue_redraw()
 
 
 ## Fill the grid from the wire format (one digit per cell, row-major).
@@ -114,12 +125,13 @@ func load_from_string(s: String) -> void:
 	for i in mini(s.length(), _grid.size()):
 		_grid[i] = s.unicode_at(i) - 48
 	_scorch = {}  # fresh map: forget the old match's blast marks
-	_water_wedges = {}
 	_flow_dir = {}
 	_transit = {}
 	_drop_trail = {}
 	clear()
 	_paint_all()
+	if _wb != null:
+		_wb.queue_redraw()
 
 
 # ---------------------------------------------------------------- tileset ---
@@ -165,30 +177,19 @@ func _build_tileset() -> void:
 		for x in TILE:
 			img.set_pixel(Tile.WATER_TOP * TILE + x, y, WATER_COLOR)
 
-	# Replicate each base tile down the 15 masked rows, erasing pixels at
-	# every masked corner: a 45-degree triangle for land, a rounded
-	# quarter-circle for water.
+	# Replicate each base tile down the 15 masked rows, erasing a 45-degree
+	# triangle of pixels at every masked corner. Water isn't tile-rendered
+	# at all anymore — the WaterBody canvas draws it as one merged liquid.
 	for mask in range(1, 16):
 		for mat in 12:
-			var wat := mat == Tile.WATER or mat == Tile.WATER_TOP
+			if mat == Tile.WATER or mat == Tile.WATER_TOP:
+				continue
 			for y in TILE:
 				for x in TILE:
 					var col := img.get_pixel(mat * TILE + x, y)
-					if (_round_cut(mask, x, y) if wat else _corner_cut(mask, x, y)):
+					if _corner_cut(mask, x, y):
 						col = Color(0, 0, 0, 0)
 					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
-	# Water's chamfered bank: its rows 16-31 mirror the mask rows but with
-	# the land-style 45-degree cut — used when a cut corner meets ground,
-	# so water bevels mate flush with the land's chamfers. Corners against
-	# open air keep the rounded rows 1-15.
-	for mat in [Tile.WATER, Tile.WATER_TOP]:
-		for mask in 16:
-			for y in TILE:
-				for x in TILE:
-					var col := img.get_pixel(mat * TILE + x, y)
-					if mask > 0 and _corner_cut(mask, x, y):
-						col = Color(0, 0, 0, 0)
-					img.set_pixel(mat * TILE + x, (16 + mask) * TILE + y, col)
 	# Scorch: rows 16-31 are the mask rows at half brightness. Anti-bevel
 	# fills: rows 32-47 keep ONLY the chamfer-triangle pixels; rows 48-63
 	# are those fills at half brightness (chips inside blast range char
@@ -222,7 +223,7 @@ func _build_tileset() -> void:
 
 	for i in 12:
 		var water := i == Tile.WATER or i == Tile.WATER_TOP
-		var variants := 32 if water else 64
+		var variants := 1 if water else 64
 		for v in variants:
 			src.create_tile(Vector2i(i, v))
 			if water or v >= 32:
@@ -232,28 +233,6 @@ func _build_tileset() -> void:
 			td.set_collision_polygon_points(0, 0, _corner_poly(v % 16))
 
 	tile_set = ts
-
-
-## Rounded variant of _corner_cut for water: pixels outside the
-## quarter-circle arc of radius BEVEL_R at each masked corner.
-func _round_cut(mask: int, x: int, y: int) -> bool:
-	var r := BEVEL_R
-	var fx := float(x) + 0.5
-	var fy := float(y) + 0.5
-	var t := float(TILE)
-	if mask & 1 and fx < r and fy < r \
-			and Vector2(fx, fy).distance_to(Vector2(r, r)) > r:
-		return true
-	if mask & 2 and fx > t - r and fy < r \
-			and Vector2(fx, fy).distance_to(Vector2(t - r, r)) > r:
-		return true
-	if mask & 4 and fx > t - r and fy > t - r \
-			and Vector2(fx, fy).distance_to(Vector2(t - r, t - r)) > r:
-		return true
-	if mask & 8 and fx < r and fy > t - r \
-			and Vector2(fx, fy).distance_to(Vector2(r, t - r)) > r:
-		return true
-	return false
 
 
 ## True when pixel (x, y) of a tile falls inside the 45-degree chamfer cut
@@ -774,10 +753,6 @@ func _variant_dark(x: int, y: int, chance: float) -> bool:
 func _paint_cell(x: int, y: int) -> void:
 	var cv := _gget(x, y)
 	var idx := y * W + x
-	if cv != Cell.WATER and _water_wedges.has(idx) \
-			and (cv == Cell.EMPTY or _water_fill_mask(x, y) == 0):
-		_water_wedges.erase(idx)
-		queue_redraw()
 	match cv:
 		Cell.EMPTY:
 			var fm := _fill_mask(x, y)
@@ -807,15 +782,9 @@ func _paint_cell(x: int, y: int) -> void:
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
 					t = Tile.DIRT_DARK if _variant_dark(x, y, dark_chance) else Tile.DIRT
-			var lvl := int(_scorch.get(y * W + x, 0))
+			var lvl := int(_scorch.get(idx, 0))
 			set_cell(Vector2i(x, y), _src_id,
 				Vector2i(t, _tile_mask(x, y) + 16 * lvl))
-			# Land corners with water on both sides flood their chamfer
-			# wedge (drawn in _draw), keeping the water silhouette smooth.
-			var wm := _water_fill_mask(x, y)
-			if wm != 0:
-				_water_wedges[idx] = wm
-				queue_redraw()
 
 
 # ------------------------------------------------------------- destruction ---
@@ -843,7 +812,8 @@ func add_ripple(world_pos: Vector2, power: float) -> void:
 	if not client_mode and power >= 0.5 and NetHub.has_viewers():
 		NetHub.broadcast({"t": "fx", "k": 17, "x": int(world_pos.x),
 			"y": int(world_pos.y), "p": snappedf(power, 0.1)})
-	queue_redraw()
+	if _wb != null:
+		_wb.queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -854,7 +824,8 @@ func _process(delta: float) -> void:
 			if float(_ripples[j].t) > RIPPLE_LIFE:
 				_ripples.remove_at(j)
 			j -= 1
-		queue_redraw()
+		if _wb != null:
+			_wb.queue_redraw()
 	if not _drops.is_empty():
 		var i := _drops.size() - 1
 		while i >= 0:
@@ -945,9 +916,16 @@ func _tick_water() -> void:
 				if d == 0:
 					d = 1 if rng.randf() < 0.5 else -1
 				to = idx + d
+			elif (la and _gget(x + 1, y) == Cell.WATER) \
+					or (ra and _gget(x - 1, y) == Cell.WATER):
+				# One side open with WATER pushing from the other: nothing
+				# is barricading this drop — the pool keeps spreading onto
+				# the open floor instead of stalling at its own edge.
+				d = -1 if la else 1
+				to = idx + d
 			else:
-				# Bottom filled and at least one side backed by wall or
-				# water: this drop is home.
+				# Bottom filled and the open side has no push behind it
+				# (or both sides are walls): this drop is home.
 				_flow_dir.erase(idx)
 				continue
 		_flow_dir.erase(idx)
@@ -979,6 +957,8 @@ func _tick_water() -> void:
 	_settle_transit(new_transit)
 	if not moves.is_empty() or not eq.is_empty():
 		water_moved.emit(moves, eq)
+		if _wb != null:
+			_wb.queue_redraw()
 	queue_redraw()
 
 
@@ -1095,67 +1075,20 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 			_repaint_water_around(f, t)
 			_repaint_nb(t % W, t / W)
 	_settle_transit(new_transit)
+	if _wb != null:
+		_wb.queue_redraw()
 	queue_redraw()
 
 
 ## Traveling water renders as falling splash droplets — the same spray look
-## as the well squirt (WaterSpray) — instead of blocks or streaks. Also
-## floods the chamfer wedges of land corners surrounded by water.
+## as the well squirt (WaterSpray). The liquid body itself is drawn by the
+## WaterBody canvas.
 func _draw() -> void:
-	var r := BEVEL_R
-	for k in _water_wedges:
-		var i := int(k)
-		var m := int(_water_wedges[k])
-		var bx := float(i % W) * TILE
-		var by := float(i / W) * TILE
-		if m & 1:
-			draw_colored_polygon(PackedVector2Array([Vector2(bx, by),
-				Vector2(bx + r, by), Vector2(bx, by + r)]), WATER_COLOR)
-		if m & 2:
-			draw_colored_polygon(PackedVector2Array([Vector2(bx + TILE, by),
-				Vector2(bx + TILE, by + r), Vector2(bx + TILE - r, by)]), WATER_COLOR)
-		if m & 4:
-			draw_colored_polygon(PackedVector2Array([Vector2(bx + TILE, by + TILE),
-				Vector2(bx + TILE - r, by + TILE),
-				Vector2(bx + TILE, by + TILE - r)]), WATER_COLOR)
-		if m & 8:
-			draw_colored_polygon(PackedVector2Array([Vector2(bx, by + TILE),
-				Vector2(bx, by + TILE - r), Vector2(bx + r, by + TILE)]), WATER_COLOR)
 	for d: Dictionary in _drops:
 		var fade := 1.0 - float(d.t) / DROP_LIFE
 		var c := DROP_COLOR
 		c.a = DROP_COLOR.a * fade
 		draw_circle(d.p, 1.4 + 1.2 * fade, c)
-	# Rolling waterlines: traveling wave humps on surface cells near each
-	# active ripple, fading as the ring expands and ages out.
-	for rp: Dictionary in _ripples:
-		var age: float = rp.t
-		var env := (1.0 - age / RIPPLE_LIFE) * float(rp.pw) * 4.0
-		var origin: Vector2 = rp.p
-		var oc := local_to_map(to_local(origin))
-		for dxc in range(-4, 5):
-			var cx := oc.x + dxc
-			if cx < 0 or cx >= W:
-				continue
-			var sy := -1  # the surface water cell in this column, if any
-			for dy in range(-3, 4):
-				var cy := oc.y + dy
-				if cy < 1 or cy >= H:
-					continue
-				if _grid[cy * W + cx] == Cell.WATER \
-						and _grid[(cy - 1) * W + cx] != Cell.WATER:
-					sy = cy
-					break
-			if sy < 0:
-				continue
-			var wl := float(sy) * TILE + 5.0  # the drawn waterline
-			for sub in 4:
-				var px := float(cx) * TILE + sub * 4.0 + 2.0
-				var dxp := px - origin.x
-				var a := env * exp(-absf(dxp) * 0.03) \
-					* (0.5 + 0.5 * cos(absf(dxp) * 0.26 - age * 9.0))
-				if a > 0.6:
-					draw_rect(Rect2(px - 2.0, wl - a, 4.0, a), WATER_COLOR)
 
 
 ## Repaint a moved drop and its vertical neighbors: covered water uses the
@@ -1166,78 +1099,15 @@ func _repaint_water_around(from_idx: int, to_idx: int) -> void:
 	_paint_water_cell(from_idx % W, from_idx / W + 1)
 
 
+## Water is no longer tile-rendered: the WaterBody canvas draws the whole
+## liquid as one merged, rounded, overlapping shape. This just makes sure
+## no stale tile sits in a water cell and pokes the canvas to redraw.
 func _paint_water_cell(x: int, y: int) -> void:
-	if _gget(x, y) != Cell.WATER or _transit.has(y * W + x):
+	if _gget(x, y) != Cell.WATER:
 		return
-	var t := Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
-	var mask := _water_mask(x, y)
-	# Cuts that meet ground use the chamfered bank (rows 16-31) so they
-	# mate with the land bevels; cuts against open air stay rounded.
-	var bank := 16 if mask != 0 and _water_cut_touches_land(x, y, mask) else 0
-	set_cell(Vector2i(x, y), _src_id, Vector2i(t, bank + mask))
-
-
-func _is_land(x: int, y: int) -> bool:
-	var cv := _gget(x, y)
-	return cv != Cell.EMPTY and cv != Cell.WATER
-
-
-## True when any cut corner of this water cell has ground on either of its
-## two adjacent sides.
-func _water_cut_touches_land(x: int, y: int, mask: int) -> bool:
-	var up := _is_land(x, y - 1)
-	var dn := _is_land(x, y + 1)
-	var lf := _is_land(x - 1, y)
-	var rt := _is_land(x + 1, y)
-	if mask & 1 and (up or lf):
-		return true
-	if mask & 2 and (up or rt):
-		return true
-	if mask & 4 and (dn or rt):
-		return true
-	if mask & 8 and (dn or lf):
-		return true
-	return false
-
-
-## Water rounds against ANYTHING that isn't water — land counts as open
-## space for it, so pools sit in their basins with rounded corners.
-## Adjacent water is the same body and stays seamless.
-func _water_mask(x: int, y: int) -> int:
-	var up := _gget(x, y - 1) != Cell.WATER
-	var dn := _gget(x, y + 1) != Cell.WATER
-	var lf := _gget(x - 1, y) != Cell.WATER
-	var rt := _gget(x + 1, y) != Cell.WATER
-	var m := 0
-	if up and lf:
-		m |= 1
-	if up and rt:
-		m |= 2
-	if dn and rt:
-		m |= 4
-	if dn and lf:
-		m |= 8
-	return m
-
-
-## The inverse coagulation: corners of a LAND cell with water on both
-## adjacent sides. Its chamfer wedge there gets flooded with water (drawn
-## in _draw), so submerged ledges read as smooth water, not notches.
-func _water_fill_mask(x: int, y: int) -> int:
-	var up := _gget(x, y - 1) == Cell.WATER
-	var dn := _gget(x, y + 1) == Cell.WATER
-	var lf := _gget(x - 1, y) == Cell.WATER
-	var rt := _gget(x + 1, y) == Cell.WATER
-	var m := 0
-	if up and lf:
-		m |= 1
-	if up and rt:
-		m |= 2
-	if dn and rt:
-		m |= 4
-	if dn and lf:
-		m |= 8
-	return m
+	erase_cell(Vector2i(x, y))
+	if _wb != null:
+		_wb.queue_redraw()
 
 
 ## Repaint a changed cell's four neighbors — solid chamfers, water
@@ -1281,6 +1151,8 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 	for y in range(maxi(c.y - r1 - 1, 0), mini(c.y + r1 + 2, H)):
 		for x in range(maxi(c.x - r1 - 1, 0), mini(c.x + r1 + 2, W)):
 			_paint_cell(x, y)
+	if _wb != null:
+		_wb.queue_redraw()
 
 
 # ----------------------------------------------------------------- queries ---
@@ -1358,3 +1230,64 @@ func _gget(x: int, y: int) -> int:
 func _gset(x: int, y: int, v: int) -> void:
 	if x >= 0 and x < W and y >= 0 and y < H:
 		_grid[y * W + x] = v
+
+
+## Draws the whole liquid: every settled water cell as a rounded quad grown
+## by a third of a tile in all directions — so cells overlap their
+## neighbors (land AND water) and merge into one blobby mass with rounded
+## edges everywhere — plus the rolling ripple humps. Lives inside a
+## CanvasGroup, so the union composites once and the group applies the
+## water translucency with no double-dark seams.
+class WaterBody:
+	extends Node2D
+	var t: Terrain
+	var _sb := StyleBoxFlat.new()
+
+	func _ready() -> void:
+		z_index = 1  # over terrain tiles, under props and players
+		_sb.bg_color = Color(Terrain.WATER_COLOR.r, Terrain.WATER_COLOR.g,
+			Terrain.WATER_COLOR.b)  # opaque: the group applies the alpha
+		_sb.set_corner_radius_all(5)
+
+	func _draw() -> void:
+		if t == null or t._grid.is_empty():
+			return
+		var g := Terrain.TILE / 3.0
+		var opaque := Color(Terrain.WATER_COLOR.r, Terrain.WATER_COLOR.g,
+			Terrain.WATER_COLOR.b)
+		var ci := get_canvas_item()
+		for i in t._grid.size():
+			if t._grid[i] != Terrain.Cell.WATER or t._transit.has(i):
+				continue
+			_sb.draw(ci, Rect2((i % Terrain.W) * Terrain.TILE - g,
+				(i / Terrain.W) * Terrain.TILE - g,
+				Terrain.TILE + g * 2.0, Terrain.TILE + g * 2.0))
+		# Rolling waterlines: wave humps above surface cells near ripples.
+		for rp: Dictionary in t._ripples:
+			var age: float = rp.t
+			var env := (1.0 - age / Terrain.RIPPLE_LIFE) * float(rp.pw) * 4.0
+			var origin: Vector2 = rp.p
+			var oc := Vector2i(int(origin.x / Terrain.TILE), int(origin.y / Terrain.TILE))
+			for dxc in range(-4, 5):
+				var cx := oc.x + dxc
+				if cx < 0 or cx >= Terrain.W:
+					continue
+				var sy := -1
+				for dy in range(-3, 4):
+					var cy := oc.y + dy
+					if cy < 1 or cy >= Terrain.H:
+						continue
+					if t._grid[cy * Terrain.W + cx] == Terrain.Cell.WATER \
+							and t._grid[(cy - 1) * Terrain.W + cx] != Terrain.Cell.WATER:
+						sy = cy
+						break
+				if sy < 0:
+					continue
+				var wl := float(sy) * Terrain.TILE - g + 1.0  # the raised surface
+				for sub in 4:
+					var px := float(cx) * Terrain.TILE + sub * 4.0 + 2.0
+					var dxp := px - origin.x
+					var a := env * exp(-absf(dxp) * 0.03) \
+						* (0.5 + 0.5 * cos(absf(dxp) * 0.26 - age * 9.0))
+					if a > 0.6:
+						draw_rect(Rect2(px - 2.0, wl - a, 4.0, a), opaque)

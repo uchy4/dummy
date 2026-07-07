@@ -250,7 +250,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   TSCORCH={};WWEDGE={};buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};PIPEBRK={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
+   TSCORCH={};buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};PIPEBRK={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -375,7 +375,7 @@ document.getElementById("fs").addEventListener("click",function(){
  }catch(err){}});
 setInterval(send,2000);
 // Offscreen pixels per cell: room to chamfer corners (3 subpx = 6 world px).
-var PXC=8;var TSCORCH={};var WWEDGE={};var RIPPLES=[];
+var PXC=8;var TSCORCH={};var RIPPLES=[];
 function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
 // (Re)paint one cell: deterministic light/dark speckle, blast-scorch
 // darkening (50%), 45-degree chamfered corners wherever both adjacent
@@ -383,8 +383,8 @@ function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];retur
 // the native tiles.
 function paintCell(r,c){var i=r*W+c,v=grid[i];
  octx.clearRect(c*PXC,r*PXC,PXC,PXC);
- if(v===4){delete WWEDGE[i];return;}// water renders live each frame
- if(!v){delete WWEDGE[i];
+ if(v===4)return;// water renders live each frame (merged liquid body)
+ if(!v){
   // Anti-bevel: where two solid sides meet at a corner, fill the wedge so
   // the neighbors' chamfers join into one continuous slant. Chips inside
   // blast range char to 50% like the blocks around them.
@@ -407,12 +407,6 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
   if(fd2&&fl){octx.fillStyle=colFor(r+1,c);
    tri([fx3,fy3+fs],[fx3,fy3+fs-fb],[fx3+fb,fy3+fs]);}
   return;}
- // Land corners with water on both adjacent sides flood their chamfer
- // wedge — tracked here, drawn translucent in the live water pass.
- var wat=function(rr2,cc2){return cc2>=0&&cc2<W&&rr2>=0&&rr2<H&&grid[rr2*W+cc2]===4;};
- var wwu=wat(r-1,c),wwd=wat(r+1,c),wwl=wat(r,c-1),wwr=wat(r,c+1);
- var wwm=(wwu&&wwl?1:0)|(wwu&&wwr?2:0)|(wwd&&wwr?4:0)|(wwd&&wwl?8:0);
- if(wwm)WWEDGE[i]=wwm;else delete WWEDGE[i];
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
  var col=(hh%100<30)?CELL2[dv]:CELL[dv];
  octx.fillStyle=TSCORCH[i]?shade(col,0.5):col;
@@ -699,38 +693,18 @@ function render(){requestAnimationFrame(render);
   var nw3=performance.now();
   for(var ri2=RIPPLES.length-1;ri2>=0;ri2--)
    if(nw3-RIPPLES[ri2].t>1200)RIPPLES.splice(ri2,1);
-  // Water rounds against anything that isn't water; cuts that meet ground
-  // switch to the land-style chamfer so the bevels mate flush. Rounded
-  // corners use quadratic arcs, chamfers straight lines.
-  var wnw=function(rr3,cc3){return !(cc3>=0&&cc3<W&&rr3>=0&&rr3<H&&grid[rr3*W+cc3]===4);};
-  var wld=function(rr3,cc3){if(cc3<0||cc3>=W||rr3<0||rr3>=H)return true;
-   var vv=grid[rr3*W+cc3];return vv!==0&&vv!==4;};
+  // The liquid body: every settled water cell as a rounded quad grown by
+  // a third of a tile, all in ONE path — overlaps merge in a single fill
+  // (no double-dark seams) and every edge comes out rounded.
+  var WG=TS/3;
+  ctx.beginPath();
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
-   var wc=wi%W,wr=(wi/W)|0,wx2=wc*TS,wy2=wr*TS;
-   if(WTRANS[wi])continue;// in flight: rendered as splash sparks, not a block
-   var wo=grid[wi-W]!==4?5:0;
-   var wu=wnw(wr-1,wc),wd=wnw(wr+1,wc),wl=wnw(wr,wc-1),wrt=wnw(wr,wc+1);
-   var nw=wu&&wl?6:0,ne=wu&&wrt?6:0,se=wd&&wrt?6:0,sw=wd&&wl?6:0;
-   var ty=wy2+wo,by2=wy2+TS;
-   if(!(nw||ne||se||sw)){ctx.fillRect(wx2,ty,TS,TS-wo);continue;}
-   var lu=wld(wr-1,wc),ld=wld(wr+1,wc),ll=wld(wr,wc-1),lr=wld(wr,wc+1);
-   var ch=(nw&&(lu||ll))||(ne&&(lu||lr))||(se&&(ld||lr))||(sw&&(ld||ll));
-   ctx.beginPath();
-   ctx.moveTo(wx2+nw,ty);ctx.lineTo(wx2+TS-ne,ty);
-   if(ne){if(ch)ctx.lineTo(wx2+TS,ty+ne);
-    else ctx.quadraticCurveTo(wx2+TS,ty,wx2+TS,ty+ne);}
-   ctx.lineTo(wx2+TS,by2-se);
-   if(se){if(ch)ctx.lineTo(wx2+TS-se,by2);
-    else ctx.quadraticCurveTo(wx2+TS,by2,wx2+TS-se,by2);}
-   ctx.lineTo(wx2+sw,by2);
-   if(sw){if(ch)ctx.lineTo(wx2,by2-sw);
-    else ctx.quadraticCurveTo(wx2,by2,wx2,by2-sw);}
-   ctx.lineTo(wx2,ty+nw);
-   if(nw){if(ch)ctx.lineTo(wx2+nw,ty);
-    else ctx.quadraticCurveTo(wx2,ty,wx2+nw,ty);}
-   ctx.closePath();ctx.fill();}
-  // Rolling waterlines: traveling wave humps on surface cells near each
-  // active ripple, fading as the ring expands and ages out.
+   if(WTRANS[wi])continue;// in flight: rendered as splash sparks
+   var wx2=(wi%W)*TS-WG,wy2=((wi/W)|0)*TS-WG,ws=TS+WG*2;
+   if(ctx.roundRect)ctx.roundRect(wx2,wy2,ws,ws,5);
+   else ctx.rect(wx2,wy2,ws,ws);}
+  // Rolling waterlines join the same fill: wave humps above the raised
+  // surface near each active ripple.
   for(var ri3=0;ri3<RIPPLES.length;ri3++){var rp2=RIPPLES[ri3];
    var age2=(nw3-rp2.t)/1000,env2=(1-age2/1.2)*rp2.p*4;
    if(env2<=0)continue;
@@ -742,21 +716,12 @@ function render(){requestAnimationFrame(render);
      if(cy2<1||cy2>=H)continue;
      if(grid[cy2*W+cx2]===4&&grid[(cy2-1)*W+cx2]!==4){sy2=cy2;break;}}
     if(sy2<0)continue;
-    var wl2=sy2*TS+5;
+    var wl2=sy2*TS-WG+1;
     for(var sb=0;sb<4;sb++){var pxb=cx2*TS+sb*4+2,dxp2=pxb-rp2.x;
      var a2=env2*Math.exp(-Math.abs(dxp2)*0.03)
       *(0.5+0.5*Math.cos(Math.abs(dxp2)*0.26-age2*9));
-     if(a2>0.6)ctx.fillRect(pxb-2,wl2-a2,4,a2);}}}
-  // Flooded land wedges: water triangles over chamfered corners that have
-  // water on both adjacent sides, keeping the silhouette smooth.
-  for(var wk in WWEDGE){var wi3=+wk,wm3=WWEDGE[wk];
-   var vx3=(wi3%W)*TS,vy3=((wi3/W)|0)*TS,r6=6;
-   ctx.beginPath();
-   if(wm3&1){ctx.moveTo(vx3,vy3);ctx.lineTo(vx3+r6,vy3);ctx.lineTo(vx3,vy3+r6);}
-   if(wm3&2){ctx.moveTo(vx3+TS,vy3);ctx.lineTo(vx3+TS,vy3+r6);ctx.lineTo(vx3+TS-r6,vy3);}
-   if(wm3&4){ctx.moveTo(vx3+TS,vy3+TS);ctx.lineTo(vx3+TS-r6,vy3+TS);ctx.lineTo(vx3+TS,vy3+TS-r6);}
-   if(wm3&8){ctx.moveTo(vx3,vy3+TS);ctx.lineTo(vx3,vy3+TS-r6);ctx.lineTo(vx3+r6,vy3+TS);}
-   ctx.fill();}}
+     if(a2>0.6)ctx.rect(pxb-2,wl2-a2,4,a2);}}}
+  ctx.fill();}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
   ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
