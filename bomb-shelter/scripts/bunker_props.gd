@@ -99,18 +99,34 @@ func _build_outhouse() -> void:
 			var pipe := PipeArt.new()
 			pipe.top = Vector2(pump.position.x, float(terrain.pump_cell.y) * TILE)
 			pipe.bottom_y = float(terrain.reservoir_rect.position.y) * TILE + 4.0
+			pipe.terrain = terrain  # blasts scorch the pipe like wallpaper
 			add_child(pipe)
 			pump.pipe_bottom_y = pipe.bottom_y  # busted pump leaks all the way down
 
 
 ## Cutaway art: the well pipe running from the pump down into the ground.
+## Blast-caught segments darken 90% toward the carved-earth brown, exactly
+## like scorched wallpaper (see scripts/room_decor.gd).
 class PipeArt:
 	extends Node2D
 	var top := Vector2.ZERO
 	var bottom_y := 0.0
+	var terrain: Terrain
+	var _scorch := {}  # scorched 16px pipe segments, keyed by row
 
 	func _ready() -> void:
 		z_index = 1  # over terrain, under players/bombs
+		if terrain != null:
+			terrain.carved.connect(_on_carved)
+
+	func _on_carved(pos: Vector2, radius: float) -> void:
+		if absf(pos.x - top.x) > radius + 8.0:
+			return
+		var r0 := int(maxf(pos.y - radius, top.y) / 16.0)
+		var r1 := int(minf(pos.y + radius, bottom_y) / 16.0)
+		for ry in range(r0, r1 + 1):
+			_scorch[ry] = true
+		queue_redraw()
 
 	func _draw() -> void:
 		draw_line(top, Vector2(top.x, bottom_y), Color("23303a"), 6.0)
@@ -119,6 +135,13 @@ class PipeArt:
 		while y < bottom_y - 8.0:
 			draw_rect(Rect2(top.x - 4.0, y, 8.0, 3.0), Color("2c3c48"))
 			y += 34.0
+		var scar := Color("2b1a0c")
+		scar.a = 0.9
+		for k in _scorch:
+			var sy := maxf(float(int(k)) * 16.0, top.y)
+			var sh := minf(float(int(k)) * 16.0 + 16.0, bottom_y) - sy
+			if sh > 0.0:
+				draw_rect(Rect2(top.x - 3.0, sy, 6.0, sh), scar)
 
 
 # -------------------------------------------------------------- kitchen ---

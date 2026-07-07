@@ -74,6 +74,12 @@ var _water_acc := 0.0
 var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
 var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
 var _drop_trail := {} ## per-drop visited cells: revisiting one = loop = evaporate
+## Splash droplets for traveling water — the same falling-spray look as the
+## well squirt (see scripts/water_spray.gd). Each entry: {p, v, t}.
+var _drops: Array[Dictionary] = []
+const DROPS_MAX := 240
+const DROP_LIFE := 0.5
+const DROP_COLOR := Color("7fd4ff", 0.85)
 
 
 ## Client mode: no generation — the grid arrives from the host over the
@@ -203,7 +209,7 @@ func _generate() -> void:
 				"rw": rng.randi_range(9, 16),
 				"rh": rng.randi_range(2, 3),
 			}
-			_carve_ellipse(room.c, room.rw, room.rh)
+			_carve_blob(room.c, room.rw, room.rh)
 			all_rooms.append(room)
 			centers.append(room.c)
 			room_count += 1
@@ -364,9 +370,15 @@ func _build_bunker() -> void:
 	var px := maxi(outhouse_cell.x - 4, 2)
 	pump_cell = Vector2i(px, SURFACE_ROW)
 	reservoir_rect = Rect2i(maxi(px - 6, 2), 46, 13, 3)
-	for y in range(reservoir_rect.position.y, reservoir_rect.end.y):
-		for x in range(reservoir_rect.position.x, reservoir_rect.end.x):
-			if _gget(x, y) != Cell.BEDROCK:
+	# The pool itself is a rounded, organic pocket (the rect above is just
+	# the generation guard / pipe anchor).
+	var rc := Vector2(float(reservoir_rect.get_center().x), 47.0)
+	for y in range(45, 50):
+		for x in range(reservoir_rect.position.x - 1, reservoir_rect.end.x + 1):
+			var nx := (float(x) - rc.x) / 6.5
+			var ny := (float(y) - rc.y) / 2.2
+			var wob := 1.0 + 0.25 * sin(float(x) * 1.7)
+			if nx * nx + ny * ny <= wob and _gget(x, y) != Cell.BEDROCK:
 				_gset(x, y, Cell.WATER)
 	# The guard also shields the well system from random generation.
 	_gen_guard = _gen_guard.merge(reservoir_rect.grow(2))
@@ -501,13 +513,21 @@ func _carve_rect(r: Rect2i) -> void:
 			_carve_cell(x, y)
 
 
-func _carve_ellipse(c: Vector2i, rw: int, rh: int) -> void:
-	for y in range(c.y - rh, c.y + rh + 1):
-		for x in range(c.x - rw, c.x + rw + 1):
-			var nx := float(x - c.x) / rw
-			var ny := float(y - c.y) / rh
-			if nx * nx + ny * ny <= 1.0:
-				_carve_cell(x, y)
+## Organic cavern blob: an ellipse whose height wobbles per column and whose
+## centerline undulates, so caves read as natural hollows instead of
+## stamped rectangles/ovals.
+func _carve_blob(c: Vector2i, rw: int, rh: int) -> void:
+	var ph := rng.randf() * TAU
+	var ph2 := rng.randf() * TAU
+	for x in range(c.x - rw, c.x + rw + 1):
+		var nx := float(x - c.x) / rw
+		if absf(nx) > 1.0:
+			continue
+		var wob := 1.0 + 0.35 * sin(ph + nx * 3.1) + 0.2 * sin(ph2 + nx * 6.7)
+		var half := rh * sqrt(maxf(1.0 - nx * nx, 0.0)) * wob
+		var cy := c.y + roundi(1.2 * sin(ph2 + nx * 2.3))
+		for y in range(cy - ceili(half), cy + ceili(half) + 1):
+			_carve_cell(x, y)
 
 
 func _carve_disk(c: Vector2i, r: int) -> void:
@@ -576,12 +596,43 @@ func grid_string() -> String:
 # ------------------------------------------------------------------ water ---
 
 func _process(delta: float) -> void:
+	if not _drops.is_empty():
+		var i := _drops.size() - 1
+		while i >= 0:
+			var d: Dictionary = _drops[i]
+			d.t += delta
+			if d.t > DROP_LIFE:
+				_drops.remove_at(i)
+			else:
+				d.v += Vector2(0, 500.0 * delta)
+				d.p += (d.v as Vector2) * delta
+			i -= 1
+		queue_redraw()
 	if client_mode:
 		return
 	_water_acc += delta
 	if _water_acc >= WATER_TICK:
 		_water_acc = 0.0
 		_tick_water()
+
+
+## Fling a couple of splash droplets from a moving water cell toward where
+## it's headed — trickles read as spray instead of sliding blocks.
+func _splash(from_idx: int, to_idx: int) -> void:
+	if _drops.size() >= DROPS_MAX:
+		return
+	var fp := Vector2((from_idx % W) * TILE + TILE * 0.5, (from_idx / W) * TILE + TILE * 0.5)
+	var dir := Vector2.DOWN
+	if to_idx >= 0:
+		var tp := Vector2((to_idx % W) * TILE + TILE * 0.5, (to_idx / W) * TILE + TILE * 0.5)
+		dir = (tp - fp).normalized()
+	for i in 2:
+		_drops.append({
+			"p": fp + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)),
+			"v": dir * randf_range(60.0, 115.0)
+				+ Vector2(randf_range(-30.0, 30.0), randf_range(-25.0, 5.0)),
+			"t": 0.0,
+		})
 
 
 ## Flowing-water cellular step. Each drop: falls into air below; slides
@@ -658,6 +709,7 @@ func _tick_water() -> void:
 		_grid[to] = Cell.WATER
 		new_transit[to] = true
 		erase_cell(Vector2i(to % W, to / W))  # in flight: droplet, not a tile
+		_splash(idx, to)
 		moves.append([idx, to])
 		if moves.size() >= WATER_MAX_MOVES:
 			break
@@ -757,6 +809,7 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 			_grid[f] = Cell.EMPTY
 			erase_cell(Vector2i(f % W, f / W))
 			_paint_water_cell(f % W, f / W + 1)
+			_splash(f, t)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
 			new_transit[t] = true
@@ -777,22 +830,14 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 	queue_redraw()
 
 
-## Traveling water renders as thin trickle streaks instead of blocks — a
-## few offset rivulets per cell (hash-jittered, so they shimmer as the drop
-## moves) with a tiny splash fleck at the foot.
+## Traveling water renders as falling splash droplets — the same spray look
+## as the well squirt (WaterSpray) — instead of blocks or streaks.
 func _draw() -> void:
-	for tkey in _transit:
-		var i := int(tkey)
-		if i < 0 or i >= _grid.size() or _grid[i] != Cell.WATER:
-			continue
-		var p := Vector2((i % W) * TILE + TILE * 0.5, (i / W) * TILE + TILE * 0.5)
-		var h := hash(i)
-		for s in 3:
-			var ox := float((h >> (s * 5)) & 7) - 3.5
-			var oy := float((h >> (s * 5 + 3)) & 3) - 1.5
-			draw_rect(Rect2(p.x + ox - 0.8, p.y + oy - 5.0, 1.6, 9.0), WATER_COLOR)
-		draw_rect(Rect2(p.x + float(h & 3) - 2.5, p.y + 4.5, 2.0, 1.6),
-			Color(0.8, 0.92, 1.0, 0.5))
+	for d: Dictionary in _drops:
+		var fade := 1.0 - float(d.t) / DROP_LIFE
+		var c := DROP_COLOR
+		c.a = DROP_COLOR.a * fade
+		draw_circle(d.p, 1.4 + 1.2 * fade, c)
 
 
 ## Repaint a moved drop and its vertical neighbors: covered water uses the

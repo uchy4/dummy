@@ -1,9 +1,10 @@
 class_name Furniture
 extends RigidBody2D
 ## Movable, kickable, explodable bunker furniture: tables, chairs, beds and
-## pillows. Never breaks — it just tumbles, like scripts/ragdoll.gd's parts
-## (same collision_layer/mask + physics-material trick), and gets flung by
-## kicks (group "props") and blasts (group "ragdoll_parts").
+## pillows. Kicks and shoves just tumble it, like scripts/ragdoll.gd's parts
+## (same collision_layer/mask + physics-material trick) — but a blast that
+## reaches it (group "chests") busts it apart into a spray of colored debris
+## particles and planks.
 ##
 ## Usage: set `kind` before adding to the tree, e.g.:
 ##   var t := Furniture.new(); t.kind = Furniture.Kind.TABLE; add_child(t)
@@ -17,11 +18,14 @@ var kind := Kind.TABLE
 ## Streamed to web viewers as [x, y, kind, rotation]; kept in sync with `kind`.
 var prop_kind := 0
 
+var _dead := false
+
 
 func _ready() -> void:
 	prop_kind = int(kind)
 	add_to_group(&"props")
 	add_to_group(&"ragdoll_parts")
+	add_to_group(&"chests")  # blasts in range call blast_destroy()
 	z_index = 3
 	collision_layer = 4  # players and bombs collide with (and push) it
 	collision_mask = 1 | 2 | 4
@@ -59,6 +63,47 @@ func _ready() -> void:
 			_build_bed(size)
 		Kind.PILLOW:
 			_build_pillow(size)
+
+
+## Called by the blast loop for group "chests" nodes it reaches unblocked:
+## the piece bursts into colored particles + a few tumbling planks.
+func blast_destroy() -> void:
+	if _dead:
+		return
+	_dead = true
+	var body := Color("8a6238")
+	var accent := Color("5e3d22")
+	match kind:
+		Kind.CHAIR:
+			body = Color("7a5230")
+			accent = Color("8a6238")
+		Kind.BED:
+			body = Color("6d4c2f")
+			accent = Color("e8e0c8")
+		Kind.PILLOW:
+			body = Color("f5f0e1")
+			accent = Color("ffffff")
+	if NetHub.has_viewers():  # fx kind 11 = debris burst (web crunch + puff)
+		NetHub.broadcast({"t": "fx", "k": 11,
+			"x": int(global_position.x), "y": int(global_position.y)})
+	var pieces := 2 if kind == Kind.PILLOW else 3
+	for i in pieces:
+		var plank := BunkerProps.Plank.new()
+		plank.size = Vector2(randf_range(6.0, 13.0), 3.0)
+		plank.col = body if i % 2 == 0 else accent
+		plank.position = global_position \
+			+ Vector2(randf_range(-8.0, 8.0), randf_range(-6.0, 6.0))
+		plank.rotation = randf_range(-0.6, 0.6)
+		plank.linear_velocity = Vector2(randf_range(-170.0, 170.0),
+			randf_range(-260.0, -70.0))
+		plank.angular_velocity = randf_range(-8.0, 8.0)
+		get_parent().add_child(plank)
+	var puff := DustPuff.new()
+	puff.amount = 10
+	puff.color = accent if kind == Kind.PILLOW else body
+	puff.position = global_position
+	get_parent().add_child(puff)
+	queue_free()
 
 
 func _build_table(size: Vector2) -> void:

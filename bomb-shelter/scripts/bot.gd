@@ -106,8 +106,8 @@ func _plan(pos: Vector2) -> void:
 		var best_d := 260.0
 		for ch in get_tree().get_nodes_in_group(&"chests"):
 			var node := ch as Node2D
-			if node == null:
-				continue
+			if node == null or "prop_kind" in node:
+				continue  # props share the blast group but aren't armor
 			var d := pos.distance_to(node.global_position)
 			if d < best_d and node.global_position.y >= pos.y - 40.0:
 				best_d = d

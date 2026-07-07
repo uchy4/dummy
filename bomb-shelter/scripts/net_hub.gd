@@ -129,7 +129,7 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
 var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6a6f76"];
-var SCORCH={};var PIPE=null;var WTRANS={};var HUDMSG="";var HTIME=-1;
+var SCORCH={};var PIPE=null;var PIPESC={};var WTRANS={};var HUDMSG="";var HTIME=-1;
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -187,7 +187,7 @@ function fxPlay(m){var k=m.k,x=m.x,y=m.y;
  else if(k===8){var n=m.a||10;for(var i=0;i<n;i++)sparks.push({x:x,y:y,c:"#7fd4ff",
   vx:(m.dx||0)*170+(Math.random()-0.5)*90,vy:(m.dy||-1)*170+(Math.random()-0.5)*70,
   t:performance.now()});}
- else if(k===9)puffAt(x,y,"#a1866a",m.a||6,110);
+ else if(k===9)puffAt(x,y,m.c||"#a1866a",m.a||6,110);
  else if(k===11){crunch(0.4,0.5);puffAt(x,y,"#6d4c2f",12,190);}
  else if(k===12){splat();puffAt(x,y,m.c==="p"?"#f4a7b9":"#f5f5f0",10,160);}
  else if(k===13){crunch(0.5,1.7);tone(75,0,0.12,0.3);puffAt(x,y,"#ffe082",4,130);}}
@@ -225,6 +225,16 @@ function connect(){
    boom(Math.min(0.55,0.2+m.r/240));}
   else if(m.t==="w"){if(grid){var nt={};
    var mm=m.m||[];for(var i=0;i<mm.length;i++){var f=mm[i][0],t2=mm[i][1];
+    // Traveling water splashes like the well spray: a couple of falling
+    // droplet sparks flung from the cell toward where it's headed.
+    if(f>=0&&f<grid.length&&sparks.length<260){
+     var fx2=(f%W)*TS+TS/2,fy2=((f/W)|0)*TS+TS/2;
+     var tx2=t2>=0?(t2%W)*TS+TS/2:fx2,ty2=t2>=0?((t2/W)|0)*TS+TS/2:fy2+TS;
+     var ddx=tx2-fx2,ddy=ty2-fy2,dl=Math.hypot(ddx,ddy)||1;
+     for(var si2=0;si2<2;si2++)sparks.push({x:fx2+(Math.random()-0.5)*8,
+      y:fy2+(Math.random()-0.5)*8,c:"#7fd4ff",
+      vx:ddx/dl*95+(Math.random()-0.5)*60,vy:ddy/dl*95-Math.random()*40,
+      t:performance.now()});}
     if(f>=0&&f<grid.length)grid[f]=0;
     if(t2>=0&&t2<grid.length){grid[t2]=4;nt[t2]=1;}}
    var qq=m.q||[];for(var i=0;i<qq.length;i++){var f=qq[i][0],t2=qq[i][1];
@@ -234,7 +244,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -367,6 +377,10 @@ function buildTerrain(){off=document.createElement("canvas");off.width=W;off.hei
   octx.fillStyle=(Math.random()<0.3)?CELL2[dv]:CELL[dv];octx.fillRect(c,r,1,1);
   if(v===3)grassCells.push(r*W+c);}}
 function carve(x,y,rad){if(!grid)return;
+ // Well-pipe segments caught in the blast scorch to the carved-earth brown.
+ if(PIPE&&Math.abs((PIPE[0]+0.5)*TS-x)<rad+8){
+  var pr0=Math.floor(Math.max(y-rad,PIPE[1]*TS)/TS),pr1=Math.floor(Math.min(y+rad,PIPE[2]*TS+4)/TS);
+  for(var pr=pr0;pr<=pr1;pr++)PIPESC[pr]=1;}
  var c0=Math.floor(x/TS),r0=Math.floor(y/TS),rr=Math.ceil(rad/TS);
  for(var r=r0-rr;r<=r0+rr;r++)for(var c=c0-rr;c<=c0+rr;c++){
   if(r<0||r>=H||c<0||c>=W)continue;
@@ -593,7 +607,11 @@ function render(){requestAnimationFrame(render);
  // Well pipe: cutaway art from the pump down to the reservoir.
  if(PIPE){var px2=(PIPE[0]+0.5)*TS;
   ctx.fillStyle="#23303a";ctx.fillRect(px2-3,PIPE[1]*TS,6,(PIPE[2]-PIPE[1])*TS+4);
-  ctx.fillStyle="#41525f";ctx.fillRect(px2-1.5,PIPE[1]*TS,3,(PIPE[2]-PIPE[1])*TS+4);}
+  ctx.fillStyle="#41525f";ctx.fillRect(px2-1.5,PIPE[1]*TS,3,(PIPE[2]-PIPE[1])*TS+4);
+  ctx.fillStyle="rgba(43,26,12,0.9)";
+  for(var pk in PIPESC){var prw=+pk;var psy=Math.max(prw*TS,PIPE[1]*TS);
+   var psh=Math.min(prw*TS+TS,PIPE[2]*TS+4)-psy;
+   if(psh>0)ctx.fillRect(px2-3,psy,6,psh);}}
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
@@ -603,10 +621,7 @@ function render(){requestAnimationFrame(render);
  if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
    var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS;
-   if(WTRANS[wi]){var wh=(wi*2654435761)>>>0;// in flight: thin trickle streaks
-    for(var st=0;st<3;st++){var sox=((wh>>(st*5))&7)-3.5,soy=((wh>>(st*5+3))&3)-1.5;
-     ctx.fillRect(wx2+TS/2+sox-0.8,wy2+TS/2+soy-5,1.6,9);}
-    continue;}
+   if(WTRANS[wi])continue;// in flight: rendered as splash sparks, not a block
    var wo=grid[wi-W]!==4?5:0;
    ctx.fillRect(wx2,wy2+wo,TS,TS-wo);}}
  var now=performance.now();
