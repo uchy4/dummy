@@ -73,6 +73,9 @@ var _water_acc := 0.0
 ## Blast scorch per surviving cell: index -> 1. Blocks the blast touched
 ## but didn't destroy darken to 50% brightness, permanently.
 var _scorch := {}
+## Land cells whose corner wedges are flooded (water on both adjacent
+## sides): index -> corner mask. Drawn as water triangles in _draw.
+var _water_wedges := {}
 var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
 var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
 var _drop_trail := {} ## per-drop visited cells: revisiting one = loop = evaporate
@@ -106,6 +109,7 @@ func load_from_string(s: String) -> void:
 	for i in mini(s.length(), _grid.size()):
 		_grid[i] = s.unicode_at(i) - 48
 	_scorch = {}  # fresh map: forget the old match's blast marks
+	_water_wedges = {}
 	_flow_dir = {}
 	_transit = {}
 	_drop_trail = {}
@@ -121,14 +125,15 @@ func load_from_string(s: String) -> void:
 const BEVEL_R := 6.0
 
 func _build_tileset() -> void:
-	# 12 materials wide x 48 rows tall: rows 0-15 are the corner-mask
-	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW chamfered), rows 16-31
-	# repeat them blast-scorched (x0.5 brightness), and rows 32-47 are the
-	# anti-bevel fills — JUST the chamfer triangles, painted into empty
-	# inside-corner cells so facing bevels join into one continuous slant.
-	# Water gets the mask rows too (its corners chamfer against empty air)
-	# but never scorches, fills, or collides.
-	var img := Image.create(TILE * 12, TILE * 48, false, Image.FORMAT_RGBA8)
+	# 12 materials wide x 64 rows tall: rows 0-15 are the corner-mask
+	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW cut), rows 16-31
+	# repeat them blast-scorched (x0.5 brightness), rows 32-47 are the
+	# anti-bevel fills — JUST the cut triangles, painted into empty
+	# inside-corner cells so facing bevels join into one continuous slant —
+	# and rows 48-63 are those fills scorched. Land cuts are 45-degree
+	# chamfers; water cuts are ROUNDED quarter-circles. Water gets only the
+	# mask rows and never scorches, fills, or collides.
+	var img := Image.create(TILE * 12, TILE * 64, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -155,18 +160,34 @@ func _build_tileset() -> void:
 		for x in TILE:
 			img.set_pixel(Tile.WATER_TOP * TILE + x, y, WATER_COLOR)
 
-	# Replicate each base tile down the 15 masked rows, erasing a 45-degree
-	# triangle of pixels at every masked corner.
+	# Replicate each base tile down the 15 masked rows, erasing pixels at
+	# every masked corner: a 45-degree triangle for land, a rounded
+	# quarter-circle for water.
 	for mask in range(1, 16):
 		for mat in 12:
+			var wat := mat == Tile.WATER or mat == Tile.WATER_TOP
 			for y in TILE:
 				for x in TILE:
 					var col := img.get_pixel(mat * TILE + x, y)
-					if _corner_cut(mask, x, y):
+					if (_round_cut(mask, x, y) if wat else _corner_cut(mask, x, y)):
 						col = Color(0, 0, 0, 0)
 					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
-	# Scorch: rows 16-31 are the mask rows at half brightness.
-	# Anti-bevel fills: rows 32-47 keep ONLY the chamfer-triangle pixels.
+	# Water's chamfered bank: its rows 16-31 mirror the mask rows but with
+	# the land-style 45-degree cut — used when a cut corner meets ground,
+	# so water bevels mate flush with the land's chamfers. Corners against
+	# open air keep the rounded rows 1-15.
+	for mat in [Tile.WATER, Tile.WATER_TOP]:
+		for mask in 16:
+			for y in TILE:
+				for x in TILE:
+					var col := img.get_pixel(mat * TILE + x, y)
+					if mask > 0 and _corner_cut(mask, x, y):
+						col = Color(0, 0, 0, 0)
+					img.set_pixel(mat * TILE + x, (16 + mask) * TILE + y, col)
+	# Scorch: rows 16-31 are the mask rows at half brightness. Anti-bevel
+	# fills: rows 32-47 keep ONLY the chamfer-triangle pixels; rows 48-63
+	# are those fills at half brightness (chips inside blast range char
+	# like everything else).
 	for mat in 12:
 		if mat == Tile.WATER or mat == Tile.WATER_TOP:
 			continue
@@ -181,6 +202,8 @@ func _build_tileset() -> void:
 						if not _corner_cut(mask, x, y):
 							base = Color(0, 0, 0, 0)
 						img.set_pixel(mat * TILE + x, (32 + mask) * TILE + y, base)
+						img.set_pixel(mat * TILE + x, (48 + mask) * TILE + y,
+							Color(base.r * 0.5, base.g * 0.5, base.b * 0.5, base.a))
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -194,7 +217,7 @@ func _build_tileset() -> void:
 
 	for i in 12:
 		var water := i == Tile.WATER or i == Tile.WATER_TOP
-		var variants := 16 if water else 48
+		var variants := 32 if water else 64
 		for v in variants:
 			src.create_tile(Vector2i(i, v))
 			if water or v >= 32:
@@ -204,6 +227,28 @@ func _build_tileset() -> void:
 			td.set_collision_polygon_points(0, 0, _corner_poly(v % 16))
 
 	tile_set = ts
+
+
+## Rounded variant of _corner_cut for water: pixels outside the
+## quarter-circle arc of radius BEVEL_R at each masked corner.
+func _round_cut(mask: int, x: int, y: int) -> bool:
+	var r := BEVEL_R
+	var fx := float(x) + 0.5
+	var fy := float(y) + 0.5
+	var t := float(TILE)
+	if mask & 1 and fx < r and fy < r \
+			and Vector2(fx, fy).distance_to(Vector2(r, r)) > r:
+		return true
+	if mask & 2 and fx > t - r and fy < r \
+			and Vector2(fx, fy).distance_to(Vector2(t - r, r)) > r:
+		return true
+	if mask & 4 and fx > t - r and fy > t - r \
+			and Vector2(fx, fy).distance_to(Vector2(t - r, t - r)) > r:
+		return true
+	if mask & 8 and fx < r and fy > t - r \
+			and Vector2(fx, fy).distance_to(Vector2(r, t - r)) > r:
+		return true
+	return false
 
 
 ## True when pixel (x, y) of a tile falls inside the 45-degree chamfer cut
@@ -723,16 +768,23 @@ func _variant_dark(x: int, y: int, chance: float) -> bool:
 ## their corners update too.
 func _paint_cell(x: int, y: int) -> void:
 	var cv := _gget(x, y)
+	var idx := y * W + x
+	if cv != Cell.WATER and _water_wedges.has(idx) \
+			and (cv == Cell.EMPTY or _water_fill_mask(x, y) == 0):
+		_water_wedges.erase(idx)
+		queue_redraw()
 	match cv:
 		Cell.EMPTY:
 			var fm := _fill_mask(x, y)
 			if fm == 0:
 				erase_cell(Vector2i(x, y))
 			else:
+				# Chips scorch too: blast-touched fills use the dark rows.
+				var frow := 48 if _scorch.has(idx) else 32
 				set_cell(Vector2i(x, y), _src_id,
-					Vector2i(_fill_tile_for(x, y), 32 + fm))
+					Vector2i(_fill_tile_for(x, y), frow + fm))
 		Cell.WATER:
-			if not _transit.has(y * W + x):  # in-flight water stays a droplet
+			if not _transit.has(idx):  # in-flight water stays a droplet
 				_paint_water_cell(x, y)
 		_:
 			var t := Tile.DIRT
@@ -753,6 +805,12 @@ func _paint_cell(x: int, y: int) -> void:
 			var lvl := int(_scorch.get(y * W + x, 0))
 			set_cell(Vector2i(x, y), _src_id,
 				Vector2i(t, _tile_mask(x, y) + 16 * lvl))
+			# Land corners with water on both sides flood their chamfer
+			# wedge (drawn in _draw), keeping the water silhouette smooth.
+			var wm := _water_fill_mask(x, y)
+			if wm != 0:
+				_water_wedges[idx] = wm
+				queue_redraw()
 
 
 # ------------------------------------------------------------- destruction ---
@@ -871,7 +929,7 @@ func _tick_water() -> void:
 		_grid[idx] = Cell.EMPTY
 		_paint_cell(x, y)  # erases — or paints anti-bevel fills if cornered
 		_paint_water_cell(x, y + 1)  # the cell under us may surface
-		_repaint_water_nb(x, y)  # side neighbors' chamfers may change
+		_repaint_nb(x, y)  # side neighbors' chamfers may change
 		if trail.has(to) or trail.size() > 48:
 			# Been here before: it's looping with nowhere left to settle.
 			# The drop evaporates.
@@ -910,7 +968,7 @@ func _settle_transit(new_transit: Dictionary) -> void:
 		if _grid[i] == Cell.WATER:
 			_paint_water_cell(i % W, i / W)
 			_paint_water_cell(i % W, i / W + 1)
-			_repaint_water_nb(i % W, i / W)
+			_repaint_nb(i % W, i / W)
 
 
 ## Communicating vessels: each connected body of water acts as ONE entity.
@@ -962,8 +1020,8 @@ func _equalize_bodies(moves: Array) -> void:
 			_paint_cell(hi_x, hi_y)
 			_flow_dir.erase(src)
 			_repaint_water_around(src, dst)
-			_repaint_water_nb(hi_x, hi_y)
-			_repaint_water_nb(lo_x, lo_y - 1)
+			_repaint_nb(hi_x, hi_y)
+			_repaint_nb(lo_x, lo_y - 1)
 			moves.append([src, dst])
 			if _gget(hi_x, hi_y + 1) == Cell.WATER:
 				tops[hi_x] = hi_y + 1
@@ -988,7 +1046,7 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 			_grid[f] = Cell.EMPTY
 			_paint_cell(f % W, f / W)
 			_paint_water_cell(f % W, f / W + 1)
-			_repaint_water_nb(f % W, f / W)
+			_repaint_nb(f % W, f / W)
 			_splash(f, t)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
@@ -1003,18 +1061,38 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 		if f >= 0 and f < _grid.size():
 			_grid[f] = Cell.EMPTY
 			_paint_cell(f % W, f / W)
-			_repaint_water_nb(f % W, f / W)
+			_repaint_nb(f % W, f / W)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
 			_repaint_water_around(f, t)
-			_repaint_water_nb(t % W, t / W)
+			_repaint_nb(t % W, t / W)
 	_settle_transit(new_transit)
 	queue_redraw()
 
 
 ## Traveling water renders as falling splash droplets — the same spray look
-## as the well squirt (WaterSpray) — instead of blocks or streaks.
+## as the well squirt (WaterSpray) — instead of blocks or streaks. Also
+## floods the chamfer wedges of land corners surrounded by water.
 func _draw() -> void:
+	var r := BEVEL_R
+	for k in _water_wedges:
+		var i := int(k)
+		var m := int(_water_wedges[k])
+		var bx := float(i % W) * TILE
+		var by := float(i / W) * TILE
+		if m & 1:
+			draw_colored_polygon(PackedVector2Array([Vector2(bx, by),
+				Vector2(bx + r, by), Vector2(bx, by + r)]), WATER_COLOR)
+		if m & 2:
+			draw_colored_polygon(PackedVector2Array([Vector2(bx + TILE, by),
+				Vector2(bx + TILE, by + r), Vector2(bx + TILE - r, by)]), WATER_COLOR)
+		if m & 4:
+			draw_colored_polygon(PackedVector2Array([Vector2(bx + TILE, by + TILE),
+				Vector2(bx + TILE - r, by + TILE),
+				Vector2(bx + TILE, by + TILE - r)]), WATER_COLOR)
+		if m & 8:
+			draw_colored_polygon(PackedVector2Array([Vector2(bx, by + TILE),
+				Vector2(bx, by + TILE - r), Vector2(bx + r, by + TILE)]), WATER_COLOR)
 	for d: Dictionary in _drops:
 		var fade := 1.0 - float(d.t) / DROP_LIFE
 		var c := DROP_COLOR
@@ -1034,16 +1112,44 @@ func _paint_water_cell(x: int, y: int) -> void:
 	if _gget(x, y) != Cell.WATER or _transit.has(y * W + x):
 		return
 	var t := Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
-	set_cell(Vector2i(x, y), _src_id, Vector2i(t, _water_mask(x, y)))
+	var mask := _water_mask(x, y)
+	# Cuts that meet ground use the chamfered bank (rows 16-31) so they
+	# mate with the land bevels; cuts against open air stay rounded.
+	var bank := 16 if mask != 0 and _water_cut_touches_land(x, y, mask) else 0
+	set_cell(Vector2i(x, y), _src_id, Vector2i(t, bank + mask))
 
 
-## Water chamfers only against truly empty air — adjacent water is the
-## same body and solid ground is the pool's basin.
+func _is_land(x: int, y: int) -> bool:
+	var cv := _gget(x, y)
+	return cv != Cell.EMPTY and cv != Cell.WATER
+
+
+## True when any cut corner of this water cell has ground on either of its
+## two adjacent sides.
+func _water_cut_touches_land(x: int, y: int, mask: int) -> bool:
+	var up := _is_land(x, y - 1)
+	var dn := _is_land(x, y + 1)
+	var lf := _is_land(x - 1, y)
+	var rt := _is_land(x + 1, y)
+	if mask & 1 and (up or lf):
+		return true
+	if mask & 2 and (up or rt):
+		return true
+	if mask & 4 and (dn or rt):
+		return true
+	if mask & 8 and (dn or lf):
+		return true
+	return false
+
+
+## Water rounds against ANYTHING that isn't water — land counts as open
+## space for it, so pools sit in their basins with rounded corners.
+## Adjacent water is the same body and stays seamless.
 func _water_mask(x: int, y: int) -> int:
-	var up := _gget(x, y - 1) == Cell.EMPTY
-	var dn := _gget(x, y + 1) == Cell.EMPTY
-	var lf := _gget(x - 1, y) == Cell.EMPTY
-	var rt := _gget(x + 1, y) == Cell.EMPTY
+	var up := _gget(x, y - 1) != Cell.WATER
+	var dn := _gget(x, y + 1) != Cell.WATER
+	var lf := _gget(x - 1, y) != Cell.WATER
+	var rt := _gget(x + 1, y) != Cell.WATER
 	var m := 0
 	if up and lf:
 		m |= 1
@@ -1056,13 +1162,35 @@ func _water_mask(x: int, y: int) -> int:
 	return m
 
 
-## Repaint any settled water among a changed cell's four neighbors — their
-## corner chamfers depend on what sits beside them.
-func _repaint_water_nb(x: int, y: int) -> void:
-	_paint_water_cell(x - 1, y)
-	_paint_water_cell(x + 1, y)
-	_paint_water_cell(x, y - 1)
-	_paint_water_cell(x, y + 1)
+## The inverse coagulation: corners of a LAND cell with water on both
+## adjacent sides. Its chamfer wedge there gets flooded with water (drawn
+## in _draw), so submerged ledges read as smooth water, not notches.
+func _water_fill_mask(x: int, y: int) -> int:
+	var up := _gget(x, y - 1) == Cell.WATER
+	var dn := _gget(x, y + 1) == Cell.WATER
+	var lf := _gget(x - 1, y) == Cell.WATER
+	var rt := _gget(x + 1, y) == Cell.WATER
+	var m := 0
+	if up and lf:
+		m |= 1
+	if up and rt:
+		m |= 2
+	if dn and rt:
+		m |= 4
+	if dn and lf:
+		m |= 8
+	return m
+
+
+## Repaint a changed cell's four neighbors — solid chamfers, water
+## roundings, water wedges and empty-cell fills all depend on adjacency.
+func _repaint_nb(x: int, y: int) -> void:
+	for off: Vector2i in [Vector2i(-1, 0), Vector2i(1, 0),
+			Vector2i(0, -1), Vector2i(0, 1)]:
+		var nx := x + off.x
+		var ny := y + off.y
+		if nx >= 0 and nx < W and ny >= 0 and ny < H:
+			_paint_cell(nx, ny)
 
 
 ## Blow a circular hole (world-space position and radius). Bedrock survives.
@@ -1079,13 +1207,13 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) <= radius:
 				_gset(x, y, Cell.EMPTY)
 				erase_cell(Vector2i(x, y))
-	# Survivors the blast touched (one tile past the carve edge) scorch to
-	# 50% brightness, permanently.
+	# Everything the blast touched (one tile past the carve edge) scorches
+	# to 50% brightness, permanently — including empty cells, so their
+	# anti-bevel fill chips char along with the blocks around them.
 	var r1 := r + 1
 	for y in range(maxi(c.y - r1, 0), mini(c.y + r1 + 1, H)):
 		for x in range(maxi(c.x - r1, 0), mini(c.x + r1 + 1, W)):
-			var cv := _gget(x, y)
-			if cv == Cell.EMPTY or cv == Cell.WATER:
+			if _gget(x, y) == Cell.WATER:
 				continue
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) \
 					<= radius + TILE:
