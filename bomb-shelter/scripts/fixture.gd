@@ -36,6 +36,7 @@ var _dribble_accum := 0.0
 var pipe_bottom_y := 0.0
 var _busted := false
 var _leak_accum := 0.0
+var _dead := false
 
 
 func _ready() -> void:
@@ -112,17 +113,93 @@ func kicked() -> void:
 
 
 ## Called automatically by the blast loop for every node in group "chests".
+## Pump and shower take two hits: the first busts them (leak / dribble),
+## the next blows them apart entirely.
 func blast_destroy() -> void:
 	match kind:
 		Kind.TOILET:
 			_squirt()
 		Kind.PUMP:
-			_pump_squirt(2.0)
-			_busted = true
-			queue_redraw()
+			if _busted:
+				_destroy_pump()
+			else:
+				_pump_squirt(2.0)
+				_busted = true
+				queue_redraw()
 		Kind.SHOWER:
-			_spray_down(1.6)
-			_dribbling = true
+			if _dribbling:
+				_destroy_shower()
+			else:
+				_spray_down(1.6)
+				_dribbling = true
+
+
+## The finishing blast: the well head's casting bursts into chunks and the
+## broken pipe stub keeps gushing forever (a WellLeak takes over the
+## busted-pump leak once this node is gone).
+func _destroy_pump() -> void:
+	if _dead:
+		return
+	_dead = true
+	_pump_squirt(2.4)
+	_debris([Color("3e6b4f"), Color("2f523c"), Color("54381f")], 4)
+	if pipe_bottom_y > global_position.y:
+		var leak := WellLeak.new()
+		leak.x = global_position.x
+		leak.top_y = global_position.y + 10.0
+		leak.bottom_y = pipe_bottom_y
+		get_parent().add_child.call_deferred(leak)
+	queue_free()
+
+
+func _destroy_shower() -> void:
+	if _dead:
+		return
+	_dead = true
+	_spray_down(2.0)
+	_debris([Color("9e9e9e"), Color("757575")], 3)
+	queue_free()
+
+
+func _debris(cols: Array[Color], n: int) -> void:
+	if NetHub.has_viewers():  # fx kind 11 = debris burst (web crunch + puff)
+		NetHub.broadcast({"t": "fx", "k": 11,
+			"x": int(global_position.x), "y": int(global_position.y)})
+	for i in n:
+		var bit := BunkerProps.Plank.new()
+		bit.size = Vector2(randf_range(5.0, 10.0), 3.0)
+		bit.col = cols[i % cols.size()]
+		bit.position = global_position \
+			+ Vector2(randf_range(-5.0, 5.0), randf_range(-9.0, 5.0))
+		bit.rotation = randf_range(-0.6, 0.6)
+		bit.linear_velocity = Vector2(randf_range(-150.0, 150.0),
+			randf_range(-240.0, -70.0))
+		bit.angular_velocity = randf_range(-8.0, 8.0)
+		get_parent().add_child(bit)
+
+
+## What a destroyed well head leaves behind: the broken pipe keeps leaking
+## along its length forever, same cadence as the busted-pump leak.
+class WellLeak:
+	extends Node2D
+	var x := 0.0
+	var top_y := 0.0
+	var bottom_y := 0.0
+	var _accum := 0.0
+
+	func _process(delta: float) -> void:
+		_accum += delta
+		if _accum < 0.3:
+			return
+		_accum = 0.0
+		var spray := WaterSpray.new()
+		var side := 1.0 if randf() < 0.5 else -1.0
+		spray.dir = Vector2(side, randf_range(-0.4, 0.1)).normalized()
+		spray.amount = 6
+		spray.spread = 0.35
+		spray.speed = randf_range(90.0, 150.0)
+		spray.global_position = Vector2(x, lerpf(top_y, bottom_y, randf()))
+		get_parent().add_child.call_deferred(spray)
 
 
 ## The well pump gushes from its spout when kicked.
