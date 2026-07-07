@@ -110,14 +110,16 @@ func _build_outhouse() -> void:
 
 
 ## Cutaway art: the well pipe running from the pump down into the ground.
-## Blast-caught segments darken 90% toward the carved-earth brown, exactly
-## like scorched wallpaper (see scripts/room_decor.gd).
+## Destructible per 16px segment: a blast whose core reaches the pipe blows
+## those segments clean off (flying metal bits), while near misses scorch
+## the survivors 90% toward the carved-earth brown, like wallpaper.
 class PipeArt:
 	extends Node2D
 	var top := Vector2.ZERO
 	var bottom_y := 0.0
 	var terrain: Terrain
 	var _scorch := {}  # scorched 16px pipe segments, keyed by row
+	var _broken := {}  # segments blown off entirely, keyed by row
 
 	func _ready() -> void:
 		z_index = 1  # over terrain, under players/bombs
@@ -125,28 +127,51 @@ class PipeArt:
 			terrain.carved.connect(_on_carved)
 
 	func _on_carved(pos: Vector2, radius: float) -> void:
-		if absf(pos.x - top.x) > radius + 8.0:
+		if absf(pos.x - top.x) > radius * 1.6 + 8.0:
 			return
-		var r0 := int(maxf(pos.y - radius, top.y) / 16.0)
-		var r1 := int(minf(pos.y + radius, bottom_y) / 16.0)
+		var direct := absf(pos.x - top.x) <= radius + 4.0
+		var r0 := int(maxf(pos.y - radius * 1.6, top.y) / 16.0)
+		var r1 := int(minf(pos.y + radius * 1.6, bottom_y) / 16.0)
 		for ry in range(r0, r1 + 1):
-			_scorch[ry] = true
+			var seg_c := Vector2(top.x, float(ry) * 16.0 + 8.0)
+			var d := pos.distance_to(seg_c)
+			if direct and d <= radius and not _broken.has(ry):
+				_broken[ry] = true
+				_scorch.erase(ry)
+				var bit := Plank.new()
+				bit.size = Vector2(4, 12)
+				bit.col = Color("41525f")
+				bit.position = seg_c
+				bit.rotation = randf_range(-0.5, 0.5)
+				bit.linear_velocity = Vector2(randf_range(-150.0, 150.0),
+					randf_range(-230.0, -60.0))
+				bit.angular_velocity = randf_range(-8.0, 8.0)
+				get_parent().add_child(bit)
+			elif d <= radius * 1.6 and not _broken.has(ry):
+				_scorch[ry] = true
 		queue_redraw()
 
 	func _draw() -> void:
-		draw_line(top, Vector2(top.x, bottom_y), Color("23303a"), 6.0)
-		draw_line(top, Vector2(top.x, bottom_y), Color("41525f"), 3.0)
-		var y := top.y + 22.0
-		while y < bottom_y - 8.0:
-			draw_rect(Rect2(top.x - 4.0, y, 8.0, 3.0), Color("2c3c48"))
-			y += 34.0
 		var scar := Color("2b1a0c")
 		scar.a = 0.9
-		for k in _scorch:
-			var sy := maxf(float(int(k)) * 16.0, top.y)
-			var sh := minf(float(int(k)) * 16.0 + 16.0, bottom_y) - sy
-			if sh > 0.0:
+		var r0 := int(top.y / 16.0)
+		var r1 := int((bottom_y - 0.01) / 16.0)
+		for ry in range(r0, r1 + 1):
+			if _broken.has(ry):
+				continue
+			var sy := maxf(float(ry) * 16.0, top.y)
+			var sh := minf(float(ry) * 16.0 + 16.0, bottom_y) - sy
+			if sh <= 0.0:
+				continue
+			draw_rect(Rect2(top.x - 3.0, sy, 6.0, sh), Color("23303a"))
+			draw_rect(Rect2(top.x - 1.5, sy, 3.0, sh), Color("41525f"))
+			if _scorch.has(ry):
 				draw_rect(Rect2(top.x - 3.0, sy, 6.0, sh), scar)
+		var y := top.y + 22.0
+		while y < bottom_y - 8.0:
+			if not _broken.has(int(y / 16.0)):
+				draw_rect(Rect2(top.x - 4.0, y, 8.0, 3.0), Color("2c3c48"))
+			y += 34.0
 
 
 # -------------------------------------------------------------- kitchen ---
@@ -311,15 +336,43 @@ func _draw() -> void:
 
 
 ## Rocky covering over the surface cave mouth: a boulder arch with a dark
-## maw leading into the carved passage below. Pure backdrop art (prop kind
-## 16 on the web stream) — indestructible, like the well pipe.
+## maw leading into the carved passage below (prop kind 16 on the web
+## stream). A blast that reaches it blows the boulders apart into tumbling
+## rock chunks, leaving the bare hole.
 class CaveArt:
 	extends Node2D
 	var prop_kind := 16
+	var _dead := false
 
 	func _ready() -> void:
 		add_to_group(&"props")
+		add_to_group(&"chests")  # blasts in range call blast_destroy()
 		z_index = 1  # behind players and critters walking in
+
+	func blast_destroy() -> void:
+		if _dead:
+			return
+		_dead = true
+		var grays: Array[Color] = [Color("6e7681"), Color("59616b"), Color("575f6a")]
+		for i in 5:
+			var rock := Plank.new()
+			rock.size = Vector2(randf_range(7.0, 12.0), randf_range(5.0, 9.0))
+			rock.col = grays[i % grays.size()]
+			rock.position = global_position \
+				+ Vector2(randf_range(-16.0, 16.0), randf_range(-20.0, -2.0))
+			rock.rotation = randf_range(-0.6, 0.6)
+			rock.linear_velocity = Vector2(randf_range(-170.0, 170.0),
+				randf_range(-280.0, -90.0))
+			rock.angular_velocity = randf_range(-7.0, 7.0)
+			get_parent().add_child(rock)
+		# Gray stone puff (mirrors to web as tinted fx 9) + a crunchy thud.
+		var puff := DustPuff.new()
+		puff.amount = 12
+		puff.color = Color(0.45, 0.48, 0.53, 0.85)
+		puff.position = global_position + Vector2(0, -10.0)
+		get_parent().add_child(puff)
+		get_tree().call_group(&"sfx", &"play_land", global_position)
+		queue_free()
 
 	func _draw() -> void:
 		var spots: Array = [

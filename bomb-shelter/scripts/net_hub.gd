@@ -129,7 +129,7 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
 var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6a6f76"];
-var SCORCH={};var PIPE=null;var PIPESC={};var WTRANS={};var HUDMSG="";var HTIME=-1;
+var SCORCH={};var PIPE=null;var PIPESC={};var PIPEBRK={};var WTRANS={};var HUDMSG="";var HTIME=-1;
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -244,7 +244,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};PIPEBRK={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -377,10 +377,16 @@ function buildTerrain(){off=document.createElement("canvas");off.width=W;off.hei
   octx.fillStyle=(Math.random()<0.3)?CELL2[dv]:CELL[dv];octx.fillRect(c,r,1,1);
   if(v===3)grassCells.push(r*W+c);}}
 function carve(x,y,rad){if(!grid)return;
- // Well-pipe segments caught in the blast scorch to the carved-earth brown.
- if(PIPE&&Math.abs((PIPE[0]+0.5)*TS-x)<rad+8){
-  var pr0=Math.floor(Math.max(y-rad,PIPE[1]*TS)/TS),pr1=Math.floor(Math.min(y+rad,PIPE[2]*TS+4)/TS);
-  for(var pr=pr0;pr<=pr1;pr++)PIPESC[pr]=1;}
+ // Well pipe: segments in the blast core break clean off (gray metal
+ // sparks); near misses scorch survivors to the carved-earth brown.
+ if(PIPE){var ppx=(PIPE[0]+0.5)*TS,pdx=Math.abs(ppx-x);
+  if(pdx<rad*1.6+8){var pdir=pdx<=rad+4;
+   var pr0=Math.max(Math.floor((y-rad*1.6)/TS),PIPE[1]),pr1=Math.min(Math.floor((y+rad*1.6)/TS),PIPE[2]);
+   for(var pr=pr0;pr<=pr1;pr++){var dseg=Math.hypot(ppx-x,pr*TS+8-y);
+    if(pdir&&dseg<=rad){if(!PIPEBRK[pr]){PIPEBRK[pr]=1;delete PIPESC[pr];
+     if(sparks.length<280)for(var pb=0;pb<2;pb++)sparks.push({x:ppx,y:pr*TS+8,
+      c:"#41525f",vx:(Math.random()-0.5)*220,vy:-Math.random()*200,t:performance.now()});}}
+    else if(dseg<=rad*1.6&&!PIPEBRK[pr])PIPESC[pr]=1;}}}
  var c0=Math.floor(x/TS),r0=Math.floor(y/TS),rr=Math.ceil(rad/TS);
  for(var r=r0-rr;r<=r0+rr;r++)for(var c=c0-rr;c<=c0+rr;c++){
   if(r<0||r>=H||c<0||c>=W)continue;
@@ -606,12 +612,12 @@ function render(){requestAnimationFrame(render);
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  // Well pipe: cutaway art from the pump down to the reservoir.
  if(PIPE){var px2=(PIPE[0]+0.5)*TS;
-  ctx.fillStyle="#23303a";ctx.fillRect(px2-3,PIPE[1]*TS,6,(PIPE[2]-PIPE[1])*TS+4);
-  ctx.fillStyle="#41525f";ctx.fillRect(px2-1.5,PIPE[1]*TS,3,(PIPE[2]-PIPE[1])*TS+4);
-  ctx.fillStyle="rgba(43,26,12,0.9)";
-  for(var pk in PIPESC){var prw=+pk;var psy=Math.max(prw*TS,PIPE[1]*TS);
-   var psh=Math.min(prw*TS+TS,PIPE[2]*TS+4)-psy;
-   if(psh>0)ctx.fillRect(px2-3,psy,6,psh);}}
+  for(var prw=PIPE[1];prw<=PIPE[2];prw++){if(PIPEBRK[prw])continue;
+   var psy=prw*TS,psh=Math.min(prw*TS+TS,PIPE[2]*TS+4)-psy;
+   if(psh<=0)continue;
+   ctx.fillStyle="#23303a";ctx.fillRect(px2-3,psy,6,psh);
+   ctx.fillStyle="#41525f";ctx.fillRect(px2-1.5,psy,3,psh);
+   if(PIPESC[prw]){ctx.fillStyle="rgba(43,26,12,0.9)";ctx.fillRect(px2-3,psy,6,psh);}}}
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
