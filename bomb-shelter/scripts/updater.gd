@@ -6,16 +6,35 @@ extends Node
 ## over this one — no uninstall, settings intact.
 
 signal update_found(build: int)
+signal check_done  ## fired once the release check resolves (success or not)
 
 const RELEASES_API := "https://api.github.com/repos/uchy4/dummy/releases/latest"
 
 var latest_build := 0
 var apk_url := ""
+var check_finished := false
+
+var _checking := false
+var _last_check_ms := -1000000
 
 
 func _ready() -> void:
-	if BuildInfo.BUILD <= 0:
+	_check()
+
+
+## Re-check when the app comes back to the foreground (the user may have
+## left it open in the app switcher while a new build shipped).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN \
+			and Time.get_ticks_msec() - _last_check_ms > 60000:
+		_check()
+
+
+func _check() -> void:
+	if BuildInfo.BUILD <= 0 or _checking:
 		return  # dev build: nothing meaningful to compare against
+	_checking = true
+	_last_check_ms = Time.get_ticks_msec()
 	var req := HTTPRequest.new()
 	req.timeout = 12.0
 	add_child(req)
@@ -26,6 +45,7 @@ func _ready() -> void:
 	])
 	if err != OK:
 		req.queue_free()
+		_checking = false
 
 
 func update_available() -> bool:
@@ -42,15 +62,20 @@ func launch_update() -> void:
 func _on_response(result: int, code: int, _headers: PackedStringArray,
 		body: PackedByteArray, req: HTTPRequest) -> void:
 	req.queue_free()
+	check_finished = true
+	_checking = false
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		check_done.emit()
 		return
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if not (data is Dictionary):
+		check_done.emit()
 		return
 	var rel := data as Dictionary
 	var re := RegEx.create_from_string("bomb-shelter-build-(\\d+)")
 	var m := re.search(str(rel.get("tag_name", "")))
 	if m == null:
+		check_done.emit()
 		return
 	var found := int(m.get_string(1))
 	# Each flavor updates itself: the 3D APK fetches the 3D asset.
@@ -64,3 +89,4 @@ func _on_response(result: int, code: int, _headers: PackedStringArray,
 	latest_build = found
 	if update_available():
 		update_found.emit(latest_build)
+	check_done.emit()

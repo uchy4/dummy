@@ -66,6 +66,16 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 
+	# Always-visible build/update status right under the title, so there is
+	# never any doubt which build this device runs.
+	var ver := Label.new()
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ver.add_theme_font_size_override(&"font_size", 13)
+	ver.add_theme_color_override(&"font_color", Color(1, 1, 1, 0.55))
+	ver.text = "dev build" if BuildInfo.BUILD <= 0 \
+		else "build %d — checking for updates…" % BuildInfo.BUILD
+	box.add_child(ver)
+
 	# In-place update: visible only when the launch check found a newer CI
 	# build. Same signing key every build, so Android installs it right over
 	# this one — no uninstall.
@@ -82,7 +92,20 @@ func _build_ui() -> void:
 		upd.visible = true)
 	box.add_child(upd)
 	if BuildInfo.BUILD > 0:
-		title.tooltip_text = "build %d" % BuildInfo.BUILD
+		_track_update_status(ver)
+
+
+## Keep the status line honest: update available / up to date / unreachable.
+func _track_update_status(ver: Label) -> void:
+	var refresh := func() -> void:
+		if Updater.update_available():
+			ver.text = "build %d — update available!" % BuildInfo.BUILD
+		elif Updater.latest_build > 0:
+			ver.text = "build %d — up to date" % BuildInfo.BUILD
+		elif Updater.check_finished:
+			ver.text = "build %d — couldn't reach update server" % BuildInfo.BUILD
+	refresh.call()
+	Updater.check_done.connect(func() -> void: refresh.call())
 
 	_name_edit = LineEdit.new()
 	_name_edit.placeholder_text = "Your name (for joining)"

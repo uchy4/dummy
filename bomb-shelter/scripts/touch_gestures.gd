@@ -264,21 +264,22 @@ func _draw() -> void:
 
 
 func _draw_buttons() -> void:
+	# Dark fill + bright ring: readable over sky, grass, and cave alike.
 	var font := ThemeDB.fallback_font
 	var jc := _jump_center()
 	var kc := _kick_center()
-	var jump_bg := Color(1, 1, 1, 0.32 if _jump_idx != -1 else 0.16)
-	var kick_bg := Color(1, 1, 1, 0.32 if _btn_idx != -1 else 0.16)
+	var jump_bg := Color(1, 1, 1, 0.45) if _jump_idx != -1 else Color(0, 0, 0, 0.38)
+	var kick_bg := Color(1, 1, 1, 0.45) if _btn_idx != -1 else Color(0, 0, 0, 0.38)
 	draw_circle(jc, BTN_R, jump_bg)
-	draw_arc(jc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.45), 2.0, true)
+	draw_arc(jc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.8), 3.0, true)
 	draw_circle(kc, BTN_R, kick_bg)
-	draw_arc(kc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.45), 2.0, true)
+	draw_arc(kc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.8), 3.0, true)
 	draw_string(font, jc + Vector2(-BTN_R, 12), "▲", HORIZONTAL_ALIGNMENT_CENTER,
-		BTN_R * 2.0, 34, Color(1, 1, 1, 0.85))
+		BTN_R * 2.0, 34, Color.WHITE)
 	draw_string(font, kc + Vector2(-BTN_R, 10), "KICK", HORIZONTAL_ALIGNMENT_CENTER,
-		BTN_R * 2.0, 22, Color(1, 1, 1, 0.85))
+		BTN_R * 2.0, 22, Color.WHITE)
 	var sc := _swap_center()
-	draw_circle(sc, SWAP_R, Color(0, 0, 0, 0.3))
-	draw_arc(sc, SWAP_R, 0.0, TAU, 32, Color(1, 1, 1, 0.4), 1.5, true)
+	draw_circle(sc, SWAP_R, Color(0, 0, 0, 0.45))
+	draw_arc(sc, SWAP_R, 0.0, TAU, 32, Color(1, 1, 1, 0.7), 2.0, true)
 	draw_string(font, sc + Vector2(-SWAP_R, 6), "⇄", HORIZONTAL_ALIGNMENT_CENTER,
-		SWAP_R * 2.0, 18, Color(1, 1, 1, 0.7))
+		SWAP_R * 2.0, 18, Color.WHITE)
