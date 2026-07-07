@@ -82,7 +82,7 @@ func _uproot() -> void:
 		return
 	_dead = true
 	var plank := BunkerProps.Plank.new()
-	plank.size = Vector2(3, 20)
+	plank.size = Vector2(3, _height)  # the broken stalk matches the standing one
 	plank.col = Color("3f8f3a")
 	plank.position = global_position + Vector2(0, -_height * 0.5)
 	plank.rotation = randf_range(-0.4, 0.4)

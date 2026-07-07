@@ -68,6 +68,11 @@ func _ready() -> void:
 		_build_surface_pens()
 	if terrain.corn_field.size.x > 0:
 		_build_corn()
+	if terrain.cave_mouth != Vector2i.ZERO:
+		var cave := CaveArt.new()
+		cave.position = Vector2((float(terrain.cave_mouth.x) + 0.5) * TILE,
+			float(terrain.cave_mouth.y) * TILE)
+		add_child(cave)
 
 	queue_redraw()
 
@@ -303,6 +308,39 @@ func _build_arsenal(rect: Rect2i) -> void:
 func _draw() -> void:
 	for c in _counters:
 		_draw_counter(c)
+
+
+## Rocky covering over the surface cave mouth: a boulder arch with a dark
+## maw leading into the carved passage below. Pure backdrop art (prop kind
+## 16 on the web stream) — indestructible, like the well pipe.
+class CaveArt:
+	extends Node2D
+	var prop_kind := 16
+
+	func _ready() -> void:
+		add_to_group(&"props")
+		z_index = 1  # behind players and critters walking in
+
+	func _draw() -> void:
+		var spots: Array = [
+			[Vector2(-16, -4), 9.0], [Vector2(-10, -14), 10.0],
+			[Vector2(0, -19), 11.0], [Vector2(10, -14), 10.0],
+			[Vector2(16, -4), 9.0],
+		]
+		var cols: Array[Color] = [Color("6e7681"), Color("59616b"),
+			Color("575f6a"), Color("6e7681"), Color("59616b")]
+		for i in spots.size():
+			var s: Array = spots[i]
+			var at: Vector2 = s[0]
+			var r := float(s[1])
+			draw_circle(at, r + 1.5, Color.BLACK)
+			draw_circle(at, r, cols[i])
+			draw_circle(at + Vector2(-2.5, -2.5), r * 0.3, cols[i].lightened(0.18))
+		# The dark maw overlaps the boulders' inner edges and runs down into
+		# the carved passage, so the entrance reads as one deep opening.
+		var maw := Color("1c1310")
+		draw_circle(Vector2(0, -5), 12.0, maw)
+		draw_rect(Rect2(-12, -5, 24, 22), maw)
 
 
 ## The outhouse hut: streamed to web (prop kind 9), and blown to plank

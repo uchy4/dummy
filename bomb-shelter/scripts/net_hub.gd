@@ -770,7 +770,8 @@ function drawCeremony(q,now){if(!win.podium)return;
  ctx.textAlign="left";}
 // Homestead props by kind id: 0 table 1 chair 2 bed 3 pillow 4 toilet
 // 5 shower 6 chicken 7 pig 8 fence 9 outhouse 10 pump 13 corn stalk
-// 14 wall gun 15 bullet. Drawn centered (corn: base at origin).
+// 14 wall gun 15 bullet 16 cave-mouth rocks. Drawn centered (corn/cave:
+// base at origin).
 function drawProp(k){
  if(k===0){ctx.fillStyle="#000";ctx.fillRect(-19,-11,38,22);
   ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-10,36,5);
@@ -826,7 +827,14 @@ function drawProp(k){
   ctx.fillStyle="#6d4c2f";ctx.fillRect(-2,-2.5,12,5);
   ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
  else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
-  ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}}
+  ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}
+ else if(k===16){var RB=[[-16,-4,9],[-10,-14,10],[0,-19,11],[10,-14,10],[16,-4,9]];
+  var RC=["#6e7681","#59616b","#575f6a","#6e7681","#59616b"];
+  for(var bi=0;bi<RB.length;bi++){ctx.fillStyle="#000";
+   ctx.beginPath();ctx.arc(RB[bi][0],RB[bi][1],RB[bi][2]+1.5,0,7);ctx.fill();
+   ctx.fillStyle=RC[bi];ctx.beginPath();ctx.arc(RB[bi][0],RB[bi][1],RB[bi][2],0,7);ctx.fill();}
+  ctx.fillStyle="#1c1310";ctx.beginPath();ctx.arc(0,-5,12,0,7);ctx.fill();
+  ctx.fillRect(-12,-5,24,22);}}
 // Show the "Add to Home Screen" hint only in a normal browser tab, not when
 // already launched as an installed home-screen app.
 (function(){try{var standalone=window.navigator.standalone===true||
