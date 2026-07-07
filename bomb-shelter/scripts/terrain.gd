@@ -102,15 +102,9 @@ func _ready() -> void:
 	add_to_group(&"terrain")
 	rng.randomize()
 	_build_tileset()
-	# The liquid body renders through a CanvasGroup: all the overlapping
-	# rounded quads composite as ONE shape, then fade to water translucency
-	# in a single blend — no double-dark seams where they overlap.
-	var grp := CanvasGroup.new()
-	grp.self_modulate = Color(1, 1, 1, WATER_COLOR.a)
-	add_child(grp)
 	_wb = WaterBody.new()
 	_wb.t = self
-	grp.add_child(_wb)
+	add_child(_wb)
 	if client_mode:
 		return
 	_generate()
@@ -925,7 +919,18 @@ func _tick_water() -> void:
 				to = idx + d
 			else:
 				# Bottom filled and the open side has no push behind it
-				# (or both sides are walls): this drop is home.
+				# (or both sides are walls): this drop is home. Lone 1-cell
+				# puddles slowly dry up (~5s), or drained flows would
+				# stipple every little dip with a dot of water forever.
+				if _gget(x - 1, y) != Cell.WATER and _gget(x + 1, y) != Cell.WATER \
+						and _gget(x, y - 1) != Cell.WATER \
+						and _gget(x, y + 1) != Cell.WATER \
+						and rng.randf() < 0.02:
+					_grid[idx] = Cell.EMPTY
+					_paint_cell(x, y)
+					_repaint_nb(x, y)
+					moves.append([idx, -1])
+					continue
 				_flow_dir.erase(idx)
 				continue
 		_flow_dir.erase(idx)
@@ -1232,12 +1237,12 @@ func _gset(x: int, y: int, v: int) -> void:
 		_grid[y * W + x] = v
 
 
-## Draws the whole liquid: every settled water cell as a rounded quad grown
-## by a third of a tile in all directions — so cells overlap their
-## neighbors (land AND water) and merge into one blobby mass with rounded
-## edges everywhere — plus the rolling ripple humps. Lives inside a
-## CanvasGroup, so the union composites once and the group applies the
-## water translucency with no double-dark seams.
+## Draws the whole liquid: every settled water cell as a translucent
+## rounded quad grown by a third of a tile — but ONLY toward non-water
+## sides. Water-water edges abut exactly, so the translucent fills never
+## overlap (no double-dark seams, no CanvasGroup — works on every
+## renderer), while the outside of the body slops over the land and air
+## around it with rounded outer corners. Plus the rolling ripple humps.
 class WaterBody:
 	extends Node2D
 	var t: Terrain
@@ -1245,23 +1250,33 @@ class WaterBody:
 
 	func _ready() -> void:
 		z_index = 1  # over terrain tiles, under props and players
-		_sb.bg_color = Color(Terrain.WATER_COLOR.r, Terrain.WATER_COLOR.g,
-			Terrain.WATER_COLOR.b)  # opaque: the group applies the alpha
-		_sb.set_corner_radius_all(5)
+		_sb.bg_color = Terrain.WATER_COLOR
 
 	func _draw() -> void:
 		if t == null or t._grid.is_empty():
 			return
 		var g := Terrain.TILE / 3.0
-		var opaque := Color(Terrain.WATER_COLOR.r, Terrain.WATER_COLOR.g,
-			Terrain.WATER_COLOR.b)
+		var ts := float(Terrain.TILE)
 		var ci := get_canvas_item()
 		for i in t._grid.size():
 			if t._grid[i] != Terrain.Cell.WATER or t._transit.has(i):
 				continue
-			_sb.draw(ci, Rect2((i % Terrain.W) * Terrain.TILE - g,
-				(i / Terrain.W) * Terrain.TILE - g,
-				Terrain.TILE + g * 2.0, Terrain.TILE + g * 2.0))
+			var x := i % Terrain.W
+			var y := i / Terrain.W
+			var wu := t._gget(x, y - 1) == Terrain.Cell.WATER
+			var wd := t._gget(x, y + 1) == Terrain.Cell.WATER
+			var wl := t._gget(x - 1, y) == Terrain.Cell.WATER
+			var wr := t._gget(x + 1, y) == Terrain.Cell.WATER
+			var x0 := x * ts - (0.0 if wl else g)
+			var y0 := y * ts - (0.0 if wu else g)
+			var x1 := x * ts + ts + (0.0 if wr else g)
+			var y1 := y * ts + ts + (0.0 if wd else g)
+			# Round only the body's OUTER corners; shared edges stay flush.
+			_sb.corner_radius_top_left = 0 if (wu or wl) else 5
+			_sb.corner_radius_top_right = 0 if (wu or wr) else 5
+			_sb.corner_radius_bottom_right = 0 if (wd or wr) else 5
+			_sb.corner_radius_bottom_left = 0 if (wd or wl) else 5
+			_sb.draw(ci, Rect2(x0, y0, x1 - x0, y1 - y0))
 		# Rolling waterlines: wave humps above surface cells near ripples.
 		for rp: Dictionary in t._ripples:
 			var age: float = rp.t
@@ -1290,4 +1305,5 @@ class WaterBody:
 					var a := env * exp(-absf(dxp) * 0.03) \
 						* (0.5 + 0.5 * cos(absf(dxp) * 0.26 - age * 9.0))
 					if a > 0.6:
-						draw_rect(Rect2(px - 2.0, wl - a, 4.0, a), opaque)
+						draw_rect(Rect2(px - 2.0, wl - a, 4.0, a),
+							Terrain.WATER_COLOR)

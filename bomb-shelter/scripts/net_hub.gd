@@ -694,15 +694,21 @@ function render(){requestAnimationFrame(render);
   for(var ri2=RIPPLES.length-1;ri2>=0;ri2--)
    if(nw3-RIPPLES[ri2].t>1200)RIPPLES.splice(ri2,1);
   // The liquid body: every settled water cell as a rounded quad grown by
-  // a third of a tile, all in ONE path — overlaps merge in a single fill
-  // (no double-dark seams) and every edge comes out rounded.
+  // a third of a tile toward NON-water sides only (water-water edges abut
+  // flush), all in ONE path so nothing double-darkens. Outer corners
+  // round; the body slops over the land and air around it.
   var WG=TS/3;
   ctx.beginPath();
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
    if(WTRANS[wi])continue;// in flight: rendered as splash sparks
-   var wx2=(wi%W)*TS-WG,wy2=((wi/W)|0)*TS-WG,ws=TS+WG*2;
-   if(ctx.roundRect)ctx.roundRect(wx2,wy2,ws,ws,5);
-   else ctx.rect(wx2,wy2,ws,ws);}
+   var wc=wi%W,wr=(wi/W)|0;
+   var iu=grid[wi-W]===4,idn=wi+W<grid.length&&grid[wi+W]===4,
+    il=wc>0&&grid[wi-1]===4,ir=wc<W-1&&grid[wi+1]===4;
+   var x0=wc*TS-(il?0:WG),y0=wr*TS-(iu?0:WG),
+    x1=wc*TS+TS+(ir?0:WG),y1=wr*TS+TS+(idn?0:WG);
+   var rr5=[(iu||il)?0:5,(iu||ir)?0:5,(idn||ir)?0:5,(idn||il)?0:5];
+   if(ctx.roundRect)ctx.roundRect(x0,y0,x1-x0,y1-y0,rr5);
+   else ctx.rect(x0,y0,x1-x0,y1-y0);}
   // Rolling waterlines join the same fill: wave humps above the raised
   // surface near each active ripple.
   for(var ri3=0;ri3<RIPPLES.length;ri3++){var rp2=RIPPLES[ri3];
