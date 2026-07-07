@@ -375,25 +375,36 @@ class CaveArt:
 		queue_free()
 
 	func _draw() -> void:
-		var spots: Array = [
-			[Vector2(-16, -4), 9.0], [Vector2(-10, -14), 10.0],
-			[Vector2(0, -19), 11.0], [Vector2(10, -14), 10.0],
-			[Vector2(16, -4), 9.0],
-		]
-		var cols: Array[Color] = [Color("6e7681"), Color("59616b"),
-			Color("575f6a"), Color("6e7681"), Color("59616b")]
-		for i in spots.size():
-			var s: Array = spots[i]
-			var at: Vector2 = s[0]
-			var r := float(s[1])
-			draw_circle(at, r + 1.5, Color.BLACK)
-			draw_circle(at, r, cols[i])
-			draw_circle(at + Vector2(-2.5, -2.5), r * 0.3, cols[i].lightened(0.18))
-		# The dark maw overlaps the boulders' inner edges and runs down into
-		# the carved passage, so the entrance reads as one deep opening.
+		# One continuous lumpy rock mound: a single silhouette polygon with
+		# a black rim, broad shading facets (not separate boulders), a couple
+		# of cracks, and the dark maw arching down into the carved passage.
+		var mound := PackedVector2Array([
+			Vector2(-24, 2), Vector2(-23, -6), Vector2(-18, -12), Vector2(-14, -12),
+			Vector2(-9, -18), Vector2(-3, -22), Vector2(4, -21), Vector2(9, -17),
+			Vector2(14, -15), Vector2(18, -10), Vector2(22, -7), Vector2(24, 2),
+		])
+		var rim := PackedVector2Array()
+		for p in mound:
+			rim.append(Vector2(0, -8) + (p - Vector2(0, -8)) * 1.1)
+		draw_colored_polygon(rim, Color.BLACK)
+		draw_colored_polygon(mound, Color("6e7681"))
+		# Shadow facet down the right flank, subtle light facet on the left.
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(4, -21), Vector2(9, -17), Vector2(14, -15), Vector2(18, -10),
+			Vector2(22, -7), Vector2(24, 2), Vector2(10, 2), Vector2(6, -12),
+		]), Color("59616b"))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-23, -6), Vector2(-18, -12), Vector2(-14, -12),
+			Vector2(-16, -2), Vector2(-24, 2),
+		]), Color("777d86"))
+		draw_line(Vector2(-6, -17), Vector2(-9, -8), Color("4d545c"), 1.2)
+		draw_line(Vector2(11, -13), Vector2(8, -5), Color("4d545c"), 1.2)
 		var maw := Color("1c1310")
-		draw_circle(Vector2(0, -5), 12.0, maw)
-		draw_rect(Rect2(-12, -5, 24, 22), maw)
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-11, 4), Vector2(-10, -6), Vector2(-6, -12), Vector2(0, -14),
+			Vector2(6, -12), Vector2(10, -6), Vector2(11, 4),
+		]), maw)
+		draw_rect(Rect2(-11, 2, 22, 16), maw)
 
 
 ## The outhouse hut: streamed to web (prop kind 9), and blown to plank

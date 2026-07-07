@@ -871,13 +871,26 @@ function drawProp(k){
   ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
  else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
   ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}
- else if(k===16){var RB=[[-16,-4,9],[-10,-14,10],[0,-19,11],[10,-14,10],[16,-4,9]];
-  var RC=["#6e7681","#59616b","#575f6a","#6e7681","#59616b"];
-  for(var bi=0;bi<RB.length;bi++){ctx.fillStyle="#000";
-   ctx.beginPath();ctx.arc(RB[bi][0],RB[bi][1],RB[bi][2]+1.5,0,7);ctx.fill();
-   ctx.fillStyle=RC[bi];ctx.beginPath();ctx.arc(RB[bi][0],RB[bi][1],RB[bi][2],0,7);ctx.fill();}
-  ctx.fillStyle="#1c1310";ctx.beginPath();ctx.arc(0,-5,12,0,7);ctx.fill();
-  ctx.fillRect(-12,-5,24,22);}}
+ else if(k===16){
+  // one continuous lumpy rock mound with a dark maw (matches native art)
+  var MD=[[-24,2],[-23,-6],[-18,-12],[-14,-12],[-9,-18],[-3,-22],[4,-21],
+   [9,-17],[14,-15],[18,-10],[22,-7],[24,2]];
+  ctx.fillStyle="#000";
+  fillPoly(MD.map(function(p){return [p[0]*1.1,(p[1]+8)*1.1-8];}));
+  ctx.fillStyle="#6e7681";fillPoly(MD);
+  ctx.fillStyle="#59616b";
+  fillPoly([[4,-21],[9,-17],[14,-15],[18,-10],[22,-7],[24,2],[10,2],[6,-12]]);
+  ctx.fillStyle="#777d86";
+  fillPoly([[-23,-6],[-18,-12],[-14,-12],[-16,-2],[-24,2]]);
+  ctx.strokeStyle="#4d545c";ctx.lineWidth=1.2;ctx.beginPath();
+  ctx.moveTo(-6,-17);ctx.lineTo(-9,-8);ctx.moveTo(11,-13);ctx.lineTo(8,-5);ctx.stroke();
+  ctx.fillStyle="#1c1310";
+  fillPoly([[-11,4],[-10,-6],[-6,-12],[0,-14],[6,-12],[10,-6],[11,4]]);
+  ctx.fillRect(-11,2,22,16);}}
+function fillPoly(pts){ctx.beginPath();
+ for(var i=0;i<pts.length;i++){if(i)ctx.lineTo(pts[i][0],pts[i][1]);
+  else ctx.moveTo(pts[i][0],pts[i][1]);}
+ ctx.closePath();ctx.fill();}
 // Show the "Add to Home Screen" hint only in a normal browser tab, not when
 // already launched as an installed home-screen app.
 (function(){try{var standalone=window.navigator.standalone===true||
