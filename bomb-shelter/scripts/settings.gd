@@ -38,6 +38,10 @@ static var kick_player_power := 280.0
 ## hit. 0 disables stun entirely.
 static var stun_time := 1.0
 
+## Touch layout: jump/kick buttons sit on the right by default; flip them
+## to the left from Quick Settings or the on-screen swap icon.
+static var touch_buttons_left := false
+
 ## Local players' chosen colors (set from the Quick Settings pickers).
 ## Filled with the defaults by Main on first run.
 static var player_colors: Array[Color] = []

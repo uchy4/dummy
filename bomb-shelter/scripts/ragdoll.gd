@@ -10,6 +10,9 @@ const FADE_START := 3.2
 var color := Color.WHITE
 var color2 := Color.TRANSPARENT  # second stripe color; unset means solid
 var impulse := Vector2.ZERO
+## Stun ragdolls persist (no fade/free) until the stunned player gets back
+## up and frees them; death ragdolls fade out on their own.
+var persist := false
 
 var _age := 0.0
 var _parts: Array[RigidBody2D] = []
@@ -43,11 +46,20 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if persist:
+		return
 	_age += delta
 	if _age >= LIFE:
 		queue_free()
 	elif _age >= FADE_START:
 		modulate.a = 1.0 - (_age - FADE_START) / (LIFE - FADE_START)
+
+
+## Where the body ended up — the stunned player stands back up here.
+func torso_pos() -> Vector2:
+	if _parts.is_empty():
+		return global_position
+	return _parts[0].global_position
 
 
 func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:

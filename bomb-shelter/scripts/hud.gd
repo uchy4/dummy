@@ -58,7 +58,7 @@ func setup(colors: Array[Color], touch := false) -> void:
 	help.offset_right = -10
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if touch:
-		help.text = "Drag = move  •  tap or stick-up = jump  •  double-tap = kick  •  swipe 2nd finger = aimed kick"
+		help.text = "Drag = move  •  ▲ = jump  •  KICK: tap = quick kick, hold + pull = aimed charge  •  ⇄ swaps sides"
 	else:
 		help.text = "P1 A/D W S-kick    P2 arrows ↓-kick    P3 J/L I K-kick    P4 F/H T G-kick    R restart    Esc settings\nKick bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)
@@ -218,6 +218,14 @@ func _build_settings_panel() -> void:
 		Settings.stun_time,
 		func(v: float) -> void: Settings.stun_time = v)
 
+	if _touch:
+		var side_cb := CheckBox.new()
+		side_cb.text = "Touch buttons on the LEFT side"
+		side_cb.button_pressed = Settings.touch_buttons_left
+		side_cb.focus_mode = Control.FOCUS_NONE
+		side_cb.toggled.connect(func(on: bool) -> void: Settings.touch_buttons_left = on)
+		vbox.add_child(side_cb)
+
 	var types_label := _make_label(15, Color(1, 1, 1, 0.9))
 	types_label.text = "Bomb types in the mix:"
 	vbox.add_child(types_label)
@@ -371,6 +379,8 @@ func _build_touch_controls() -> void:
 	g.axis_changed.connect(_on_gesture_axis)
 	g.jump_tapped.connect(_on_gesture_jump)
 	g.kick_charged.connect(_on_gesture_kick)
+	g.jump_down.connect(func() -> void: Input.action_press(&"p1_jump"))
+	g.jump_up.connect(func() -> void: Input.action_release(&"p1_jump"))
 	add_child(g)
 
 

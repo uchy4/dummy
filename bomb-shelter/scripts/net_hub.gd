@@ -69,6 +69,12 @@ button{font-size:20px;padding:14px;border-radius:10px;border:none;background:#ff
 #status{text-align:center;padding:8px;color:#9ccc65;font-size:14px}
 #game{display:none;position:fixed;top:0;left:0;right:0;bottom:0}
 canvas{position:absolute;top:0;left:0;display:block;touch-action:none}
+.pad{position:absolute;width:88px;height:88px;border-radius:50%;touch-action:none;
+background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);
+display:flex;align-items:center;justify-content:center;font-size:30px;color:rgba(255,255,255,.85)}
+.pad.on{background:rgba(255,255,255,.35)}
+#swap{position:absolute;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.35);
+border:1px solid rgba(255,255,255,.4);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px}
 #colorbtn{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
 #fs{position:absolute;top:calc(8px + env(safe-area-inset-top));right:calc(58px + env(safe-area-inset-right));width:44px;height:44px;border-radius:10px;
 background:rgba(0,0,0,.45);border:2px solid rgba(255,255,255,.7);
@@ -83,12 +89,24 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="a2hs" style="display:none;font-size:13px;color:#9aa;text-align:center;padding:4px">
 Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></div>
 <div id="game"><canvas id="cv"></canvas>
+<div class="pad" id="jump">&#9650;</div>
+<div class="pad" id="kick" style="font-size:21px">KICK</div>
+<div id="swap">&#x21C4;</div>
 <div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
 <script>
 var ws=null,joined=false,st={a:0,j:0,k:0};
 // Gesture input: AXV = analog move axis, JHELD = jump held (both fed by the
 // invisible thumb-joystick + tap gestures below).
-var AXV=0,JHELD=false,moveT=null,kickT=null,gestT=null,joinT=0,scrZoom=1;
+var AXV=0,JHELD=false,moveT=null,kickT=null,gestT=null,btnKickT=null,joinT=0,scrZoom=1;
+// Jump/kick buttons: right side by default, swappable per device.
+var padLeft=false;try{padLeft=localStorage.getItem("padside")==="L";}catch(e){}
+function applySide(){
+ var b="calc(90px + env(safe-area-inset-bottom))",b2="calc(150px + env(safe-area-inset-bottom))",b3="calc(265px + env(safe-area-inset-bottom))";
+ var j=document.getElementById("jump"),k=document.getElementById("kick"),s=document.getElementById("swap");
+ j.style.bottom=b;k.style.bottom=b2;s.style.bottom=b3;
+ var els=[[j,"14px"],[k,"116px"],[s,"78px"]];
+ els.forEach(function(p){p[0].style.left="";p[0].style.right="";
+  p[0].style[padLeft?"left":"right"]=p[1];});}
 var W=0,H=0,TS=16,SURF=20,FIN=0,grid=null,off=null,octx=null;
 var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
@@ -241,6 +259,31 @@ function endPtr(e){
  else if(kickT&&e.pointerId===kickT.id){var t=kickT;kickT=null;tapOrKick(t);}
  else if(gestT&&e.pointerId===gestT.id){var t=gestT;gestT=null;tapOrKick(t);}}
 cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
+// Jump button: hold for a higher jump. Kick button: tap = instant preset
+// kick in the facing direction; hold + pull = aimed charged kick.
+(function(){var j=document.getElementById("jump"),k=document.getElementById("kick");
+ function jd(e){e.preventDefault();JHELD=true;upd();j.classList.add("on");}
+ function ju(e){e.preventDefault();JHELD=false;upd();j.classList.remove("on");}
+ j.addEventListener("pointerdown",jd);j.addEventListener("pointerup",ju);
+ j.addEventListener("pointercancel",ju);
+ k.addEventListener("pointerdown",function(e){e.preventDefault();
+  btnKickT=mkTouch(e);k.classList.add("on");});
+ k.addEventListener("pointermove",function(e){
+  if(btnKickT&&e.pointerId===btnKickT.id){btnKickT.x=e.clientX;btnKickT.y=e.clientY;}});
+ function ku(e){e.preventDefault();k.classList.remove("on");
+  if(!btnKickT||e.pointerId!==btnKickT.id)return;
+  var t=btnKickT;btnKickT=null;
+  var dx=t.x-t.ox,dy=t.y-t.oy,d=Math.hypot(dx,dy);
+  if(!ws||ws.readyState!==1||!joined)return;
+  if(d<12){var f=(anim[you]&&anim[you].face)||1;
+   ws.send(JSON.stringify({t:"k",dx:f*0.707,dy:-0.707,p:1}));}
+  else{var p=Math.max(0.25,Math.min(1,d/90));
+   ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}}
+ k.addEventListener("pointerup",ku);k.addEventListener("pointercancel",ku);
+ document.getElementById("swap").addEventListener("click",function(){
+  padLeft=!padLeft;try{localStorage.setItem("padside",padLeft?"L":"R");}catch(err){}
+  applySide();});
+ applySide();})();
 document.getElementById("colorbtn").addEventListener("click",function(){
  if(!ws||ws.readyState!==1||!joined||opts.length===0)return;
  var o=opts[cycleIdx%opts.length];cycleIdx++;
@@ -410,7 +453,7 @@ function render(){requestAnimationFrame(render);
   ctx.fillRect(sx-2,sy-2,4,4);ctx.globalAlpha=1;}
  // Charged-kick trajectory preview (world space): dotted arc along the path
  // a kicked bomb would fly at the current charge.
- var chT=kickT||gestT;
+ var chT=kickT||gestT||btnKickT;
  if(chT){var kdx=chT.x-chT.ox,kdy=chT.y-chT.oy,kd=Math.hypot(kdx,kdy);
   var meW=(you>=0&&predOK)?{x:PX,y:PY}:(you>=0&&sc&&sc.p[you]?lerpP(you):null);
   if(meW&&kd>=12){var kp=Math.max(0.25,Math.min(1,kd/90));
@@ -434,8 +477,8 @@ function render(){requestAnimationFrame(render);
  if(joinT&&now-joinT<8000){ctx.fillStyle="rgba(0,0,0,.45)";
   ctx.fillRect(cw/2-170,ch-96,340,46);
   ctx.fillStyle="#fff";ctx.font="12px sans-serif";ctx.textAlign="center";
-  ctx.fillText("drag = move  •  tap or stick-up = jump  •  double-tap = kick",cw/2,ch-78);
-  ctx.fillText("swipe 2nd finger (or from your player) = aimed charged kick",cw/2,ch-60);}
+  ctx.fillText("drag = move  •  tap/stick-up/button = jump",cw/2,ch-78);
+  ctx.fillText("KICK: tap = quick kick, hold + pull = aimed charge",cw/2,ch-60);}
  ctx.textAlign="left";ctx.font="12px sans-serif";
  for(var i=0;i<roster.length;i++){ctx.fillStyle="#"+roster[i].c;
   ctx.fillText(roster[i].n,10,18+i*15);}

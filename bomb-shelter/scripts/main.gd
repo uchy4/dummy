@@ -34,6 +34,12 @@ var _bounds := Rect2()
 var _roster_dirty := true
 var _snap_tick := 0
 
+## Elimination wins are declared after a short delay so the final death's
+## ragdoll gets to tumble before the world freezes.
+const WIN_DELAY := 1.8
+var _win_timer := -1.0
+var _win_player: Player = null
+
 
 func _enter_tree() -> void:
 	register_actions()
@@ -268,22 +274,38 @@ func _on_finish_entered(body: Node2D) -> void:
 	_declare_winner(p, "Reached the finish line")
 
 
-## Elimination mode: last one standing wins; everyone dead is a draw.
+## Elimination mode: last one standing wins; everyone dead is a draw. The
+## actual declaration waits WIN_DELAY so the last ragdoll finishes flying.
 func _check_elimination() -> void:
 	if game_over:
+		return
+	if _win_timer >= 0.0:
+		_win_timer -= get_process_delta_time()
+		if _win_timer < 0.0:
+			# The pending winner can still die to a chain during the delay.
+			if _win_player != null and is_instance_valid(_win_player) and _win_player.alive:
+				_declare_winner(_win_player, "Last one standing")
+			else:
+				_declare_draw()
 		return
 	var living: Array[Player] = []
 	for p in players:
 		if p.alive:
 			living.append(p)
 	if living.size() == 1 and players.size() >= 2:
-		_declare_winner(living[0], "Last one standing")
+		_win_timer = WIN_DELAY
+		_win_player = living[0]
 	elif living.is_empty():
-		game_over = true
-		hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
-		NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})
-		get_tree().call_group(&"sfx", &"play_womp", Vector2.ZERO)
-		get_tree().paused = true
+		_win_timer = WIN_DELAY
+		_win_player = null
+
+
+func _declare_draw() -> void:
+	game_over = true
+	hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
+	NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})
+	get_tree().call_group(&"sfx", &"play_womp", Vector2.ZERO)
+	get_tree().paused = true
 
 
 func _declare_winner(p: Player, reason: String) -> void:

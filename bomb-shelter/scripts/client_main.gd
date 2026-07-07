@@ -375,6 +375,8 @@ func _build_hud() -> void:
 		g.axis_changed.connect(_on_gesture_axis)
 		g.jump_tapped.connect(_on_gesture_jump)
 		g.kick_charged.connect(_on_gesture_kick)
+		g.jump_down.connect(func() -> void: Input.action_press(&"p1_jump"))
+		g.jump_up.connect(func() -> void: Input.action_release(&"p1_jump"))
 		_hud.add_child(g)
 
 

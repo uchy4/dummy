@@ -48,6 +48,9 @@ var puppet_stunned := false  ## host says this puppet is ragdoll-stunned
 ## Ragdoll-stun: seconds left before the player gets back up. Set via
 ## apply_stun()/apply_impact_stun(); input is ignored while it's positive.
 var stun_left := 0.0
+## While stunned, the body is a real physics ragdoll launched with our
+## velocity; the player rides its torso and stands up where it lands.
+var _stun_ragdoll: Ragdoll = null
 
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
@@ -155,6 +158,7 @@ func _physics_process(delta: float) -> void:
 		if stun_left <= 0.0:
 			stun_left = 0.0
 			rotation = 0.0
+			_clear_stun_ragdoll(true)
 
 	var dir := 0.0
 	var jump_released := false
@@ -194,11 +198,15 @@ func _physics_process(delta: float) -> void:
 
 		velocity.x = move_toward(velocity.x, dir * SPEED, ACCEL * delta)
 	else:
-		# Stunned: gravity, the slide, world-bounds and blast reactions all
-		# still run — just no input, and ground friction bleeds off speed.
-		velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
-		if is_on_floor():
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+		# Stunned: the body is a tumbling physics ragdoll — ride its torso so
+		# the camera, snapshots, and blasts all track where it's flung.
+		if _stun_ragdoll != null and is_instance_valid(_stun_ragdoll):
+			global_position = _stun_ragdoll.torso_pos()
+			velocity = Vector2.ZERO
+		else:
+			velocity.y = minf(velocity.y + gravity * delta, MAX_FALL)
+			if is_on_floor():
+				velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
 
 	_fall_speed = velocity.y
 	move_and_slide()
@@ -223,13 +231,15 @@ func _physics_process(delta: float) -> void:
 			get_tree().call_group(&"sfx", &"play_step", global_position)
 	_swing = lerpf(_swing, swing_target, 0.35)
 
-	if stun_left > 0.0:
+	if stun_left > 0.0 and _stun_ragdoll == null:
+		# Fallback tilt for a stun without a ragdoll (shouldn't happen on
+		# the host; puppets get theirs from client_main).
 		_dizzy_phase += delta * 6.0
 		if is_on_floor():
 			var dir_sign: float = signf(velocity.x) if absf(velocity.x) > 5.0 else float(_facing)
 			rotation = 1.1 * dir_sign
 		else:
-			rotation += delta * 3.0  # slow tumble while airborne
+			rotation += delta * 3.0
 	queue_redraw()
 
 	# Shove bombs and other players we walk into; a fast bomb impact (a
@@ -305,11 +315,42 @@ func give_armor() -> void:
 
 ## Ragdoll-stun the player for `duration` seconds (blast survival, an armor
 ## save, or a bomb impact). No-op once dead or for a non-positive duration;
-## never shortens stun time already in progress.
+## never shortens stun time already in progress. The body becomes a real
+## ragdoll flung with the current velocity (so call this AFTER the kick is
+## applied); the player gets up wherever it tumbles to.
 func apply_stun(duration: float) -> void:
 	if duration <= 0.0 or not alive:
 		return
 	stun_left = maxf(stun_left, duration)
+	if puppet or _stun_ragdoll != null:
+		return
+	_stun_ragdoll = Ragdoll.new()
+	_stun_ragdoll.persist = true
+	_stun_ragdoll.color = player_color
+	_stun_ragdoll.color2 = color2
+	_stun_ragdoll.impulse = velocity.limit_length(700.0)
+	_stun_ragdoll.position = global_position
+	get_parent().add_child.call_deferred(_stun_ragdoll)
+	hide()
+	_shape.set_deferred(&"disabled", true)
+
+
+## Tear down the stun ragdoll. A living player reappears at the body's
+## resting spot with a little get-up hop; a dead one leaves it for die().
+func _clear_stun_ragdoll(recover: bool) -> void:
+	if _stun_ragdoll != null:
+		if is_instance_valid(_stun_ragdoll):
+			if recover:
+				global_position = _stun_ragdoll.torso_pos() + Vector2(0, -6)
+				reset_physics_interpolation()
+			_stun_ragdoll.queue_free()
+		_stun_ragdoll = null
+	if alive:
+		show()
+		_shape.set_deferred(&"disabled", false)
+		if recover:
+			velocity = Vector2(0, -140.0)  # get-up hop
+			_puff(4)
 
 
 ## Bomb-impact stun plus a small shove in `dir` (away from the bomb).
@@ -319,8 +360,9 @@ func apply_impact_stun(dir: Vector2) -> void:
 	if not alive or _impact_stun_cd > 0.0:
 		return
 	_impact_stun_cd = IMPACT_STUN_GRACE
-	apply_stun(Settings.stun_time)
+	# Knockback first: apply_stun launches the ragdoll with our velocity.
 	velocity += dir * IMPACT_KNOCKBACK + Vector2(0, -120.0)
+	apply_stun(Settings.stun_time)
 
 
 func take_blast(kick: Vector2, lethal: bool) -> void:
@@ -349,6 +391,7 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 func teleport_to(pos: Vector2) -> void:
 	if not alive and Settings.one_life:
 		return  # the dead stay dead in elimination mode
+	_clear_stun_ragdoll(false)
 	global_position = pos
 	reset_physics_interpolation()
 	velocity = Vector2.ZERO
@@ -369,6 +412,7 @@ func die(kick := Vector2.ZERO) -> void:
 	velocity = Vector2.ZERO
 	stun_left = 0.0
 	rotation = 0.0
+	_clear_stun_ragdoll(false)  # the death ragdoll takes over from here
 	hide()
 	_shape.set_deferred("disabled", true)
 	get_tree().call_group(&"sfx", &"play_splat", global_position)
@@ -382,6 +426,7 @@ func die(kick := Vector2.ZERO) -> void:
 
 
 func _respawn() -> void:
+	_clear_stun_ragdoll(false)
 	global_position = respawn_point
 	reset_physics_interpolation()
 	velocity = Vector2.ZERO
