@@ -65,6 +65,14 @@ func torso_pos() -> Vector2:
 	return _parts[0].global_position
 
 
+## How fast the torso is still moving — near zero means the body has
+## settled even if the ground ray misses (resting on a prop, wedged, etc).
+func torso_speed() -> float:
+	if _parts.is_empty():
+		return 0.0
+	return _parts[0].linear_velocity.length()
+
+
 ## True once the torso is resting on (or brushing) solid ground — a stunned
 ## player stays ragdolled while still flying through the air.
 func torso_grounded() -> bool:

@@ -252,7 +252,11 @@ func _build_bunker() -> void:
 	bunker_rooms = {}
 	var top := 24
 	var room_h := 6
-	var bx := rng.randi_range(3, 7)
+	# The homestead spawns on a random side of the map with jitter, so the
+	# outhouse is somewhere new every match (rng is seeded per run).
+	var bx := rng.randi_range(3, 8)
+	if rng.randf() < 0.5:
+		bx = rng.randi_range(58, 61)
 	outhouse_cell = Vector2i(bx + 1, SURFACE_ROW)
 
 	# Stair landing first (the staircase must land in it), then the living
@@ -267,9 +271,11 @@ func _build_bunker() -> void:
 		bunker_rooms[room_name] = Rect2i(cur_x, top, w, room_h)
 		cur_x += w + 1
 
-	# Pens one level below, under the left half of the bunker.
+	# Pens one level below, under the near half of the bunker.
 	var pen_top := top + 7
 	var pen_x := maxi(bx - rng.randi_range(0, 2), 3)
+	if bx > 40:
+		pen_x = bx + 1  # right-side homestead: pens stay clear of the shelter
 	var pens: Array[String] = ["chicken_pen", "pig_pen"]
 	pens.shuffle()
 	var pw1 := rng.randi_range(5, 8)

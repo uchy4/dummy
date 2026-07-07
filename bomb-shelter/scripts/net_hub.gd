@@ -502,8 +502,9 @@ function render(){requestAnimationFrame(render);
     ctx.fillRect(q[0]*TS+cc*8,q[1]*TS+rr*8,8,8);}}
   else{ctx.fillStyle=ROOMTINT[q[4]]||"#54381f";
    ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}}
- ctx.fillStyle="rgba(0,0,0,0.5)";
- for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
+ for(var sk in SCORCH){var si=+sk,srw=(si/W)|0;
+  var scol=srw>=90?"65,48,59":srw>=65?"87,95,106":srw>=40?"138,79,46":"92,61,34";
+  ctx.fillStyle="rgba("+scol+",0.9)";ctx.fillRect((si%W)*TS,srw*TS,TS,TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  // Well pipe: cutaway art from the pump down to the reservoir.
  if(PIPE){var px2=(PIPE[0]+0.5)*TS;

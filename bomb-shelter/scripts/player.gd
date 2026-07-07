@@ -54,6 +54,7 @@ var stun_left := 0.0
 ## While stunned, the body is a real physics ragdoll launched with our
 ## velocity; the player rides its torso and stands up where it lands.
 var _stun_ragdoll: Ragdoll = null
+var _ragdoll_time := 0.0  ## total time down — hard-capped at 3 seconds
 
 var world_bounds := Rect2(-100000, -100000, 200000, 200000)
 
@@ -159,13 +160,16 @@ func _physics_process(delta: float) -> void:
 	var was_stunned := stun_left > 0.0
 	if was_stunned:
 		stun_left -= delta
+		_ragdoll_time += delta
 		if stun_left <= 0.0:
-			# Never get up mid-air: a launched body stays ragdolled until
-			# it actually lands, however long the flight takes.
-			var airborne_ragdoll := _stun_ragdoll != null \
-				and is_instance_valid(_stun_ragdoll) \
-				and not _stun_ragdoll.torso_grounded()
-			if airborne_ragdoll:
+			# Don't get up mid-air — but never stay down forever either:
+			# a nearly-motionless body counts as landed (micro-jitters on a
+			# prop, wedged in a corner), and 3s of ragdoll is the hard cap.
+			var rag_ok := _stun_ragdoll != null and is_instance_valid(_stun_ragdoll)
+			var still_flying := rag_ok and not _stun_ragdoll.torso_grounded() \
+				and _stun_ragdoll.torso_speed() > 18.0 \
+				and _ragdoll_time < 3.0
+			if still_flying:
 				stun_left = 0.05
 			else:
 				stun_left = 0.0
@@ -384,6 +388,7 @@ func apply_stun(duration: float) -> void:
 	stun_left = maxf(stun_left, duration)
 	if puppet or _stun_ragdoll != null:
 		return
+	_ragdoll_time = 0.0
 	_stun_ragdoll = Ragdoll.new()
 	_stun_ragdoll.persist = true
 	_stun_ragdoll.color = player_color

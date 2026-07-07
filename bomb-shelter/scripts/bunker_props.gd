@@ -31,7 +31,6 @@ class PropMarker:
 		add_to_group(&"props")
 
 
-var _has_outhouse := false
 var _outhouse_local := Vector2.ZERO
 var _counters: Array[Rect2] = []
 var _fence_local: Array[Vector2] = []
@@ -75,15 +74,13 @@ func _floor_y(rect: Rect2i) -> float:
 # ------------------------------------------------------------- outhouse ---
 
 func _build_outhouse() -> void:
-	_has_outhouse = true
 	var floor_y := float(terrain.outhouse_cell.y) * TILE
 	var cx := (float(terrain.outhouse_cell.x) + 0.5) * TILE
 	_outhouse_local = Vector2(cx, floor_y)
 
-	var marker := PropMarker.new()
-	marker.prop_kind = 9  # outhouse
-	marker.position = _outhouse_local
-	add_child(marker)
+	var hut := OuthouseArt.new()
+	hut.position = _outhouse_local
+	add_child(hut)
 
 	# The well: hand pump on the surface, pipe straight down to the buried
 	# reservoir (pipe is pure cutaway art, drawn over the ground).
@@ -218,42 +215,103 @@ func _build_pen(rect: Rect2i, kind: int, count: int) -> void:
 # ------------------------------------------------------------------ draw ---
 
 func _draw() -> void:
-	if _has_outhouse:
-		_draw_outhouse(_outhouse_local)
 	for c in _counters:
 		_draw_counter(c)
 	for p in _fence_local:
 		_draw_fence_post(p)
 
 
-func _draw_outhouse(base: Vector2) -> void:
-	var w := 36.0
-	var h := 44.0
-	var top_left := base + Vector2(-w / 2.0, -h + 8.0)
+## The outhouse hut: streamed to web (prop kind 9), and blown to plank
+## debris when a blast reaches it (group "chests" -> blast_destroy).
+class OuthouseArt:
+	extends Node2D
+	var prop_kind := 9
+	var _dead := false
 
-	# plank walls
-	draw_rect(Rect2(top_left, Vector2(w, h - 8.0)).grow(1.0), Color.BLACK)  # outline
-	draw_rect(Rect2(top_left, Vector2(w, h - 8.0)), Color("6d4c2f"))
-	for i in 4:
-		var px := top_left.x + 2.0 + float(i) * (w - 4.0) / 3.0
-		draw_line(Vector2(px, top_left.y + 1.0), Vector2(px, base.y - 1.0),
-			Color("5e3d22"), 1.0)
+	func _ready() -> void:
+		add_to_group(&"props")
+		add_to_group(&"chests")
 
-	# slanted roof
-	var roof := PackedVector2Array([
-		base + Vector2(-w / 2.0 - 3.0, -h + 9.0),
-		base + Vector2(w / 2.0 + 3.0, -h + 9.0),
-		base + Vector2(w / 2.0 - 2.0, -h - 3.0),
-		base + Vector2(-w / 2.0 + 2.0, -h - 3.0),
-	])
-	draw_colored_polygon(roof, Color("4a3517"))
+	func blast_destroy() -> void:
+		if _dead:
+			return
+		_dead = true
+		# The hut bursts into tumbling planks plus its roof slab.
+		for i in 9:
+			var plank := Plank.new()
+			plank.size = Vector2(randf_range(9.0, 16.0), 3.0)
+			plank.position = global_position \
+				+ Vector2(randf_range(-16.0, 16.0), randf_range(-38.0, -6.0))
+			plank.rotation = randf_range(-0.6, 0.6)
+			plank.linear_velocity = Vector2(randf_range(-190.0, 190.0),
+				randf_range(-330.0, -110.0))
+			plank.angular_velocity = randf_range(-9.0, 9.0)
+			get_parent().add_child(plank)
+		var roof := Plank.new()
+		roof.size = Vector2(26.0, 5.0)
+		roof.col = Color("4a3517")
+		roof.position = global_position + Vector2(0, -44.0)
+		roof.linear_velocity = Vector2(randf_range(-90.0, 90.0), -360.0)
+		roof.angular_velocity = randf_range(-6.0, 6.0)
+		get_parent().add_child(roof)
+		queue_free()
 
-	# dark open doorway
-	draw_rect(Rect2(base + Vector2(-6.0, -20.0), Vector2(12.0, 20.0)), Color("2b1d10"))
+	func _draw() -> void:
+		var w := 36.0
+		var h := 44.0
+		var top_left := Vector2(-w / 2.0, -h + 8.0)
+		# plank walls
+		draw_rect(Rect2(top_left, Vector2(w, h - 8.0)).grow(1.0), Color.BLACK)
+		draw_rect(Rect2(top_left, Vector2(w, h - 8.0)), Color("6d4c2f"))
+		for i in 4:
+			var px := top_left.x + 2.0 + float(i) * (w - 4.0) / 3.0
+			draw_line(Vector2(px, top_left.y + 1.0), Vector2(px, -1.0),
+				Color("5e3d22"), 1.0)
+		# slanted roof
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-w / 2.0 - 3.0, -h + 9.0), Vector2(w / 2.0 + 3.0, -h + 9.0),
+			Vector2(w / 2.0 - 2.0, -h - 3.0), Vector2(-w / 2.0 + 2.0, -h - 3.0),
+		]), Color("4a3517"))
+		# dark open doorway + crescent-moon cutout
+		draw_rect(Rect2(Vector2(-6.0, -20.0), Vector2(12.0, 20.0)), Color("2b1d10"))
+		draw_circle(Vector2(0.0, -32.0), 3.5, Color("e8d9b0"))
+		draw_circle(Vector2(1.3, -32.0), 3.0, Color("6d4c2f"))
 
-	# crescent-moon cutout, high on the door-facing wall
-	draw_circle(base + Vector2(0.0, -32.0), 3.5, Color("e8d9b0"))
-	draw_circle(base + Vector2(1.3, -32.0), 3.0, Color("6d4c2f"))
+
+## A flying piece of busted outhouse: tumbles off terrain, gets tossed by
+## later blasts (ragdoll_parts), fades away after a few seconds.
+class Plank:
+	extends RigidBody2D
+	var size := Vector2(14, 3)
+	var col := Color("6d4c2f")
+	var _age := 0.0
+
+	func _ready() -> void:
+		add_to_group(&"ragdoll_parts")
+		z_index = 4
+		mass = 0.4
+		collision_layer = 0
+		collision_mask = 1
+		var pm := PhysicsMaterial.new()
+		pm.bounce = 0.3
+		pm.friction = 0.6
+		physics_material_override = pm
+		var cs := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = size
+		cs.shape = rs
+		add_child(cs)
+
+	func _process(delta: float) -> void:
+		_age += delta
+		if _age > 3.4:
+			modulate.a = maxf(0.0, 1.0 - (_age - 3.4))
+		if _age > 4.4:
+			queue_free()
+
+	func _draw() -> void:
+		draw_rect(Rect2(-size / 2.0 - Vector2.ONE, size + Vector2(2, 2)), Color.BLACK)
+		draw_rect(Rect2(-size / 2.0, size), col)
 
 
 func _draw_fence_post(p: Vector2) -> void:
