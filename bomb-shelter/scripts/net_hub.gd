@@ -244,7 +244,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};PIPEBRK={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
+   TSCORCH={};buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];rags=[];SCORCH={};PIPESC={};PIPEBRK={};WTRANS={};HUDMSG="";HTIME=-1;predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -368,22 +368,31 @@ document.getElementById("fs").addEventListener("click",function(){
   else goFS();
  }catch(err){}});
 setInterval(send,2000);
-// Offscreen pixels per cell: room to round corners (radius 3 = 6 world px).
-var PXC=8;
+// Offscreen pixels per cell: room to chamfer corners (3 subpx = 6 world px).
+var PXC=8;var TSCORCH={};
 function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
-// (Re)paint one cell: deterministic light/dark speckle + rounded corners
-// wherever both adjacent sides are open — matches the native tile bevels.
+// (Re)paint one cell: deterministic light/dark speckle, blast-scorch
+// darkening, and 45-degree chamfered corners wherever both adjacent sides
+// are open — matches the native tile bevels.
 function paintCell(r,c){var i=r*W+c,v=grid[i];
  octx.clearRect(c*PXC,r*PXC,PXC,PXC);
  if(!v||v===4)return;// water renders live each frame with a waterline
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
- octx.fillStyle=(hh%100<30)?CELL2[dv]:CELL[dv];
+ var col=(hh%100<30)?CELL2[dv]:CELL[dv];
+ var lvl=TSCORCH[i]||0;
+ octx.fillStyle=lvl?shade(col,1-0.25*lvl):col;
  var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
- var rd=3,rads=[up&&lf?rd:0,up&&rt?rd:0,dn&&rt?rd:0,dn&&lf?rd:0];
+ var bd=3,bnw=up&&lf?bd:0,bne=up&&rt?bd:0,bse=dn&&rt?bd:0,bsw=dn&&lf?bd:0;
+ var bx=c*PXC,by=r*PXC,s=PXC;
  octx.beginPath();
- if(octx.roundRect)octx.roundRect(c*PXC,r*PXC,PXC,PXC,rads);
- else octx.rect(c*PXC,r*PXC,PXC,PXC);
- octx.fill();}
+ octx.moveTo(bx+bnw,by);octx.lineTo(bx+s-bne,by);
+ if(bne)octx.lineTo(bx+s,by+bne);
+ octx.lineTo(bx+s,by+s-bse);
+ if(bse)octx.lineTo(bx+s-bse,by+s);
+ octx.lineTo(bx+bsw,by+s);
+ if(bsw)octx.lineTo(bx,by+s-bsw);
+ octx.lineTo(bx,by+bnw);
+ octx.closePath();octx.fill();}
 function buildTerrain(){off=document.createElement("canvas");off.width=W*PXC;off.height=H*PXC;
  octx=off.getContext("2d");grassCells=[];
  // Grass blocks are dirt-bodied; a thin green cap is drawn on top at render.
@@ -410,8 +419,17 @@ function carve(x,y,rad){if(!grid)return;
    if(c>=q[0]&&c<q[0]+q[2]&&r>=q[1]&&r<q[1]+q[3]){SCORCH[r*W+c]=1;break;}}
   var v=grid[r*W+c];if(v===0||v===2)continue;
   grid[r*W+c]=0;}
- // Repaint the survivors ringing the hole so their corners re-round.
- for(var r=r0-rr-1;r<=r0+rr+1;r++)for(var c=c0-rr-1;c<=c0+rr+1;c++){
+ // Survivors the blast touched scorch darker the closer they were:
+ // 75/50/25% darker in one-tile bands past the carve edge.
+ var r3=rr+3;
+ for(var r=r0-r3;r<=r0+r3;r++)for(var c=c0-r3;c<=c0+r3;c++){
+  if(r<0||r>=H||c<0||c>=W)continue;
+  var v2=grid[r*W+c];if(v2===0||v2===4)continue;
+  var d=Math.hypot((c+0.5)*TS-x,(r+0.5)*TS-y),lvl=0;
+  if(d<=rad+TS)lvl=3;else if(d<=rad+TS*2)lvl=2;else if(d<=rad+TS*3)lvl=1;
+  if(lvl>(TSCORCH[r*W+c]||0))TSCORCH[r*W+c]=lvl;}
+ // Repaint the touched region so chamfers and scorch levels update.
+ for(var r=r0-r3-1;r<=r0+r3+1;r++)for(var c=c0-r3-1;c<=c0+r3+1;c++){
   if(r<0||r>=H||c<0||c>=W)continue;paintCell(r,c);}}
 function burst(x,y,col){for(var i=0;i<10;i++)sparks.push({x:x,y:y,c:col,
  vx:(Math.random()-0.5)*260,vy:-Math.random()*260-40,t:performance.now()});}

@@ -70,6 +70,9 @@ var _gen_guard := Rect2i()
 var _grid := PackedByteArray()
 var _src_id := 0
 var _water_acc := 0.0
+## Blast scorch per surviving cell: index -> level 1..3. Blocks the blast
+## touched but didn't destroy darken by 75/50/25% as they get farther.
+var _scorch := {}
 var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
 var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
 var _drop_trail := {} ## per-drop visited cells: revisiting one = loop = evaporate
@@ -102,21 +105,27 @@ func load_from_string(s: String) -> void:
 	_grid.fill(Cell.EMPTY)
 	for i in mini(s.length(), _grid.size()):
 		_grid[i] = s.unicode_at(i) - 48
+	_scorch = {}  # fresh map: forget the old match's blast marks
+	_flow_dir = {}
+	_transit = {}
+	_drop_trail = {}
 	clear()
 	_paint_all()
 
 
 # ---------------------------------------------------------------- tileset ---
 
-## Corner rounding radius (px): any solid cell whose two adjacent sides are
-## both open gets that corner rounded — visually AND in its collision
-## polygon, so physics follows the curve.
+## Corner chamfer size (px): any solid cell whose two adjacent sides are
+## both open gets that corner cut at 45 degrees — visually AND in its
+## collision polygon, so physics follows the bevel.
 const BEVEL_R := 6.0
 
 func _build_tileset() -> void:
-	# 12 materials wide x 16 corner-mask rows tall. Row = mask, bits:
-	# 1 = NW, 2 = NE, 4 = SE, 8 = SW rounded. Water keeps row 0 only.
-	var img := Image.create(TILE * 12, TILE * 16, false, Image.FORMAT_RGBA8)
+	# 12 materials wide x 64 rows tall: rows 0-15 are the corner-mask
+	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW chamfered), and rows
+	# 16-63 repeat them at 3 blast-scorch darkness levels (x0.75 / x0.5 /
+	# x0.25 brightness). Water keeps row 0 only.
+	var img := Image.create(TILE * 12, TILE * 64, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -143,8 +152,8 @@ func _build_tileset() -> void:
 		for x in TILE:
 			img.set_pixel(Tile.WATER_TOP * TILE + x, y, WATER_COLOR)
 
-	# Replicate each base tile down the 15 masked rows, erasing a rounded
-	# quarter-circle of pixels at every masked corner.
+	# Replicate each base tile down the 15 masked rows, erasing a 45-degree
+	# triangle of pixels at every masked corner.
 	for mask in range(1, 16):
 		for mat in 12:
 			if mat == Tile.WATER or mat == Tile.WATER_TOP:
@@ -155,6 +164,19 @@ func _build_tileset() -> void:
 					if _corner_cut(mask, x, y):
 						col = Color(0, 0, 0, 0)
 					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
+	# Scorch levels: rows 16-63 are the mask rows re-tinted darker. Level
+	# row group L holds masks at (1 - 0.25 * L) brightness.
+	for level in range(1, 4):
+		var f := 1.0 - 0.25 * level
+		for mat in 12:
+			if mat == Tile.WATER or mat == Tile.WATER_TOP:
+				continue
+			for mask in 16:
+				for y in TILE:
+					for x in TILE:
+						var col := img.get_pixel(mat * TILE + x, mask * TILE + y)
+						img.set_pixel(mat * TILE + x, (level * 16 + mask) * TILE + y,
+							Color(col.r * f, col.g * f, col.b * f, col.a))
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -167,42 +189,38 @@ func _build_tileset() -> void:
 	_src_id = ts.add_source(src)
 
 	for i in 12:
-		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 16
-		for mask in variants:
-			src.create_tile(Vector2i(i, mask))
+		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 64
+		for v in variants:
+			src.create_tile(Vector2i(i, v))
 			if i == Tile.WATER or i == Tile.WATER_TOP:
 				continue  # water is swim-through: no collision polygon
-			var td := src.get_tile_data(Vector2i(i, mask), 0)
+			var td := src.get_tile_data(Vector2i(i, v), 0)
 			td.add_collision_polygon(0)
-			td.set_collision_polygon_points(0, 0, _corner_poly(mask))
+			td.set_collision_polygon_points(0, 0, _corner_poly(v % 16))
 
 	tile_set = ts
 
 
-## True when pixel (x, y) of a tile falls outside the rounded corner arc
+## True when pixel (x, y) of a tile falls inside the 45-degree chamfer cut
 ## for any corner set in `mask` (bits: 1 NW, 2 NE, 4 SE, 8 SW).
 func _corner_cut(mask: int, x: int, y: int) -> bool:
 	var r := BEVEL_R
 	var fx := float(x) + 0.5
 	var fy := float(y) + 0.5
 	var t := float(TILE)
-	if mask & 1 and fx < r and fy < r \
-			and Vector2(fx, fy).distance_to(Vector2(r, r)) > r:
+	if mask & 1 and fx + fy < r:
 		return true
-	if mask & 2 and fx > t - r and fy < r \
-			and Vector2(fx, fy).distance_to(Vector2(t - r, r)) > r:
+	if mask & 2 and (t - fx) + fy < r:
 		return true
-	if mask & 4 and fx > t - r and fy > t - r \
-			and Vector2(fx, fy).distance_to(Vector2(t - r, t - r)) > r:
+	if mask & 4 and (t - fx) + (t - fy) < r:
 		return true
-	if mask & 8 and fx < r and fy > t - r \
-			and Vector2(fx, fy).distance_to(Vector2(r, t - r)) > r:
+	if mask & 8 and fx + (t - fy) < r:
 		return true
 	return false
 
 
 ## Collision outline matching the drawn tile: the unit square with every
-## masked corner replaced by a 3-point arc — physics follows the curve.
+## masked corner cut by a 45-degree chamfer edge — physics follows it.
 func _corner_poly(mask: int) -> PackedVector2Array:
 	var h := TILE / 2.0
 	var r := BEVEL_R
@@ -223,7 +241,6 @@ func _corner_poly(mask: int) -> PackedVector2Array:
 			e1 = e2
 			e2 = tmp
 		pts.append(e1)
-		pts.append(Vector2(sx * (h - r), sy * (h - r)) + Vector2(sx, sy) * (r * 0.7071))
 		pts.append(e2)
 	return pts
 
@@ -668,13 +685,13 @@ func _paint_cell(x: int, y: int) -> void:
 		Cell.WATER:
 			if not _transit.has(y * W + x):  # in-flight water stays a droplet
 				_paint_water_cell(x, y)
-		Cell.GRASS:
-			set_cell(Vector2i(x, y), _src_id, Vector2i(Tile.GRASS, _tile_mask(x, y)))
-		Cell.BEDROCK:
-			set_cell(Vector2i(x, y), _src_id, Vector2i(Tile.BEDROCK, _tile_mask(x, y)))
 		_:
 			var t := Tile.DIRT
 			match cv:
+				Cell.GRASS:
+					t = Tile.GRASS
+				Cell.BEDROCK:
+					t = Tile.BEDROCK
 				Cell.CLAY:
 					t = Tile.CLAY_DARK if _variant_dark(x, y, 0.35) else Tile.CLAY
 				Cell.STONE:
@@ -684,7 +701,9 @@ func _paint_cell(x: int, y: int) -> void:
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
 					t = Tile.DIRT_DARK if _variant_dark(x, y, dark_chance) else Tile.DIRT
-			set_cell(Vector2i(x, y), _src_id, Vector2i(t, _tile_mask(x, y)))
+			var lvl := int(_scorch.get(y * W + x, 0))
+			set_cell(Vector2i(x, y), _src_id,
+				Vector2i(t, _tile_mask(x, y) + 16 * lvl))
 
 
 # ------------------------------------------------------------- destruction ---
@@ -975,8 +994,26 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) <= radius:
 				_gset(x, y, Cell.EMPTY)
 				erase_cell(Vector2i(x, y))
-	for y in range(maxi(c.y - r - 1, 0), mini(c.y + r + 2, H)):
-		for x in range(maxi(c.x - r - 1, 0), mini(c.x + r + 2, W)):
+	# Survivors the blast touched scorch darker the closer they were:
+	# 75% / 50% / 25% darker in one-tile bands past the carve edge.
+	var r3 := r + 3
+	for y in range(maxi(c.y - r3, 0), mini(c.y + r3 + 1, H)):
+		for x in range(maxi(c.x - r3, 0), mini(c.x + r3 + 1, W)):
+			var cv := _gget(x, y)
+			if cv == Cell.EMPTY or cv == Cell.WATER:
+				continue
+			var d := map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos))
+			var lvl := 0
+			if d <= radius + TILE:
+				lvl = 3
+			elif d <= radius + TILE * 2.0:
+				lvl = 2
+			elif d <= radius + TILE * 3.0:
+				lvl = 1
+			if lvl > int(_scorch.get(y * W + x, 0)):
+				_scorch[y * W + x] = lvl
+	for y in range(maxi(c.y - r3 - 1, 0), mini(c.y + r3 + 2, H)):
+		for x in range(maxi(c.x - r3 - 1, 0), mini(c.x + r3 + 2, W)):
 			if _gget(x, y) != Cell.EMPTY:
 				_paint_cell(x, y)
 
