@@ -70,6 +70,8 @@ func _ready() -> void:
 	terrain.name = "Terrain"
 	world.add_child(terrain)  # generates in _ready
 	terrain.carved.connect(_on_carved)
+	terrain.water_moved.connect(func(moves: Array) -> void:
+		NetHub.broadcast({"t": "w", "m": moves}))
 	# Fresh match, fresh map: every web viewer needs the new terrain.
 	for id in NetHub.clients:
 		if NetHub.clients[id].joined:
@@ -220,7 +222,7 @@ func _build_backdrops() -> void:
 	world.add_child(sky)
 
 	var cave := ColorRect.new()
-	cave.color = Color("17100a")
+	cave.color = Color("2b1a0c")  # warm dark brown, not black
 	cave.position = Vector2(wr.position.x, terrain.surface_y())
 	cave.size = Vector2(wr.size.x, wr.size.y - terrain.surface_y())
 	cave.z_index = -15

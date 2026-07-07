@@ -41,6 +41,12 @@ func _ready() -> void:
 	if terrain == null or terrain.bunker_rooms.is_empty():
 		return
 
+	# Painted room backgrounds (wallpaper, paintings, shelves, bathroom
+	# tile) rendered behind terrain, furniture, and players.
+	var decor := RoomDecor.new()
+	decor.terrain = terrain
+	add_child(decor)
+
 	_build_outhouse()
 
 	if terrain.bunker_rooms.has("kitchen"):

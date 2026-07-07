@@ -192,6 +192,10 @@ function connect(){
    sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();syncBombs(m);}
   else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
    boom(Math.min(0.55,0.2+m.r/240));}
+  else if(m.t==="w"){if(grid&&octx)for(var i=0;i<m.m.length;i++){var f=m.m[i][0],t2=m.m[i][1];
+   if(f>=0&&f<grid.length){grid[f]=0;octx.clearRect(f%W,(f/W)|0,1,1);}
+   if(t2>=0&&t2<grid.length){grid[t2]=4;
+    octx.fillStyle=(Math.random()<0.3)?CELL2[4]:CELL[4];octx.fillRect(t2%W,(t2/W)|0,1,1);}}}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
@@ -481,7 +485,12 @@ function render(){requestAnimationFrame(render);
  cam.y=Math.max(vh/2-350,Math.min(H*TS-vh/2,cam.y));
  ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-cam.x,-cam.y);
  ctx.imageSmoothingEnabled=false;
- ctx.fillStyle="#17100a";ctx.fillRect(0,SURF*TS,W*TS,(H-SURF)*TS);
+ ctx.fillStyle="#2b1a0c";ctx.fillRect(0,SURF*TS,W*TS,(H-SURF)*TS);
+ // Bunker room wallpaper tints (fixed layout, mirrors RoomDecor).
+ var RBG=[[10,24,9,6,"#54381f"],[19,24,7,6,"#e4d3ac"],[27,24,7,6,"#aebccd"],
+  [35,24,5,6,"#dcebec"],[3,31,8,6,"#3d2914"],[12,31,8,6,"#3d2914"]];
+ for(var i=0;i<RBG.length;i++){var q=RBG[i];
+  ctx.fillStyle=q[4];ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;

@@ -169,6 +169,8 @@ func _handle(m: Dictionary) -> void:
 			my_index = int(m.get("i", -1))
 		"s":
 			_apply_snapshot(m)
+		"w":
+			terrain.apply_water_moves(m.get("m", []))
 		"carve":
 			var pos := Vector2(float(m.get("x", 0)), float(m.get("y", 0)))
 			var r := float(m.get("r", 60))

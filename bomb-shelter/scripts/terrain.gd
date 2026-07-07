@@ -22,6 +22,13 @@ enum Tile { GRASS, DIRT, DIRT_DARK, BEDROCK, WATER }
 ## Emitted for every blast so web clients can mirror the destruction.
 signal carved(world_pos: Vector2, radius: float)
 
+## Emitted each water tick with the cells that flowed: [[from_idx, to_idx]].
+## Clients replay these to keep their grids identical.
+signal water_moved(moves: Array)
+
+const WATER_TICK := 0.1     ## seconds between fluid steps
+const WATER_MAX_MOVES := 600
+
 var rng := RandomNumberGenerator.new()
 var room_count := 0
 var chest_cells: Array[Vector2i] = []  # dead-end pockets where chests may spawn
@@ -34,6 +41,7 @@ var outhouse_cell := Vector2i.ZERO
 
 var _grid := PackedByteArray()
 var _src_id := 0
+var _water_acc := 0.0
 
 
 ## Client mode: no generation — the grid arrives from the host over the
@@ -74,10 +82,18 @@ func _build_tileset() -> void:
 		for x in TILE:
 			var g := Color("4caf50").lerp(Color("2e7d32"), rng.randf() * 0.8)
 			img.set_pixel(Tile.GRASS * TILE + x, y, g)
-	# Water: translucent blue with a lighter ripple line on top.
-	_fill_tile(img, Tile.WATER, Color(0.16, 0.42, 0.78, 0.62), Color(0.2, 0.5, 0.85, 0.62), 0.2)
+	# Water: translucent droplet-speckled blue — reads as particles, and the
+	# cellular flow makes the particles pour and settle.
+	_fill_tile(img, Tile.WATER, Color(0.16, 0.42, 0.78, 0.58), Color(0.13, 0.36, 0.7, 0.58), 0.25)
+	for i in 5:
+		var dx := rng.randi_range(1, TILE - 3)
+		var dy := rng.randi_range(2, TILE - 3)
+		for py in 2:
+			for px in 2:
+				img.set_pixel(Tile.WATER * TILE + dx + px, dy + py,
+					Color(0.5, 0.76, 1.0, 0.66))
 	for x in TILE:
-		img.set_pixel(Tile.WATER * TILE + x, 0, Color(0.55, 0.8, 1.0, 0.8))
+		img.set_pixel(Tile.WATER * TILE + x, 0, Color(0.62, 0.85, 1.0, 0.75))
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -320,6 +336,85 @@ func grid_string() -> String:
 	for i in _grid.size():
 		out[i] = 48 + _grid[i]
 	return out.get_string_from_ascii()
+
+
+# ------------------------------------------------------------------ water ---
+
+func _process(delta: float) -> void:
+	if client_mode:
+		return
+	_water_acc += delta
+	if _water_acc >= WATER_TICK:
+		_water_acc = 0.0
+		_tick_water()
+
+
+## Falling-water cellular step: water drops into empty cells, slides off
+## ledges diagonally, and stacked water spreads sideways until it levels
+## out — then it sits perfectly still (and costs no bandwidth).
+func _tick_water() -> void:
+	var moves := []
+	# Bottom-up scan: lower water settles first, columns compact naturally.
+	for idx in range(_grid.size() - W - 1, W, -1):
+		if _grid[idx] != Cell.WATER:
+			continue
+		var x := idx % W
+		var y := idx / W
+		var to := -1
+		if _gget(x, y + 1) == Cell.EMPTY:
+			to = (y + 1) * W + x
+		else:
+			var dl := _gget(x - 1, y + 1) == Cell.EMPTY and _gget(x - 1, y) == Cell.EMPTY
+			var dr := _gget(x + 1, y + 1) == Cell.EMPTY and _gget(x + 1, y) == Cell.EMPTY
+			if dl and dr:
+				if rng.randf() < 0.5:
+					dr = false
+				else:
+					dl = false
+			if dl:
+				to = (y + 1) * W + (x - 1)
+			elif dr:
+				to = (y + 1) * W + (x + 1)
+			elif _gget(x, y + 1) == Cell.WATER:
+				# Stacked: pressure pushes the top layer sideways to level.
+				var l := _gget(x - 1, y) == Cell.EMPTY
+				var r := _gget(x + 1, y) == Cell.EMPTY
+				if l and r:
+					if rng.randf() < 0.5:
+						r = false
+					else:
+						l = false
+				if l:
+					to = y * W + (x - 1)
+				elif r:
+					to = y * W + (x + 1)
+		if to < 0:
+			continue
+		_grid[idx] = Cell.EMPTY
+		_grid[to] = Cell.WATER
+		erase_cell(Vector2i(x, y))
+		set_cell(Vector2i(to % W, to / W), _src_id, Vector2i(Tile.WATER, 0))
+		moves.append([idx, to])
+		if moves.size() >= WATER_MAX_MOVES:
+			break
+	if not moves.is_empty():
+		water_moved.emit(moves)
+
+
+## Client mirror of _tick_water: replay the host's flow verbatim.
+func apply_water_moves(moves: Array) -> void:
+	for mv in moves:
+		var pair: Array = mv
+		if pair.size() < 2:
+			continue
+		var f := int(pair[0])
+		var t := int(pair[1])
+		if f >= 0 and f < _grid.size():
+			_grid[f] = Cell.EMPTY
+			erase_cell(Vector2i(f % W, f / W))
+		if t >= 0 and t < _grid.size():
+			_grid[t] = Cell.WATER
+			set_cell(Vector2i(t % W, t / W), _src_id, Vector2i(Tile.WATER, 0))
 
 
 ## Blow a circular hole (world-space position and radius). Bedrock survives.
