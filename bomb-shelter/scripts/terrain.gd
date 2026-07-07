@@ -85,6 +85,11 @@ var _drops: Array[Dictionary] = []
 const DROPS_MAX := 240
 const DROP_LIFE := 0.5
 const DROP_COLOR := Color("7fd4ff", 0.85)
+## Surface waves: interacting with water (landing in it, swimming through
+## it, splash drops settling) makes nearby waterlines roll for a moment.
+## Each entry: {p: origin, t: age, pw: power}.
+var _ripples: Array[Dictionary] = []
+const RIPPLE_LIFE := 1.2
 
 
 ## Client mode: no generation — the grid arrives from the host over the
@@ -827,7 +832,29 @@ func grid_string() -> String:
 
 # ------------------------------------------------------------------ water ---
 
+## Kick off a surface wave at a world position. Mirrored to web viewers as
+## fx kind 17 (the LAN client replays it into its own terrain).
+func add_ripple(world_pos: Vector2, power: float) -> void:
+	if _ripples.size() >= 24:
+		_ripples.pop_front()
+	_ripples.append({"p": world_pos, "t": 0.0, "pw": clampf(power, 0.2, 1.6)})
+	# Only real splashes go over the wire — tiny drop-settle ripples would
+	# spam the channel during every flow.
+	if not client_mode and power >= 0.5 and NetHub.has_viewers():
+		NetHub.broadcast({"t": "fx", "k": 17, "x": int(world_pos.x),
+			"y": int(world_pos.y), "p": snappedf(power, 0.1)})
+	queue_redraw()
+
+
 func _process(delta: float) -> void:
+	if not _ripples.is_empty():
+		var j := _ripples.size() - 1
+		while j >= 0:
+			_ripples[j].t += delta
+			if float(_ripples[j].t) > RIPPLE_LIFE:
+				_ripples.remove_at(j)
+			j -= 1
+		queue_redraw()
 	if not _drops.is_empty():
 		var i := _drops.size() - 1
 		while i >= 0:
@@ -969,6 +996,7 @@ func _settle_transit(new_transit: Dictionary) -> void:
 			_paint_water_cell(i % W, i / W)
 			_paint_water_cell(i % W, i / W + 1)
 			_repaint_nb(i % W, i / W)
+			add_ripple(Vector2((i % W) * TILE + 8.0, (i / W) * TILE + 8.0), 0.3)
 
 
 ## Communicating vessels: each connected body of water acts as ONE entity.
@@ -1098,6 +1126,36 @@ func _draw() -> void:
 		var c := DROP_COLOR
 		c.a = DROP_COLOR.a * fade
 		draw_circle(d.p, 1.4 + 1.2 * fade, c)
+	# Rolling waterlines: traveling wave humps on surface cells near each
+	# active ripple, fading as the ring expands and ages out.
+	for rp: Dictionary in _ripples:
+		var age: float = rp.t
+		var env := (1.0 - age / RIPPLE_LIFE) * float(rp.pw) * 4.0
+		var origin: Vector2 = rp.p
+		var oc := local_to_map(to_local(origin))
+		for dxc in range(-4, 5):
+			var cx := oc.x + dxc
+			if cx < 0 or cx >= W:
+				continue
+			var sy := -1  # the surface water cell in this column, if any
+			for dy in range(-3, 4):
+				var cy := oc.y + dy
+				if cy < 1 or cy >= H:
+					continue
+				if _grid[cy * W + cx] == Cell.WATER \
+						and _grid[(cy - 1) * W + cx] != Cell.WATER:
+					sy = cy
+					break
+			if sy < 0:
+				continue
+			var wl := float(sy) * TILE + 5.0  # the drawn waterline
+			for sub in 4:
+				var px := float(cx) * TILE + sub * 4.0 + 2.0
+				var dxp := px - origin.x
+				var a := env * exp(-absf(dxp) * 0.03) \
+					* (0.5 + 0.5 * cos(absf(dxp) * 0.26 - age * 9.0))
+				if a > 0.6:
+					draw_rect(Rect2(px - 2.0, wl - a, 4.0, a), WATER_COLOR)
 
 
 ## Repaint a moved drop and its vertical neighbors: covered water uses the

@@ -144,6 +144,15 @@ func on_ground() -> bool:
 	return puppet_on_floor if puppet else is_on_floor()
 
 
+var _was_in_water := false
+var _wake_cd := 0.0
+
+
+func _ripple(power: float) -> void:
+	get_tree().call_group(&"terrain", &"add_ripple",
+		global_position + Vector2(0, 8.0), power)
+
+
 ## Stair assist: walking into a ledge up to one tile tall climbs it without
 ## a jump — any 1-block-per-1-block staircase (a 45-degree slope in block
 ## terms) is simply walkable. Taller faces still need a hop.
@@ -229,6 +238,16 @@ func _physics_process(delta: float) -> void:
 		# you float up, feet-wet you settle, and jumping paddles you out.
 		var head_water := _water_at(Vector2(0, -8))
 		var feet_water := _water_at(Vector2(0, 10))
+		# The surface rolls when we interact with it: a splash ripple on the
+		# way in (scaled by impact speed), a small wake while swimming.
+		if feet_water and not _was_in_water:
+			_ripple(0.4 + minf(absf(velocity.y) / 300.0, 1.2))
+		elif feet_water and absf(velocity.x) > 40.0:
+			_wake_cd -= delta
+			if _wake_cd <= 0.0:
+				_wake_cd = 0.2
+				_ripple(0.5)
+		_was_in_water = feet_water
 		if head_water:
 			velocity.y = move_toward(velocity.y, -110.0, 2200.0 * delta)
 		elif feet_water:

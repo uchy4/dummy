@@ -58,6 +58,8 @@ var puppet := false
 ## its stream corrects position.
 var sim_puppet := false
 
+var _was_in_water := false
+
 ## Duds (Settings.duds_enabled, ~10%): the fuse fizzles out instead of
 ## detonating — but a nearby blast's concussion re-arms them. Fizzled duds
 ## stay on the field for good until something sets them off.
@@ -214,9 +216,14 @@ func _physics_process(delta: float) -> void:
 	# Groundwater: bombs do sink, just slower — heavy drag, weak gravity.
 	if terrain != null and not freeze:
 		if terrain.is_water(global_position):
+			if not _was_in_water:  # plunge: the surface rolls
+				terrain.add_ripple(global_position,
+					0.4 + minf(linear_velocity.length() / 350.0, 1.2))
+			_was_in_water = true
 			linear_damp = 3.0
 			gravity_scale = 0.4
 		else:
+			_was_in_water = false
 			linear_damp = 0.0
 			gravity_scale = 1.0
 	if type == Type.STICKY:

@@ -190,7 +190,8 @@ function fxPlay(m){var k=m.k,x=m.x,y=m.y;
  else if(k===9)puffAt(x,y,m.c||"#a1866a",m.a||6,110);
  else if(k===11){crunch(0.4,0.5);puffAt(x,y,"#6d4c2f",12,190);}
  else if(k===12){splat();puffAt(x,y,m.c==="p"?"#f4a7b9":"#f5f5f0",10,160);}
- else if(k===13){crunch(0.5,1.7);tone(75,0,0.12,0.3);puffAt(x,y,"#ffe082",4,130);}}
+ else if(k===13){crunch(0.5,1.7);tone(75,0,0.12,0.3);puffAt(x,y,"#ffe082",4,130);}
+ else if(k===17){if(RIPPLES.length<24)RIPPLES.push({x:x,y:y,p:m.p||0.5,t:performance.now()});}}
 // Size the canvas from the *visual* viewport in real pixels. CSS 100vh/100%
 // is unreliable on iOS Safari (collapsing URL bar, stale post-rotation
 // layout) and produced a broken "slice" — this is the robust fix.
@@ -374,7 +375,7 @@ document.getElementById("fs").addEventListener("click",function(){
  }catch(err){}});
 setInterval(send,2000);
 // Offscreen pixels per cell: room to chamfer corners (3 subpx = 6 world px).
-var PXC=8;var TSCORCH={};var WWEDGE={};
+var PXC=8;var TSCORCH={};var WWEDGE={};var RIPPLES=[];
 function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
 // (Re)paint one cell: deterministic light/dark speckle, blast-scorch
 // darkening (50%), 45-degree chamfered corners wherever both adjacent
@@ -694,6 +695,10 @@ function render(){requestAnimationFrame(render);
  // Water: one flat translucent color, drawn live; surface cells start 5px
  // down so pools show a waterline.
  if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
+  // Surface ripples (fx 17) age out over 1.2s.
+  var nw3=performance.now();
+  for(var ri2=RIPPLES.length-1;ri2>=0;ri2--)
+   if(nw3-RIPPLES[ri2].t>1200)RIPPLES.splice(ri2,1);
   // Water rounds against anything that isn't water; cuts that meet ground
   // switch to the land-style chamfer so the bevels mate flush. Rounded
   // corners use quadratic arcs, chamfers straight lines.
@@ -724,6 +729,24 @@ function render(){requestAnimationFrame(render);
    if(nw){if(ch)ctx.lineTo(wx2+nw,ty);
     else ctx.quadraticCurveTo(wx2,ty,wx2+nw,ty);}
    ctx.closePath();ctx.fill();}
+  // Rolling waterlines: traveling wave humps on surface cells near each
+  // active ripple, fading as the ring expands and ages out.
+  for(var ri3=0;ri3<RIPPLES.length;ri3++){var rp2=RIPPLES[ri3];
+   var age2=(nw3-rp2.t)/1000,env2=(1-age2/1.2)*rp2.p*4;
+   if(env2<=0)continue;
+   var oc2=Math.floor(rp2.x/TS),or2=Math.floor(rp2.y/TS);
+   for(var dc2=-4;dc2<=4;dc2++){var cx2=oc2+dc2;
+    if(cx2<0||cx2>=W)continue;
+    var sy2=-1;
+    for(var dy2=-3;dy2<=3;dy2++){var cy2=or2+dy2;
+     if(cy2<1||cy2>=H)continue;
+     if(grid[cy2*W+cx2]===4&&grid[(cy2-1)*W+cx2]!==4){sy2=cy2;break;}}
+    if(sy2<0)continue;
+    var wl2=sy2*TS+5;
+    for(var sb=0;sb<4;sb++){var pxb=cx2*TS+sb*4+2,dxp2=pxb-rp2.x;
+     var a2=env2*Math.exp(-Math.abs(dxp2)*0.03)
+      *(0.5+0.5*Math.cos(Math.abs(dxp2)*0.26-age2*9));
+     if(a2>0.6)ctx.fillRect(pxb-2,wl2-a2,4,a2);}}}
   // Flooded land wedges: water triangles over chamfered corners that have
   // water on both adjacent sides, keeping the silhouette smooth.
   for(var wk in WWEDGE){var wi3=+wk,wm3=WWEDGE[wk];

@@ -187,6 +187,12 @@ func _handle(m: Dictionary) -> void:
 				fx.radius = r
 				fx.position = pos
 				world.add_child(fx)
+		"fx":
+			# Only the water-surface ripple (17) is replayed here — other fx
+			# kinds are re-derived locally from the snapshot stream.
+			if int(m.get("k", -1)) == 17:
+				terrain.add_ripple(Vector2(float(m.get("x", 0)), float(m.get("y", 0))),
+					float(m.get("p", 0.5)))
 		"win":
 			_win_label.text = "%s WINS!" % str(m.get("n", "?")).to_upper()
 			_win_label.add_theme_color_override(&"font_color",
