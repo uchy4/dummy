@@ -63,7 +63,7 @@ var _btn_pos := Vector2.ZERO
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
@@ -72,20 +72,28 @@ func _process(_delta: float) -> void:
 
 
 ## Button centers, mirrored when Settings.touch_buttons_left is on.
+## Laid out from the viewport rect, NOT this Control's size — a Control
+## under a CanvasLayer can end up zero-sized, which silently threw the
+## buttons off-screen at (-80,-150). The viewport rect is what the old
+## TouchScreenButton layout used and it is always right.
+func _vp() -> Vector2:
+	return get_viewport().get_visible_rect().size
+
+
 func _jump_center() -> Vector2:
-	return Vector2(_side_x(80.0), size.y - 150.0)
+	return Vector2(_side_x(80.0), _vp().y - 150.0)
 
 
 func _kick_center() -> Vector2:
-	return Vector2(_side_x(200.0), size.y - 195.0)
+	return Vector2(_side_x(200.0), _vp().y - 195.0)
 
 
 func _swap_center() -> Vector2:
-	return Vector2(_side_x(140.0), size.y - 290.0)
+	return Vector2(_side_x(140.0), _vp().y - 290.0)
 
 
 func _side_x(from_edge: float) -> float:
-	return from_edge if Settings.touch_buttons_left else size.x - from_edge
+	return from_edge if Settings.touch_buttons_left else _vp().x - from_edge
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -265,21 +273,33 @@ func _draw() -> void:
 
 func _draw_buttons() -> void:
 	# Dark fill + bright ring: readable over sky, grass, and cave alike.
-	var font := ThemeDB.fallback_font
+	# All shapes are drawn BEFORE any font work so a font problem on some
+	# device can never wipe out the whole overlay.
 	var jc := _jump_center()
 	var kc := _kick_center()
+	var sc := _swap_center()
 	var jump_bg := Color(1, 1, 1, 0.45) if _jump_idx != -1 else Color(0, 0, 0, 0.38)
 	var kick_bg := Color(1, 1, 1, 0.45) if _btn_idx != -1 else Color(0, 0, 0, 0.38)
 	draw_circle(jc, BTN_R, jump_bg)
 	draw_arc(jc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.8), 3.0, true)
 	draw_circle(kc, BTN_R, kick_bg)
 	draw_arc(kc, BTN_R, 0.0, TAU, 48, Color(1, 1, 1, 0.8), 3.0, true)
-	draw_string(font, jc + Vector2(-BTN_R, 12), "▲", HORIZONTAL_ALIGNMENT_CENTER,
-		BTN_R * 2.0, 34, Color.WHITE)
-	draw_string(font, kc + Vector2(-BTN_R, 10), "KICK", HORIZONTAL_ALIGNMENT_CENTER,
-		BTN_R * 2.0, 22, Color.WHITE)
-	var sc := _swap_center()
 	draw_circle(sc, SWAP_R, Color(0, 0, 0, 0.45))
 	draw_arc(sc, SWAP_R, 0.0, TAU, 32, Color(1, 1, 1, 0.7), 2.0, true)
-	draw_string(font, sc + Vector2(-SWAP_R, 6), "⇄", HORIZONTAL_ALIGNMENT_CENTER,
-		SWAP_R * 2.0, 18, Color.WHITE)
+	# Jump glyph: a triangle polygon — no font involved at all.
+	draw_colored_polygon(PackedVector2Array([
+		jc + Vector2(0, -16), jc + Vector2(15, 12), jc + Vector2(-15, 12),
+	]), Color.WHITE)
+	# Swap glyph: two opposing arrows, also pure geometry.
+	draw_line(sc + Vector2(-8, -3), sc + Vector2(8, -3), Color.WHITE, 2.0)
+	draw_line(sc + Vector2(8, 3), sc + Vector2(-8, 3), Color.WHITE, 2.0)
+	draw_colored_polygon(PackedVector2Array([
+		sc + Vector2(8, -7), sc + Vector2(12, -3), sc + Vector2(8, 1),
+	]), Color.WHITE)
+	draw_colored_polygon(PackedVector2Array([
+		sc + Vector2(-8, -1), sc + Vector2(-12, 3), sc + Vector2(-8, 7),
+	]), Color.WHITE)
+	var font := ThemeDB.fallback_font
+	if font != null:
+		draw_string(font, kc + Vector2(-BTN_R, 10), "KICK", HORIZONTAL_ALIGNMENT_CENTER,
+			BTN_R * 2.0, 22, Color.WHITE)

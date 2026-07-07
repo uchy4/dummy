@@ -55,7 +55,10 @@ func _ready() -> void:
 	elif OS.has_feature("mode2d"):
 		Settings.mode_3d = false
 	NetHub.advertising = true  # hosting: discoverable on the local network
-	touch = DisplayServer.is_touchscreen_available()
+	# CI smoke forces the touch path so gesture/button code errors surface
+	# headless — a real touchscreen isn't available on the runner.
+	touch = DisplayServer.is_touchscreen_available() \
+		or OS.get_environment("BOMB_SHELTER_SMOKE") == "1"
 	if touch:
 		num_players = 1  # phone: one player racing the bombs, on-screen buttons
 	world = Node2D.new()
