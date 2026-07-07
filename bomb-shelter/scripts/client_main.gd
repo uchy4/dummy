@@ -22,6 +22,9 @@ var _btargets: Array[Vector2] = []
 var _status: Label
 var _win_label: Label
 var _hud: CanvasLayer
+var _decor: RoomDecor
+var _ceremony: Ceremony
+var _game_over := false
 var _sent_a := 0.0
 var _snap_dt := 0.033
 var _last_snap_ms := 0
@@ -89,7 +92,7 @@ func _process(delta: float) -> void:
 		return
 
 	# Follow-mode tracks this device's own player, matching the web view.
-	if camera and my_index >= 0 and my_index < players.size():
+	if camera and not _game_over and my_index >= 0 and my_index < players.size():
 		camera.focus_target = players[my_index]
 	_animate_puppets(delta)
 
@@ -152,9 +155,19 @@ func _handle(m: Dictionary) -> void:
 	match str(m.get("t", "")):
 		"init":
 			terrain.load_from_string(str(m.get("grid", "")))
+			_apply_rooms(m.get("rooms", []))
 			_clear_entities()
 			_win_label.get_parent().visible = false
 			_status.text = ""
+			_game_over = false
+			if _ceremony != null and is_instance_valid(_ceremony):
+				_ceremony.queue_free()
+			_ceremony = null
+			if camera:  # fresh match: release the ceremony shot
+				camera.set_physics_process(true)
+				camera.zoom = Vector2(0.8, 0.8)
+				camera.position = Vector2(terrain.world_rect().get_center().x,
+					terrain.surface_y() - 60.0)
 		"roster":
 			_apply_roster(m.get("p", []))
 		"you":
@@ -180,6 +193,58 @@ func _handle(m: Dictionary) -> void:
 				Color.from_string("#" + str(m.get("c", "ffffff")), Color.WHITE))
 			_win_label.get_parent().visible = true
 			get_tree().call_group(&"sfx", &"play_fanfare", Vector2.ZERO)
+			_show_ceremony(m.get("podium", []))
+
+
+## Feed the host's room list into the client terrain so RoomDecor paints
+## the same furnished backgrounds (and the finish hall) the host sees.
+## Wire kinds: 0 stairs 1 kitchen 2 bedroom 3 bathroom 4 arsenal 5 finish.
+func _apply_rooms(rooms: Array) -> void:
+	var names: Array[String] = ["stairs", "kitchen", "bedroom", "bathroom", "arsenal"]
+	terrain.bunker_rooms = {}
+	terrain.finish_room = Rect2i()
+	for rm in rooms:
+		var ra: Array = rm
+		if ra.size() < 5:
+			continue
+		var rect := Rect2i(int(ra[0]), int(ra[1]), int(ra[2]), int(ra[3]))
+		var kind := int(ra[4])
+		if kind == 5:
+			terrain.finish_room = rect
+		elif kind >= 0 and kind < names.size():
+			terrain.bunker_rooms[names[kind]] = rect
+	# Fresh decor per match (also drops the old map's blast scorch).
+	if _decor != null and is_instance_valid(_decor):
+		_decor.queue_free()
+	_decor = null
+	if not terrain.bunker_rooms.is_empty():
+		_decor = RoomDecor.new()
+		_decor.terrain = terrain
+		world.add_child(_decor)
+
+
+## Mirror the host's ending: cut the camera into the finish hall and stage
+## the podium ceremony from the win message's top-three list.
+func _show_ceremony(podium: Array) -> void:
+	_game_over = true
+	if terrain.finish_room.size.x <= 0:
+		return
+	var fr := terrain.finish_line_rect()
+	if camera:
+		camera.set_physics_process(false)  # hold the shot on the hall
+		camera.global_position = fr.get_center() + Vector2(0, -6.0)
+		camera.zoom = Vector2(2.2, 2.2)
+	_ceremony = Ceremony.new()
+	_ceremony.room = fr
+	var entries: Array[Dictionary] = []
+	for e in podium:
+		var ea: Array = e
+		if ea.size() < 3:
+			continue
+		var c := Color.from_string("#" + str(ea[1]), Color.WHITE)
+		entries.append({"n": str(ea[0]), "c": c, "c2": c, "d": int(ea[2])})
+	_ceremony.entries = entries
+	world.add_child(_ceremony)
 
 
 func _apply_roster(list: Array) -> void:
@@ -426,7 +491,7 @@ func _build_backdrops() -> void:
 	sky.z_index = -20
 	world.add_child(sky)
 	var cave := ColorRect.new()
-	cave.color = Color("17100a")
+	cave.color = Color("2b1a0c")  # match the host backdrop (and scorch color)
 	cave.position = Vector2(wr.position.x, terrain.surface_y())
 	cave.size = Vector2(wr.size.x, wr.size.y - terrain.surface_y())
 	cave.z_index = -15
@@ -458,19 +523,24 @@ func _build_hud() -> void:
 	leave.pressed.connect(func() -> void: _leave(""))
 	_hud.add_child(leave)
 
+	# Nearly-clear overlay + top banner, so the in-world podium ceremony in
+	# the finish hall stays visible underneath.
 	var overlay := ColorRect.new()
-	overlay.color = Color(0, 0, 0, 0.55)
+	overlay.color = Color(0, 0, 0, 0.12)
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.visible = false
 	_hud.add_child(overlay)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
 	_win_label = Label.new()
-	_win_label.add_theme_font_size_override(&"font_size", 44)
+	_win_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_win_label.offset_left = -360
+	_win_label.offset_right = 360
+	_win_label.offset_top = 100
+	_win_label.offset_bottom = 160
+	_win_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_win_label.add_theme_font_size_override(&"font_size", 40)
 	_win_label.add_theme_color_override(&"font_outline_color", Color.BLACK)
 	_win_label.add_theme_constant_override(&"outline_size", 6)
-	center.add_child(_win_label)
+	overlay.add_child(_win_label)
 
 	if DisplayServer.is_touchscreen_available():
 		# Same gesture controls as the host: invisible thumb joystick + tap

@@ -13,7 +13,7 @@ const CRUST_ROWS := 10  # solid rows under the grass: only bombs open the way do
 const SHELTER_HALF_W := 7
 const SHELTER_TOP := SURFACE_ROW + CRUST_ROWS  # buried just below the crust
 const SHELTER_H := 7
-const FINISH_TOP := 108 # finish hall rows 108..115, bedrock floor at 116
+const FINISH_TOP := 106 # finish hall rows 106..115, bedrock floor at 116
 const PLUG_ROWS := 4    # every tunnel stops this many rows short: the dead end
 
 enum Cell { EMPTY, DIRT, BEDROCK, GRASS, WATER, CLAY, STONE, DEEP }
@@ -45,12 +45,21 @@ var room_count := 0
 var chest_cells: Array[Vector2i] = []  # dead-end pockets where chests may spawn
 
 ## Bunker complex under the surface crust: room name -> Rect2i (cells).
-## Keys: stairs, kitchen, bedroom, bathroom, chicken_pen, pig_pen.
+## Keys: stairs, kitchen, bedroom, bathroom, arsenal.
 ## Layout is randomized every match (room order and widths, min 5 wide).
 var bunker_rooms := {}
 ## Surface cell where the outhouse (stair entrance) stands.
 var outhouse_cell := Vector2i.ZERO
-## The 5x5 checkered finish chamber at the bottom center.
+## Surface features (cells): the fenced animal yard, its fence-post
+## columns, the corn field strip, the pond basin and the cave-mouth
+## entrance. Yard/field rects sit ON the grass row (position.y is the
+## ground line the props layer stands things on).
+var surface_pens := Rect2i()
+var fence_xs: Array[int] = []
+var corn_field := Rect2i()
+var pond_rect := Rect2i()
+var cave_mouth := Vector2i.ZERO
+## The 10x10 pale-cyan finish chamber at the bottom center.
 var finish_room := Rect2i()
 ## The hand pump beside the outhouse and the reservoir its pipe feeds from.
 var pump_cell := Vector2i.ZERO
@@ -177,11 +186,13 @@ func _generate() -> void:
 	_carve_rect(Rect2i(cx - SHELTER_HALF_W, SHELTER_TOP, SHELTER_HALF_W * 2, SHELTER_H))
 
 	_build_bunker()
+	_build_surface()
 
 	# Cavern bands going down. Every room is reached by a tunnel from above that
-	# stops PLUG_ROWS short — a dead end that needs a bomb to open.
+	# stops short of it — a dead end that needs a bomb to open.
 	var bands := [[41, 52], [58, 70], [76, 88], [92, 104]]
 	var all_rooms: Array[Dictionary] = []
+	var first_centers: Array[Vector2i] = []
 	var prev_centers: Array[Vector2i] = [Vector2i(cx, SHELTER_TOP + 4)]
 	for band: Array in bands:
 		var centers: Array[Vector2i] = []
@@ -198,7 +209,13 @@ func _generate() -> void:
 			room_count += 1
 			var from := _nearest(prev_centers, room.c)
 			_carve_tunnel(from, Vector2i(room.c.x, room.c.y - room.rh))
+		if first_centers.is_empty():
+			first_centers = centers.duplicate()
 		prev_centers = centers
+
+	# The cave mouth: a walk-in entrance on the side opposite the outhouse,
+	# sloping gently down through the crust into the nearest first-band cavern.
+	_carve_cave_mouth(_nearest(first_centers, cave_mouth))
 
 	# Underground aquifers: a couple of the cavern rooms keep a pool of
 	# groundwater in their lower half. Players bob on it; bombs sink slowly.
@@ -224,7 +241,7 @@ func _generate() -> void:
 	# A couple of buried shafts away from the shelter — useful drops once the
 	# crust above them is blown open, but they start below it and end in dirt.
 	for i in 2:
-		var sx := rng.randi_range(24, W - 8)  # min 24: never through the pens
+		var sx := rng.randi_range(24, W - 8)  # min 24: never through the bunker flank
 		if absi(sx - cx) < 14:
 			sx = cx + 20 * (1 if rng.randf() < 0.5 else -1)
 		_carve_rect(Rect2i(sx - 1, SURFACE_ROW + CRUST_ROWS, 3, rng.randi_range(20, 28)))
@@ -274,17 +291,14 @@ func _build_bunker() -> void:
 		bunker_rooms[room_name] = Rect2i(cur_x, top, w, room_h)
 		cur_x += w + 1
 
-	# Pens one level below, under the near half of the bunker.
+	# The arsenal one level below: the props layer racks guns on its walls
+	# that misfire when a blast rattles them.
 	var pen_top := top + 7
-	var pen_x := maxi(bx - rng.randi_range(0, 2), 3)
+	var ars_x := maxi(bx - rng.randi_range(0, 2), 3)
 	if bx > 40:
-		pen_x = bx + 1  # right-side homestead: pens stay clear of the shelter
-	var pens: Array[String] = ["chicken_pen", "pig_pen"]
-	pens.shuffle()
-	var pw1 := rng.randi_range(5, 8)
-	var pw2 := rng.randi_range(5, 8)
-	bunker_rooms[pens[0]] = Rect2i(pen_x, pen_top, pw1, room_h)
-	bunker_rooms[pens[1]] = Rect2i(pen_x + pw1 + 1, pen_top, pw2, room_h)
+		ars_x = bx + 1  # right-side homestead: arsenal stays clear of the shelter
+	var ars_w := rng.randi_range(9, 13)
+	bunker_rooms["arsenal"] = Rect2i(ars_x, pen_top, ars_w, room_h)
 
 	# Stone framing: solid ground within one cell of a room becomes stone,
 	# so the bunker reads as built, not dug. Never fills carved space.
@@ -321,21 +335,17 @@ func _build_bunker() -> void:
 		for dy in 3:
 			_gset(sx, SURFACE_ROW + step + dy, Cell.EMPTY)
 
-	# Hole in the landing floor down into the pens, plus climb-out steps at
-	# the pens' right edge (players can jump them, critters can't).
+	# Hole in the landing floor down into the arsenal, plus climb-out steps
+	# at its right edge.
 	var stairs_r: Rect2i = bunker_rooms["stairs"]
-	var pen2_r: Rect2i = bunker_rooms[pens[1]]
-	var hole_x := clampi(stairs_r.position.x + 2, pen_x + 1, pen2_r.end.x - 3)
+	var ars_r: Rect2i = bunker_rooms["arsenal"]
+	var hole_x := clampi(stairs_r.position.x + 2, ars_r.position.x + 1, ars_r.end.x - 3)
 	for hx in range(hole_x, hole_x + 2):
 		_gset(hx, top + room_h, Cell.EMPTY)
-	var step_x := pen2_r.end.x - 1
+	var step_x := ars_r.end.x - 1
 	_gset(step_x, pen_top + 4, Cell.STONE)
 	_gset(step_x, pen_top + 5, Cell.STONE)
 	_gset(step_x - 1, pen_top + 5, Cell.STONE)
-	# Fence wall between the pens: hop-over gap at the top.
-	var fence_x := pen_x + pw1
-	for y in range(pen_top + 2, pen_top + room_h):
-		_gset(fence_x, y, Cell.STONE)
 
 	# Protect the whole complex from random generation: caves, shafts and
 	# tunnels must never open pits into (or under) the bunker.
@@ -362,11 +372,74 @@ func _build_bunker() -> void:
 	_gen_guard = _gen_guard.merge(reservoir_rect.grow(2))
 
 
-## The finish chamber: a 5x5 checkered room at the bottom center, floored
-## by bedrock. Reaching it IS winning the depth race.
+## Surface homestead grounds, mirrored to whichever half the outhouse left
+## free: a fenced animal yard near the homestead, then (outward from the
+## spawn columns) a pond, the corn field and the cave mouth at the far edge.
+## Only the pond digs into the ground — everything else is props territory.
+func _build_surface() -> void:
+	var cx := W / 2
+	var j := rng.randi_range(-2, 1)
+	if outhouse_cell.x < cx:
+		surface_pens = Rect2i(18 + j, SURFACE_ROW, 15, 1)
+		pond_rect = Rect2i(64 + j, SURFACE_ROW, 8, 3)
+		corn_field = Rect2i(75 + j, SURFACE_ROW, 14, 1)
+		cave_mouth = Vector2i(93, SURFACE_ROW)
+	else:
+		surface_pens = Rect2i(69 + j, SURFACE_ROW, 15, 1)
+		pond_rect = Rect2i(28 + j, SURFACE_ROW, 8, 3)
+		corn_field = Rect2i(12 + j, SURFACE_ROW, 14, 1)
+		cave_mouth = Vector2i(6, SURFACE_ROW)
+	fence_xs = [surface_pens.position.x,
+		surface_pens.position.x + surface_pens.size.x / 2, surface_pens.end.x - 1]
+	# The pond: a shallow tapered basin whose waterline sits at grass level.
+	# Edges are solid ground so the fluid sim treats it as settled from tick 1.
+	for x in range(pond_rect.position.x, pond_rect.end.x):
+		var edge := mini(x - pond_rect.position.x, pond_rect.end.x - 1 - x)
+		for dy in mini(edge + 1, 3):
+			_gset(x, SURFACE_ROW + dy, Cell.WATER)
+
+
+## Carve the surface cave entrance: a 3-tall passage stepping down one row
+## every two cells (switchbacks off the map walls) until it reaches the
+## target cavern's depth, then running level into it. Unlike bomb tunnels
+## this one is open — no plug: it IS the way into the cave network.
+func _carve_cave_mouth(target: Vector2i) -> void:
+	var x := cave_mouth.x
+	var y := SURFACE_ROW
+	var dir := 1 if target.x > x else -1
+	var guard := 0
+	while guard < 400:
+		guard += 1
+		for dy in 3:
+			_carve_open(x, y + dy)
+		var at_depth := y >= target.y - 1
+		if at_depth and absi(x - target.x) <= 2:
+			break
+		if at_depth:
+			dir = 1 if target.x > x else -1
+		elif x + dir <= 3 or x + dir >= W - 4 or absi(x - target.x) <= 2:
+			dir = -dir  # wall or directly above the room while still high
+		x += dir
+		if not at_depth and (guard & 1) == 0:
+			y += 1
+
+
+## Direct carve for hand-built passages: only bedrock, water and the bunker
+## guard stop it (the crust rule doesn't apply — this is the dug entrance).
+func _carve_open(x: int, y: int) -> void:
+	if _gen_guard.has_point(Vector2i(x, y)):
+		return
+	var cv := _gget(x, y)
+	if cv != Cell.BEDROCK and cv != Cell.WATER:
+		_gset(x, y, Cell.EMPTY)
+
+
+## The finish chamber: a 10x10 pale-cyan hall at the bottom center with a
+## checkered border and the winners' podium, floored by bedrock. Reaching
+## it IS winning the depth race.
 func _build_finish_room() -> void:
 	var cx := W / 2
-	finish_room = Rect2i(cx - 2, H - 9, 5, 5)
+	finish_room = Rect2i(cx - 5, FINISH_TOP, 10, 10)
 	for y in range(finish_room.position.y, finish_room.end.y):
 		for x in range(finish_room.position.x, finish_room.end.x):
 			if _gget(x, y) != Cell.BEDROCK:
@@ -397,17 +470,29 @@ func _stratum_at(y: int) -> int:
 	return Cell.DIRT
 
 
+## Tunnels stretch horizontally: they descend at most one row per two cells
+## across, switchbacking off the map walls, so the cave network is a maze of
+## gentle slopes with little to no vertical drops. Still plugged — carving
+## stops PLUG_ROWS short of the destination so a bomb must open the last bit.
 func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
-	var p := Vector2(from)
-	var stop_y := to.y - PLUG_ROWS
-	while p.y < stop_y:
-		_carve_disk(Vector2i(p), 1)
-		p.y += 1.0
-		var dx := signf(to.x - p.x)
-		p.x = clampf(p.x + clampf(dx + rng.randf_range(-0.8, 0.8), -1.0, 1.0), 4, W - 5)
+	var p := Vector2i(from)
+	var dir := 1 if to.x > from.x else -1
+	var steps := 0
+	while p.distance_to(to) > PLUG_ROWS + 1.0 and steps < 400:
+		steps += 1
+		_carve_disk(p, 1)
+		var at_depth := p.y >= to.y - 1
+		if at_depth:
+			dir = 1 if to.x > p.x else -1
+		elif p.x + dir <= 4 or p.x + dir >= W - 5 \
+				or (absi(p.x - to.x) <= 2 and rng.randf() < 0.5):
+			dir = -dir  # switchback: off a wall, or meander above the target
+		p.x = clampi(p.x + dir, 4, W - 5)
+		if not at_depth and (steps & 1) == 0:
+			p.y += 1
 	# Widen the dead end into a pocket a bomb can sit in.
-	_carve_disk(Vector2i(p), 2)
-	chest_cells.append(Vector2i(p))
+	_carve_disk(p, 2)
+	chest_cells.append(p)
 
 
 func _carve_rect(r: Rect2i) -> void:
@@ -692,15 +777,22 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 	queue_redraw()
 
 
-## Traveling water renders as droplet particles instead of blocks.
+## Traveling water renders as thin trickle streaks instead of blocks — a
+## few offset rivulets per cell (hash-jittered, so they shimmer as the drop
+## moves) with a tiny splash fleck at the foot.
 func _draw() -> void:
 	for tkey in _transit:
 		var i := int(tkey)
 		if i < 0 or i >= _grid.size() or _grid[i] != Cell.WATER:
 			continue
 		var p := Vector2((i % W) * TILE + TILE * 0.5, (i / W) * TILE + TILE * 0.5)
-		draw_circle(p, 5.0, WATER_COLOR)
-		draw_circle(p + Vector2(-1.6, -1.6), 1.7, Color(0.8, 0.92, 1.0, 0.5))
+		var h := hash(i)
+		for s in 3:
+			var ox := float((h >> (s * 5)) & 7) - 3.5
+			var oy := float((h >> (s * 5 + 3)) & 3) - 1.5
+			draw_rect(Rect2(p.x + ox - 0.8, p.y + oy - 5.0, 1.6, 9.0), WATER_COLOR)
+		draw_rect(Rect2(p.x + float(h & 3) - 2.5, p.y + 4.5, 2.0, 1.6),
+			Color(0.8, 0.92, 1.0, 0.5))
 
 
 ## Repaint a moved drop and its vertical neighbors: covered water uses the

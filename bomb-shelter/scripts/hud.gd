@@ -21,7 +21,6 @@ var _qr_texture: TextureRect
 var _qr_url: Label
 var _touch := false
 var _upd_btn: Button
-var _podium: PodiumView
 
 
 func setup(colors: Array[Color], touch := false) -> void:
@@ -65,23 +64,25 @@ func setup(colors: Array[Color], touch := false) -> void:
 		help.text = "P1 A/D W S-kick    P2 arrows ↓-kick    P3 J/L I K-kick    P4 F/H T G-kick    R restart    Esc settings\nKick bombs into tunnels — every route dead-ends until a blast opens it. Dirt blocks blasts: shelter!"
 	add_child(help)
 
+	# Win banner: a slim strip at the top, so the in-world podium ceremony in
+	# the finish hall stays visible. The nearly-clear full-rect overlay still
+	# catches the tap-anywhere-for-rematch input.
 	_overlay = ColorRect.new()
-	_overlay.color = Color(0, 0, 0, 0.55)
+	_overlay.color = Color(0, 0, 0, 0.12)
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.visible = false
 	_overlay.gui_input.connect(_on_overlay_input)
 	add_child(_overlay)
 
-	var center_box := CenterContainer.new()
-	center_box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_overlay.add_child(center_box)
 	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	center_box.add_child(vbox)
-	_win_title = _make_label(48, Color.WHITE)
+	vbox.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	vbox.offset_top = 42
+	vbox.offset_bottom = 160
+	_overlay.add_child(vbox)
+	_win_title = _make_label(40, Color.WHITE)
 	_win_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_win_title)
-	_win_sub = _make_label(20, Color(1, 1, 1, 0.9))
+	_win_sub = _make_label(18, Color(1, 1, 1, 0.9))
 	_win_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_win_sub)
 
@@ -126,25 +127,10 @@ func set_center(text: String) -> void:
 	_center.visible = not text.is_empty()
 
 
-func show_winner(winner_name: String, color: Color, time: float,
-		reason := "Reached the finish line") -> void:
-	_win_title.text = "%s WINS!" % winner_name.to_upper()
-	_win_title.add_theme_color_override(&"font_color", color)
-	var again := "tap anywhere for a rematch" if _touch else "press Enter for a rematch"
-	_win_sub.text = "%s in %d:%04.1f  —  %s" \
-		% [reason, int(time) / 60, fmod(time, 60.0), again]
-	_overlay.visible = true
-
-
-## End-of-match ceremony: 1st/2nd/3rd on a checkered podium, ranked by
-## depth, jumping and waving. entries: [{n, c, c2, d}] sorted best-first.
-func show_podium(entries: Array[Dictionary], time: float, reason: String) -> void:
-	if _podium == null:
-		_podium = PodiumView.new()
-		var vbox := _win_title.get_parent()
-		vbox.add_child(_podium)
-		vbox.move_child(_podium, _win_title.get_index() + 1)
-	_podium.entries.assign(entries.slice(0, 3))
+## End-of-match banner. The celebration itself happens in the world — the
+## camera cuts to the finish hall where Ceremony animates the top three on
+## the real podium — so the HUD only names the winner and the rematch key.
+func show_win_banner(entries: Array[Dictionary], time: float, reason: String) -> void:
 	if entries.is_empty():
 		_win_title.text = "NOBODY WINS"
 		_win_title.add_theme_color_override(&"font_color", Color(0.8, 0.8, 0.8))
@@ -156,82 +142,6 @@ func show_podium(entries: Array[Dictionary], time: float, reason: String) -> voi
 	_win_sub.text = "%s  —  %d:%04.1f  —  %s" \
 		% [reason, int(time) / 60, fmod(time, 60.0), again]
 	_overlay.visible = true
-
-
-## The animated podium: checkered stage, gold/silver/bronze steps, winners
-## jumping and waving their arms. Runs while the tree is paused (the HUD
-## lives under Main, which is PROCESS_MODE_ALWAYS).
-class PodiumView:
-	extends Control
-	var entries: Array[Dictionary] = []
-	var _t := 0.0
-
-	func _ready() -> void:
-		custom_minimum_size = Vector2(400, 235)
-
-	func _process(delta: float) -> void:
-		_t += delta
-		queue_redraw()
-
-	func _draw() -> void:
-		var sq := 20.0
-		for r in int(ceil(size.y / sq)):
-			for c in int(ceil(size.x / sq)):
-				var col := Color(0.9, 0.9, 0.9) if (r + c) % 2 == 0 \
-					else Color(0.1, 0.1, 0.1)
-				draw_rect(Rect2(c * sq, r * sq, sq, minf(sq, size.y - r * sq)), col)
-		var base := size.y - 16.0
-		var step_w := 96.0
-		var mid := size.x / 2.0
-		var font := ThemeDB.fallback_font
-		var defs: Array[Dictionary] = [
-			{"slot": 1, "x": mid - step_w * 1.5, "h": 52.0},
-			{"slot": 0, "x": mid - step_w * 0.5, "h": 80.0},
-			{"slot": 2, "x": mid + step_w * 0.5, "h": 34.0},
-		]
-		var step_cols: Array[Color] = [
-			Color("c9a227"), Color("b7bec9"), Color("a06a3d"),
-		]
-		for d: Dictionary in defs:
-			var slot: int = d.slot
-			var x: float = d.x
-			var h: float = d.h
-			draw_rect(Rect2(x + 2, base - h + 2, step_w - 4, h), Color(0, 0, 0, 0.6))
-			draw_rect(Rect2(x + 4, base - h + 4, step_w - 8, h - 4), step_cols[slot])
-			if font != null:
-				draw_string(font, Vector2(x, base - h + 28), str(slot + 1),
-					HORIZONTAL_ALIGNMENT_CENTER, step_w, 24, Color(0, 0, 0, 0.65))
-			if slot >= entries.size():
-				continue
-			var e: Dictionary = entries[slot]
-			var jump := absf(sin(_t * 4.0 + slot * 0.9)) * (15.0 if slot == 0 else 9.0)
-			_guy(Vector2(x + step_w / 2.0, base - h - 15.0 - jump), e.c, e.c2, slot)
-			if font != null:
-				draw_string(font, Vector2(x - 16, base + 14),
-					"%s  · %d deep" % [str(e.n), int(e.d)],
-					HORIZONTAL_ALIGNMENT_CENTER, step_w + 32, 13, Color.WHITE)
-
-	func _guy(at: Vector2, c1v: Variant, c2v: Variant, i: int) -> void:
-		var c1: Color = c1v
-		var c2: Color = c2v
-		var wave := sin(_t * 9.0 + i * 1.7) * 0.45
-		# Arms thrown up, waving.
-		for s: float in [-1.0, 1.0]:
-			draw_set_transform(at + Vector2(6.0 * s, -6.0), (-2.35 + wave) * s, Vector2.ONE)
-			draw_rect(Rect2(-2, -1, 4, 13), Color.BLACK)
-			draw_rect(Rect2(-1.5, 0, 3, 11), c1.darkened(0.18))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		draw_rect(Rect2(at.x - 5, at.y + 3, 4, 12), c1.darkened(0.4))
-		draw_rect(Rect2(at.x + 1, at.y + 3, 4, 12), c1.darkened(0.4))
-		draw_rect(Rect2(at.x - 7, at.y - 8, 14, 13), Color.BLACK)
-		draw_rect(Rect2(at.x - 6, at.y - 7, 12, 11), c1)
-		if not c1.is_equal_approx(c2):
-			draw_rect(Rect2(at.x - 6, at.y - 4.5, 12, 2.5), c2)
-			draw_rect(Rect2(at.x - 6, at.y, 12, 2.5), c2)
-		draw_rect(Rect2(at.x - 5, at.y - 17, 10, 9), c1.lightened(0.35))
-		draw_rect(Rect2(at.x - 6, at.y - 19, 12, 4), c1.lightened(0.15))
-		draw_rect(Rect2(at.x - 3, at.y - 14, 2, 3), Color.WHITE)
-		draw_rect(Rect2(at.x + 1, at.y - 14, 2, 3), Color.WHITE)
 
 
 func _on_overlay_input(ev: InputEvent) -> void:

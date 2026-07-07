@@ -1,15 +1,14 @@
 class_name RoomDecor
 extends Node2D
 ## Cozy painted backgrounds for the bunker rooms — wallpaper, paintings,
-## shelves, cupboards, bathroom tile, straw in the pens — so the rooms read
-## as lived-in spaces instead of black holes. Pure backdrop: drawn beneath
-## terrain, furniture, and players (z_index -5), no collision.
+## shelves, cupboards, bathroom tile, concrete in the arsenal — so the rooms
+## read as lived-in spaces instead of black holes. Pure backdrop: drawn
+## beneath terrain, furniture, and players (z_index -5), no collision.
 
 const TILE := 16
 
 var terrain: Terrain
 
-var _straw: Array[Rect2] = []  # precomputed so it doesn't flicker
 var _scorch := {}  # cell key -> Vector2i: wallpaper squares scorched by blasts
 
 
@@ -18,17 +17,6 @@ func _ready() -> void:
 	if terrain == null or terrain.bunker_rooms.is_empty():
 		return
 	terrain.carved.connect(_on_carved)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7  # deterministic scatter
-	for pen_name: String in ["chicken_pen", "pig_pen"]:
-		if not terrain.bunker_rooms.has(pen_name):
-			continue
-		var r := _px(terrain.bunker_rooms[pen_name])
-		for i in 14:
-			_straw.append(Rect2(
-				r.position.x + rng.randf() * (r.size.x - 8.0),
-				r.end.y - 5.0 - rng.randf() * 6.0,
-				rng.randf_range(4.0, 8.0), 1.5))
 	queue_redraw()
 
 
@@ -49,12 +37,8 @@ func _draw() -> void:
 		_draw_bedroom(_px(rooms["bedroom"]))
 	if rooms.has("bathroom"):
 		_draw_bathroom(_px(rooms["bathroom"]))
-	if rooms.has("chicken_pen"):
-		_draw_pen(_px(rooms["chicken_pen"]))
-	if rooms.has("pig_pen"):
-		_draw_pen(_px(rooms["pig_pen"]))
-	for s in _straw:
-		draw_rect(s, Color(0.85, 0.72, 0.35))
+	if rooms.has("arsenal"):
+		_draw_arsenal(_px(rooms["arsenal"]))
 	if terrain.finish_room.size.x > 0:
 		_draw_finish(_px(terrain.finish_room))
 	# Blast scars: wallpaper squares caught in an explosion darken 90%
@@ -189,46 +173,69 @@ func _draw_bathroom(r: Rect2) -> void:
 	draw_rect(Rect2(tx, r.position.y + 18, 7, 2), Color("a84a41"))
 
 
-## Pens: horizontal wooden slat cladding, like the inside of a barn.
-func _draw_pen(r: Rect2) -> void:
-	draw_rect(r, Color("5a3d22"))
-	var yy := r.position.y
-	var row := 0
-	while yy < r.end.y:
-		var h := minf(9.0, r.end.y - yy)
-		var plank := Color("7a5230") if row % 2 == 0 else Color("6d4826")
-		draw_rect(Rect2(r.position.x, yy, r.size.x, h - 1.5), plank)
-		# Board seams and a few nail heads.
-		var seam_x := r.position.x + (14.0 if row % 2 == 0 else 34.0)
-		while seam_x < r.end.x - 4.0:
-			draw_line(Vector2(seam_x, yy), Vector2(seam_x, yy + h - 1.5),
-				Color("4a3118"), 1.2)
-			draw_circle(Vector2(seam_x - 4.0, yy + h * 0.45), 0.9, Color("3c2917"))
-			seam_x += 40.0
-		yy += 9.0
-		row += 1
-	draw_rect(Rect2(r.position.x + r.size.x * 0.5 - 2, r.position.y, 4.0, r.size.y),
-		Color("4a3118"))
+## The arsenal: cold poured-concrete walls with hazard striping and a
+## stenciled ammo crate — the props layer racks the actual guns on top.
+func _draw_arsenal(r: Rect2) -> void:
+	draw_rect(r, Color("6a6f76"))
+	# Concrete pour seams.
+	var y := r.position.y + 12.0
+	while y < r.end.y:
+		draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), Color("5b6067"), 1.2)
+		y += 14.0
+	# Yellow/black hazard chevrons along the top edge.
+	var x := r.position.x
+	var k := 0
+	while x < r.end.x:
+		var w := minf(8.0, r.end.x - x)
+		draw_rect(Rect2(x, r.position.y, w, 5.0),
+			Color("e0b73c") if k % 2 == 0 else Color("2c2c30"))
+		x += 8.0
+		k += 1
+	# Stenciled ammo crate against the back wall.
+	var bx := r.position.x + 8.0
+	var by := r.end.y - 16.0
+	draw_rect(Rect2(bx - 1, by - 1, 22, 14), Color("3e4a33"))
+	draw_rect(Rect2(bx, by, 20, 12), Color("55643f"))
+	draw_line(Vector2(bx, by + 4), Vector2(bx + 20, by + 4), Color("3e4a33"), 1.2)
+	draw_rect(Rect2(bx + 7, by + 6, 6, 3), Color("c9a227"))
 
 
-## The finish chamber: black-and-white checkered wallpaper with a podium.
-func _draw_finish(r: Rect2) -> void:
-	var sq := 8.0
-	var rows := int(ceil(r.size.y / sq))
-	var cols := int(ceil(r.size.x / sq))
-	for row in rows:
-		for col in cols:
-			var c := Color(0.92, 0.92, 0.92) if (row + col) % 2 == 0 \
-				else Color(0.08, 0.08, 0.08)
-			draw_rect(Rect2(r.position.x + col * sq, r.position.y + row * sq,
-				minf(sq, r.end.x - (r.position.x + col * sq)),
-				minf(sq, r.end.y - (r.position.y + row * sq))), c)
-	# Gold / silver / bronze podium steps on the floor.
+## Podium step rects for the finish hall, world px, in place order
+## [1st, 2nd, 3rd]. Shared with the ceremony so the celebrating winners
+## stand exactly on the drawn steps.
+static func podium_steps(r: Rect2) -> Array[Rect2]:
 	var cx := r.get_center().x
 	var base := r.end.y
-	draw_rect(Rect2(cx - 22, base - 11, 14, 11), Color("b7bec9"))
-	draw_rect(Rect2(cx - 7, base - 17, 14, 17), Color("c9a227"))
-	draw_rect(Rect2(cx + 8, base - 7, 14, 7), Color("a06a3d"))
+	return [Rect2(cx - 12, base - 36, 24, 36),
+		Rect2(cx - 38, base - 24, 24, 24),
+		Rect2(cx + 14, base - 12, 24, 12)]
+
+
+## The finish hall: pale cyan walls inside a black-and-white checkered
+## border, with a big gold/silver/bronze podium on the floor.
+func _draw_finish(r: Rect2) -> void:
+	draw_rect(r, Color("c9ecec"))
+	# Checkered border ring, one 8px checker band thick, all four edges.
+	var sq := 8.0
+	var cols := int(round(r.size.x / sq))
+	var rows := int(round(r.size.y / sq))
+	for col in cols:
+		for row in rows:
+			if col > 0 and col < cols - 1 and row > 0 and row < rows - 1:
+				continue
+			var c := Color(0.94, 0.94, 0.94) if (row + col) % 2 == 0 \
+				else Color(0.1, 0.1, 0.12)
+			draw_rect(Rect2(r.position.x + col * sq, r.position.y + row * sq, sq, sq), c)
+	# The podium: 1st center, 2nd left, 3rd right, with place numbers.
+	var steps := podium_steps(r)
+	var cols2: Array[Color] = [Color("c9a227"), Color("b7bec9"), Color("a06a3d")]
+	for i in steps.size():
+		var s: Rect2 = steps[i]
+		draw_rect(Rect2(s.position.x - 1, s.position.y - 1, s.size.x + 2, s.size.y + 1),
+			Color(0.1, 0.1, 0.12))
+		draw_rect(s, cols2[i])
+		draw_rect(Rect2(s.position.x, s.position.y, s.size.x, 3.0),
+			cols2[i].lightened(0.25))
 
 
 ## Wooden trim along the bottom of a papered wall.

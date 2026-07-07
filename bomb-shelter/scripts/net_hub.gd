@@ -128,7 +128,7 @@ var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
-var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6d4826"];
+var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6a6f76"];
 var SCORCH={};var PIPE=null;var WTRANS={};var HUDMSG="";var HTIME=-1;
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
@@ -173,7 +173,7 @@ function crunch(vol,pitch){if(!AC)return;var t=AC.currentTime;
  s.connect(hp);hp.connect(g);g.connect(AC.destination);s.start(t);s.stop(t+0.08);}
 // Generic host fx events: one table row per effect kind = parity for free.
 // 0 jump 1 kick 2 land 3 step 4 snap 5 armor 6 pickup 8 spray 9 dust
-// 11 plank debris 12 critter death.
+// 11 plank debris 12 critter death 13 gunshot.
 function puffAt(x,y,col,n,spd){for(var i=0;i<n;i++)sparks.push({x:x,y:y,c:col,
  vx:(Math.random()-0.5)*spd*2,vy:-Math.random()*spd,t:performance.now()});}
 function fxPlay(m){var k=m.k,x=m.x,y=m.y;
@@ -189,7 +189,8 @@ function fxPlay(m){var k=m.k,x=m.x,y=m.y;
   t:performance.now()});}
  else if(k===9)puffAt(x,y,"#a1866a",m.a||6,110);
  else if(k===11){crunch(0.4,0.5);puffAt(x,y,"#6d4c2f",12,190);}
- else if(k===12){splat();puffAt(x,y,m.c==="p"?"#f4a7b9":"#f5f5f0",10,160);}}
+ else if(k===12){splat();puffAt(x,y,m.c==="p"?"#f4a7b9":"#f5f5f0",10,160);}
+ else if(k===13){crunch(0.5,1.7);tone(75,0,0.12,0.3);puffAt(x,y,"#ffe082",4,130);}}
 // Size the canvas from the *visual* viewport in real pixels. CSS 100vh/100%
 // is unreliable on iOS Safari (collapsing URL bar, stale post-rotation
 // layout) and produced a broken "slice" — this is the robust fix.
@@ -553,21 +554,39 @@ function render(){requestAnimationFrame(render);
  var myAlive=you>=0&&sc&&sc.p[you]&&sc.p[you][2]===1;
  if(myAlive&&predOK)predict(pdt);
  var me=(myAlive&&predOK)?{x:PX,y:PY}:(you>=0?lerpP(you):null);
+ // Game over: the camera glides down into the finish hall for the ceremony.
+ var finq=null;if(win)for(var fi=0;fi<ROOMS.length;fi++)if(ROOMS[fi][4]===5){finq=ROOMS[fi];break;}
+ if(finq)me={x:(finq[0]+finq[2]/2)*TS,y:(finq[1]+finq[3]/2)*TS};
  if(me){cam.x+=(me.x-cam.x)*0.28;cam.y+=(me.y-cam.y)*0.28;}
- var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);scrZoom=zoom;var vw=cw/zoom,vh=ch/zoom;
+ var zoom=Math.max(cw,ch)/760*((sc&&sc.z)?sc.z:1);
+ if(finq)zoom=Math.max(zoom,Math.min(cw,ch)/(finq[2]*TS+60));
+ scrZoom=zoom;var vw=cw/zoom,vh=ch/zoom;
  cam.x=Math.max(vw/2,Math.min(W*TS-vw/2,cam.x));
  cam.y=Math.max(vh/2-350,Math.min(H*TS-vh/2,cam.y));
  ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(zoom,zoom);ctx.translate(-cam.x,-cam.y);
  ctx.imageSmoothingEnabled=false;
  ctx.fillStyle="#2b1a0c";ctx.fillRect(0,SURF*TS,W*TS,(H-SURF)*TS);
- // Room wallpaper tints from the host's dynamic layout; kind 5 = the
- // checkered finish chamber.
+ // Room wallpaper tints from the host's dynamic layout; kind 4 gets the
+ // arsenal's hazard stripe, kind 5 = the finish hall: pale cyan walls in a
+ // checkered border, with the winners' podium on the floor.
  for(var i=0;i<ROOMS.length;i++){var q=ROOMS[i];
-  if(q[4]===5){for(var rr=0;rr<q[3]*2;rr++)for(var cc=0;cc<q[2]*2;cc++){
-    ctx.fillStyle=((rr+cc)%2===0)?"#ebebeb":"#141414";
-    ctx.fillRect(q[0]*TS+cc*8,q[1]*TS+rr*8,8,8);}}
+  if(q[4]===5){var frx=q[0]*TS,fry=q[1]*TS,frw=q[2]*TS,frh=q[3]*TS;
+   ctx.fillStyle="#c9ecec";ctx.fillRect(frx,fry,frw,frh);
+   var nc=Math.round(frw/8),nr2=Math.round(frh/8);
+   for(var rr=0;rr<nr2;rr++)for(var cc=0;cc<nc;cc++){
+    if(rr>0&&rr<nr2-1&&cc>0&&cc<nc-1)continue;
+    ctx.fillStyle=((rr+cc)%2===0)?"#f0f0f0":"#1a1a1e";
+    ctx.fillRect(frx+cc*8,fry+rr*8,8,8);}
+   var pcx=frx+frw/2,pbase=fry+frh;
+   var PODW=[[pcx-12,36,"#c9a227"],[pcx-38,24,"#b7bec9"],[pcx+14,12,"#a06a3d"]];
+   for(var pi=0;pi<3;pi++){var s3=PODW[pi];
+    ctx.fillStyle="#1a1a1e";ctx.fillRect(s3[0]-1,pbase-s3[1]-1,26,s3[1]+1);
+    ctx.fillStyle=s3[2];ctx.fillRect(s3[0],pbase-s3[1],24,s3[1]);}}
   else{ctx.fillStyle=ROOMTINT[q[4]]||"#54381f";
-   ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}}
+   ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);
+   if(q[4]===4){var hz=0;for(var hx=q[0]*TS;hx<(q[0]+q[2])*TS;hx+=8,hz++){
+    ctx.fillStyle=hz%2===0?"#e0b73c":"#2c2c30";
+    ctx.fillRect(hx,q[1]*TS,Math.min(8,(q[0]+q[2])*TS-hx),5);}}}}
  ctx.fillStyle="rgba(43,26,12,0.9)";
  for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
@@ -584,7 +603,10 @@ function render(){requestAnimationFrame(render);
  if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
    var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS;
-   if(WTRANS[wi]){ctx.beginPath();ctx.arc(wx2+TS/2,wy2+TS/2,5,0,7);ctx.fill();continue;}
+   if(WTRANS[wi]){var wh=(wi*2654435761)>>>0;// in flight: thin trickle streaks
+    for(var st=0;st<3;st++){var sox=((wh>>(st*5))&7)-3.5,soy=((wh>>(st*5+3))&3)-1.5;
+     ctx.fillRect(wx2+TS/2+sox-0.8,wy2+TS/2+soy-5,1.6,9);}
+    continue;}
    var wo=grid[wi-W]!==4?5:0;
    ctx.fillRect(wx2,wy2+wo,TS,TS-wo);}}
  var now=performance.now();
@@ -657,6 +679,7 @@ function render(){requestAnimationFrame(render);
   var sx=s.x+s.vx*a*0.6,sy=s.y+s.vy*a*0.6+320*a*a*0.6;
   ctx.fillStyle=s.c.startsWith("#")?s.c:"#"+s.c;ctx.globalAlpha=1-a;
   ctx.fillRect(sx-2,sy-2,4,4);ctx.globalAlpha=1;}
+ if(win&&finq)drawCeremony(finq,now);
  // Charged-kick trajectory preview (world space): dotted arc along the path
  // a kicked bomb would fly at the current charge.
  var chT=kickT||gestT||btnKickT;
@@ -700,19 +723,39 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#ff8a80";ctx.font="bold 18px sans-serif";
   var msg=sc.p[you][3]<0?"eliminated — spectating":"respawn in "+(sc.p[you][3]/10).toFixed(1);
   ctx.fillText(msg,cw/2,ch*0.35);}
- if(win){var ph=90+(win.podium?win.podium.length*20+8:0);
-  ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,ch*0.28,cw,ph);
-  ctx.fillStyle="#"+win.c;ctx.font="bold 26px sans-serif";
-  ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,ch*0.28+38);
-  if(win.podium){var MEDAL=["#ffd54f","#cfd8dc","#d29a63"];
-   for(var i=0;i<win.podium.length;i++){var e=win.podium[i];
-    ctx.fillStyle=MEDAL[i]||"#fff";ctx.font="bold 15px sans-serif";
-    ctx.fillText((i+1)+".  "+e[0]+"  ·  "+e[2]+" deep",cw/2,ch*0.28+62+i*20);}}
-  ctx.fillStyle="#ddd";ctx.font="13px sans-serif";
-  ctx.fillText("waiting for host rematch…",cw/2,ch*0.28+ph-10);}}
+ // Slim top banner only: the celebration itself plays out in the world —
+ // the camera glides into the finish hall where the top three jump on the
+ // podium (drawCeremony).
+ if(win){ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(0,34,cw,62);
+  ctx.fillStyle="#"+win.c;ctx.font="bold 24px sans-serif";
+  ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,60);
+  ctx.fillStyle="#ddd";ctx.font="12px sans-serif";
+  ctx.fillText("waiting for host rematch…",cw/2,84);}}
 function y0(py){return py-20;}
+// World-space podium ceremony in the finish hall (q = the kind-5 room):
+// confetti + the win message's top three jumping on the drawn podium steps.
+function drawCeremony(q,now){if(!win.podium)return;
+ var rx=q[0]*TS,ry=q[1]*TS,rw=q[2]*TS,rh=q[3]*TS;
+ var pcx=rx+rw/2,pb=ry+rh,t=now/1000;
+ var CF=["#ef5350","#ffca28","#9ccc65","#64b5f6","#ba68c8"];
+ for(var i=0;i<26;i++){var hh=(i*7349*2654435761)>>>0;
+  var fx=rx+6+(hh%1000)/1000*(rw-12);
+  var fy=ry+((((hh>>10)%1000)/1000*rh)+t*(16+(i%5)*5))%(rh-6);
+  ctx.fillStyle=CF[i%CF.length];
+  ctx.fillRect(fx+Math.sin(t*3+i)*2.5,fy,2.2,1.4);}
+ var SPOT=[[pcx,36],[pcx-26,24],[pcx+26,12]];
+ for(var i=0;i<Math.min(3,win.podium.length);i++){var e=win.podium[i];
+  var jump=Math.abs(Math.sin(t*4+i*0.9))*(i===0?8:5);
+  var gx=SPOT[i][0],gy=pb-SPOT[i][1]-14-jump;
+  drawGuy(gx,gy,"#"+e[1],"#"+e[1],false,Math.sin(t*9+i*1.7)*0.4,1,true,false,0);
+  ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="bold 8px sans-serif";
+  ctx.fillText(e[0],gx,gy-22);
+  ctx.fillStyle="rgba(0,0,0,.7)";ctx.font="7px sans-serif";
+  ctx.fillText(e[2]+" deep",gx,pb-SPOT[i][1]/2+2);}
+ ctx.textAlign="left";}
 // Homestead props by kind id: 0 table 1 chair 2 bed 3 pillow 4 toilet
-// 5 shower 6 chicken 7 pig 8 fence 9 outhouse. Drawn centered.
+// 5 shower 6 chicken 7 pig 8 fence 9 outhouse 10 pump 13 corn stalk
+// 14 wall gun 15 bullet. Drawn centered (corn: base at origin).
 function drawProp(k){
  if(k===0){ctx.fillStyle="#000";ctx.fillRect(-19,-11,38,22);
   ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-10,36,5);
@@ -741,8 +784,10 @@ function drawProp(k){
   ctx.fillStyle="#f2a3b3";ctx.beginPath();ctx.ellipse(0,0,8.5,5.5,0,0,7);ctx.fill();
   ctx.fillStyle="#d98795";ctx.fillRect(6,-2,4,4);
   ctx.fillStyle="#c9868f";ctx.fillRect(-6,4,2,3);ctx.fillRect(4,4,2,3);}
- else if(k===8){ctx.fillStyle="#000";ctx.fillRect(-2,-9,5,18);
-  ctx.fillStyle="#7a5230";ctx.fillRect(-1,-8,3,16);}
+ else if(k===8){ctx.fillStyle="#000";ctx.fillRect(-3,-12,6,24);
+  ctx.fillStyle="#8a6238";ctx.fillRect(-2,-11,4,22);
+  ctx.fillStyle="#000";ctx.fillRect(-11,-6.5,22,6);ctx.fillRect(-11,1.5,22,6);
+  ctx.fillStyle="#5e3d22";ctx.fillRect(-10,-5.5,20,3);ctx.fillRect(-10,2.5,20,3);}
  else if(k===9){ctx.fillStyle="#000";ctx.fillRect(-19,-24,38,48);
   ctx.fillStyle="#8a5a2b";ctx.fillRect(-18,-18,36,42);
   ctx.fillStyle="#6d4423";ctx.fillRect(-19,-24,38,7);
@@ -752,7 +797,21 @@ function drawProp(k){
   ctx.fillStyle="#3e6b4f";ctx.fillRect(-3,-9,6,18);
   ctx.fillStyle="#2f523c";ctx.fillRect(-8,-7,6,3);ctx.fillRect(-8,-4,2.5,2);
   ctx.strokeStyle="#263e2e";ctx.lineWidth=2.5;
-  ctx.beginPath();ctx.moveTo(2,-9);ctx.lineTo(8,-13);ctx.stroke();}}
+  ctx.beginPath();ctx.moveTo(2,-9);ctx.lineTo(8,-13);ctx.stroke();}
+ else if(k===13){ctx.strokeStyle="#3f8f3a";ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-30);ctx.stroke();
+  ctx.fillStyle="#57a84f";
+  ctx.beginPath();ctx.moveTo(0,-12);ctx.lineTo(-3,-14);ctx.lineTo(-9,-18);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(0,-20);ctx.lineTo(3,-22);ctx.lineTo(9,-26);ctx.closePath();ctx.fill();
+  ctx.strokeStyle="#e8c35c";ctx.lineWidth=1.6;
+  ctx.beginPath();ctx.moveTo(0,-30);ctx.lineTo(0,-35);ctx.stroke();}
+ else if(k===14){ctx.fillStyle="#000";ctx.fillRect(-8,-4.5,8,9);ctx.fillRect(-3,-3,24,6);
+  ctx.fillStyle="#454049";ctx.fillRect(-7,-3.5,6,7);
+  ctx.fillStyle="#2e2e34";ctx.fillRect(10,-2,10,4);
+  ctx.fillStyle="#6d4c2f";ctx.fillRect(-2,-2.5,12,5);
+  ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
+ else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
+  ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}}
 // Show the "Add to Home Screen" hint only in a normal browser tab, not when
 // already launched as an installed home-screen app.
 (function(){try{var standalone=window.navigator.standalone===true||

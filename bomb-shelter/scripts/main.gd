@@ -28,6 +28,7 @@ var touch := false
 var world: Node2D
 var terrain: Terrain
 var hud: Hud
+var camera: GameCamera
 var players: Array[Player] = []
 var web_players := {}  # NetHub client id -> Player
 var _bounds := Rect2()
@@ -123,7 +124,7 @@ func _ready() -> void:
 		brain.terrain = terrain
 		world.add_child(brain)
 
-	var camera := GameCamera.new()
+	camera = GameCamera.new()
 	var wr := terrain.world_rect()
 	camera.map_rect = wr.grow_individual(40, 500, 40, 0)
 	camera.position = Vector2(wr.get_center().x, terrain.surface_y() - 60.0)
@@ -144,7 +145,7 @@ func _ready() -> void:
 		ch.position = pos
 		world.add_child(ch)
 
-	# The homestead: outhouse, furnished bunker, animal pens.
+	# The homestead: outhouse, furnished bunker, surface pens, corn, arsenal.
 	var props := BunkerProps.new()
 	props.terrain = terrain
 	world.add_child(props)
@@ -303,8 +304,9 @@ func _check_elimination() -> void:
 		_win_timer = WIN_DELAY
 
 
-## Match over: rank every player by deepest point reached, crown the top
-## three on the podium, and freeze the world.
+## Match over: rank every player by deepest point reached, fly the camera
+## down to the finish hall and let the top three celebrate on its podium
+## while the frozen world waits for the rematch tap.
 func _finish_match(reason: String) -> void:
 	game_over = true
 	var ranking := players.duplicate()
@@ -317,7 +319,7 @@ func _finish_match(reason: String) -> void:
 			"d": maxi(0, int(minf(p.deepest_y, float(Terrain.H * Terrain.TILE))
 				/ Terrain.TILE) - Terrain.SURFACE_ROW),
 		})
-	hud.show_podium(entries, elapsed, reason)
+	hud.show_win_banner(entries, elapsed, reason)
 	var wire := []
 	for e in entries.slice(0, 3):
 		wire.append([e.n, (e.c as Color).to_html(false), e.d])
@@ -326,6 +328,17 @@ func _finish_match(reason: String) -> void:
 		if not entries.is_empty() else "aaaaaa"
 	NetHub.broadcast({"t": "win", "n": win_name, "c": win_col, "podium": wire})
 	get_tree().call_group(&"sfx", &"play_fanfare", Vector2.ZERO)
+	# Cut the camera to the finish hall (the world pauses right after, so it
+	# stays put) and stage the ceremony there. Main is PROCESS_MODE_ALWAYS,
+	# so the dolls keep jumping while everything else is frozen.
+	var fr := terrain.finish_line_rect()
+	camera.focus_target = null
+	camera.global_position = fr.get_center() + Vector2(0, -6.0)
+	camera.zoom = Vector2(2.2, 2.2)
+	var cer := Ceremony.new()
+	cer.room = fr
+	cer.entries.assign(entries.slice(0, 3))
+	add_child(cer)
 	get_tree().paused = true
 
 
@@ -358,10 +371,10 @@ func _net_service() -> void:
 		if c.pending_init:
 			c.pending_init = false
 			# Room list for wallpaper tints: [x, y, w, h, kind]; kinds:
-			# 0 stairs 1 kitchen 2 bedroom 3 bathroom 4 pen 5 finish.
+			# 0 stairs 1 kitchen 2 bedroom 3 bathroom 4 arsenal 5 finish.
 			var rooms := []
 			var kind_of := {"stairs": 0, "kitchen": 1, "bedroom": 2,
-				"bathroom": 3, "chicken_pen": 4, "pig_pen": 4}
+				"bathroom": 3, "arsenal": 4}
 			for rn in terrain.bunker_rooms:
 				var rr: Rect2i = terrain.bunker_rooms[rn]
 				rooms.append([rr.position.x, rr.position.y, rr.size.x, rr.size.y,

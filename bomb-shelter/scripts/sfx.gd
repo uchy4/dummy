@@ -17,6 +17,7 @@ var _tick_s: AudioStreamWAV
 var _snap_s: AudioStreamWAV
 var _fanfare_s: AudioStreamWAV
 var _womp_s: AudioStreamWAV
+var _shot_s: AudioStreamWAV
 
 
 func _ready() -> void:
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_snap_s = _make_snap()
 	_fanfare_s = _make_fanfare()
 	_womp_s = _make_womp()
+	_shot_s = _make_shot()
 
 
 ## size_mult ~0.5 (bomblet) .. ~4 (big bomb at max blast scale);
@@ -106,6 +108,12 @@ func play_fanfare(_pos: Vector2) -> void:
 
 func play_womp(_pos: Vector2) -> void:
 	_play(_womp_s, -5.0, 1.0)
+
+
+## An arsenal gun misfiring: a sharp rifle crack.
+func play_shot(pos: Vector2) -> void:
+	_fx(13, pos)
+	_play(_shot_s, -4.0, randf_range(0.9, 1.1))
 
 
 func _play(stream: AudioStreamWAV, vol_db: float, pitch: float) -> void:
@@ -330,6 +338,31 @@ func _make_womp() -> AudioStreamWAV:
 	return _wav(data)
 
 
+## Rifle crack: an instant white-noise transient with a very fast decay,
+## a low muzzle thump underneath and a faint ringing tail.
+func _make_shot() -> AudioStreamWAV:
+	var n := int(RATE * 0.3)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260707
+	var prev := 0.0
+	var phase := 0.0
+	var ring := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var noise := rng.randf_range(-1.0, 1.0)
+		var crack := (noise - prev) * 1.1 * exp(-t * 90.0)
+		prev = noise
+		phase += TAU * lerpf(140.0, 55.0, minf(t * 8.0, 1.0)) / RATE
+		var thump := sin(phase) * 0.7 * exp(-t * 14.0)
+		ring += TAU * 2900.0 / RATE
+		var tail := sin(ring) * 0.08 * exp(-t * 10.0)
+		var s := clampf(crack + thump + tail, -1.0, 1.0)
+		data.encode_s16(i * 2, int(s * 32000.0))
+	return _wav(data)
+
+
 func _wav(data: PackedByteArray) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
@@ -340,7 +373,8 @@ func _wav(data: PackedByteArray) -> AudioStreamWAV:
 
 ## Mirror a sound-worthy moment to web viewers as a compact fx event —
 ## the web client maps the kind to its own synth + particles. Kinds:
-## 0 jump, 1 kick, 2 land, 3 step, 4 snap, 5 armor break, 6 pickup.
+## 0 jump, 1 kick, 2 land, 3 step, 4 snap, 5 armor break, 6 pickup,
+## 13 gunshot.
 func _fx(k: int, pos: Vector2) -> void:
 	if NetHub.has_viewers():
 		NetHub.broadcast({"t": "fx", "k": k, "x": int(pos.x), "y": int(pos.y)})

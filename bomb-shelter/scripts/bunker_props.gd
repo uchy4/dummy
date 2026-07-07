@@ -2,10 +2,13 @@ class_name BunkerProps
 extends Node2D
 ## Furnishes the generated bunker: an outhouse entrance on the surface, a
 ## kitchen (table + chairs + a decorative counter), a bedroom (bed +
-## pillows), a bathroom (toilet + shower) and two animal pens (chickens,
-## pigs, decorative fence posts). Purely additive on top of terrain.gd's
-## room layout — reads `terrain.bunker_rooms` / `terrain.outhouse_cell` and
-## spawns Furniture / Fixture / Critter children.
+## pillows), a bathroom (toilet + shower), an arsenal room (wall-mounted
+## rifles that misfire when blasted, plus a table), a surface animal strip
+## (chickens/pigs behind Fence sections, standing under open sky) and a
+## surface corn field (swaying CornStalks). Purely additive on top of
+## terrain.gd's layout — reads `terrain.bunker_rooms` / `terrain.outhouse_cell`
+## / `terrain.surface_pens` / `terrain.fence_xs` / `terrain.corn_field` and
+## spawns Furniture / Fixture / Critter / Fence / CornStalk / WallGun children.
 ##
 ## IMPORTANT: assumes this node is added at position (0, 0) alongside Terrain
 ## (e.g. `world.add_child(bunker_props)` where `world` is Terrain's parent
@@ -33,7 +36,6 @@ class PropMarker:
 
 var _outhouse_local := Vector2.ZERO
 var _counters: Array[Rect2] = []
-var _fence_local: Array[Vector2] = []
 
 
 func _ready() -> void:
@@ -57,12 +59,15 @@ func _ready() -> void:
 	if terrain.bunker_rooms.has("bathroom"):
 		var bathroom_rect: Rect2i = terrain.bunker_rooms["bathroom"]
 		_build_bathroom(bathroom_rect)
-	if terrain.bunker_rooms.has("chicken_pen"):
-		var chicken_rect: Rect2i = terrain.bunker_rooms["chicken_pen"]
-		_build_pen(chicken_rect, Critter.Kind.CHICKEN, 3)
-	if terrain.bunker_rooms.has("pig_pen"):
-		var pig_rect: Rect2i = terrain.bunker_rooms["pig_pen"]
-		_build_pen(pig_rect, Critter.Kind.PIG, 2)
+	if terrain.bunker_rooms.has("arsenal"):
+		var arsenal_rect: Rect2i = terrain.bunker_rooms["arsenal"]
+		if arsenal_rect.size.x > 0:
+			_build_arsenal(arsenal_rect)
+
+	if terrain.surface_pens.size.x > 0:
+		_build_surface_pens()
+	if terrain.corn_field.size.x > 0:
+		_build_corn()
 
 	queue_redraw()
 
@@ -185,31 +190,89 @@ func _build_bathroom(rect: Rect2i) -> void:
 	add_child(shower)
 
 
-# ------------------------------------------------------------------ pens ---
+# -------------------------------------------------------------- surface ---
 
-func _build_pen(rect: Rect2i, kind: int, count: int) -> void:
+## Surface animal strip: fence posts at `terrain.fence_xs`, chickens in the
+## left half and pigs in the right half (split at the middle fence). Animals
+## stand at the grass line under open sky — no room walls involved.
+func _build_surface_pens() -> void:
+	var strip: Rect2i = terrain.surface_pens
+	var ground_y := float(strip.position.y) * TILE
+
+	for x in terrain.fence_xs:
+		var fx: int = x
+		var fence := Fence.new()
+		fence.position = Vector2((float(fx) + 0.5) * TILE, ground_y - 11.0)
+		add_child(fence)
+
+	var left := float(strip.position.x) * TILE
+	var right := float(strip.end.x) * TILE
+	var mid := (left + right) / 2.0
+	# Prefer the middle fence post (if any) as the actual split point so the
+	# animals' homes line up with the fence they're penned behind.
+	for x in terrain.fence_xs:
+		var fx2: int = x
+		var fx_world := (float(fx2) + 0.5) * TILE
+		if fx_world > left + TILE and fx_world < right - TILE:
+			mid = fx_world
+
+	var chicken_home := Rect2(left, ground_y - 40.0, mid - left, 40.0)
+	var pig_home := Rect2(mid, ground_y - 40.0, right - mid, 40.0)
+
+	for i in 3:
+		var t := 0.5 if i == 1 else (0.15 if i == 0 else 0.85)
+		var chicken := Critter.new()
+		chicken.kind = Critter.Kind.CHICKEN
+		chicken.position = Vector2(lerpf(chicken_home.position.x + 6.0,
+			chicken_home.end.x - 6.0, t), ground_y - 4.5)
+		chicken.home = chicken_home
+		add_child(chicken)
+
+	for i in 2:
+		var t := 0.3 if i == 0 else 0.7
+		var pig := Critter.new()
+		pig.kind = Critter.Kind.PIG
+		pig.position = Vector2(lerpf(pig_home.position.x + 8.0,
+			pig_home.end.x - 8.0, t), ground_y - 5.5)
+		pig.home = pig_home
+		add_child(pig)
+
+
+# ------------------------------------------------------------------ corn ---
+
+## Surface corn field: one swaying CornStalk per cell across the strip.
+func _build_corn() -> void:
+	var strip: Rect2i = terrain.corn_field
+	var ground_y := float(strip.position.y) * TILE
+
+	for i in strip.size.x:
+		var stalk := CornStalk.new()
+		stalk.position = Vector2((float(strip.position.x + i) + 0.5) * TILE, ground_y)
+		add_child(stalk)
+
+
+# --------------------------------------------------------------- arsenal ---
+
+## The lower-level room where the pens used to be: wall-mounted rifles that
+## misfire when a nearby blast goes off, plus a table for flavor.
+func _build_arsenal(rect: Rect2i) -> void:
 	var floor_y := _floor_y(rect)
 	var left := float(rect.position.x) * TILE
 	var right := float(rect.end.x) * TILE
-	var top := float(rect.position.y) * TILE
-	var pen_home := Rect2(left, top, right - left, floor_y - top)
+	var wall_y := float(rect.position.y) * TILE + float(rect.size.y) * TILE * 0.45
 
-	var half := 4.5 if kind == Critter.Kind.CHICKEN else 5.5
-	for i in count:
-		var t := 0.5 if count <= 1 else float(i) / float(count - 1)
-		var critter := Critter.new()
-		critter.kind = kind
-		critter.position = Vector2(lerpf(left + 10.0, right - 10.0, t), floor_y - half)
-		critter.home = pen_home
-		add_child(critter)
+	var gun_count := 3 if rect.size.x < 8 else 4
+	var margin := 12.0
+	for i in gun_count:
+		var t := 0.5 if gun_count <= 1 else float(i) / float(gun_count - 1)
+		var gun := WallGun.new()
+		gun.position = Vector2(lerpf(left + margin, right - margin, t), wall_y)
+		add_child(gun)
 
-	# Decorative-only fence posts along the pen's floor edges; no collision.
-	for x in [left + 2.0, (left + right) / 2.0, right - 2.0]:
-		_fence_local.append(Vector2(x, floor_y))
-		var marker := PropMarker.new()
-		marker.prop_kind = 8  # fence_post
-		marker.position = Vector2(x, floor_y)
-		add_child(marker)
+	var table := Furniture.new()
+	table.kind = Furniture.Kind.TABLE
+	table.position = Vector2((left + right) / 2.0, floor_y - 10.0)
+	add_child(table)
 
 
 # ------------------------------------------------------------------ draw ---
@@ -217,8 +280,6 @@ func _build_pen(rect: Rect2i, kind: int, count: int) -> void:
 func _draw() -> void:
 	for c in _counters:
 		_draw_counter(c)
-	for p in _fence_local:
-		_draw_fence_post(p)
 
 
 ## The outhouse hut: streamed to web (prop kind 9), and blown to plank
@@ -315,9 +376,3 @@ class Plank:
 	func _draw() -> void:
 		draw_rect(Rect2(-size / 2.0 - Vector2.ONE, size + Vector2(2, 2)), Color.BLACK)
 		draw_rect(Rect2(-size / 2.0, size), col)
-
-
-func _draw_fence_post(p: Vector2) -> void:
-	draw_rect(Rect2(p.x - 2.0, p.y - 16.0, 4.0, 16.0).grow(1.0), Color.BLACK)
-	draw_rect(Rect2(p.x - 2.0, p.y - 16.0, 4.0, 16.0), Color("8a6238"))
-	draw_rect(Rect2(p.x - 3.0, p.y - 13.0, 6.0, 2.0), Color("5e3d22"))  # rail nub
