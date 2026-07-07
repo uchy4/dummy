@@ -35,7 +35,13 @@ func _interval() -> float:
 
 
 func _spawn_wave() -> void:
-	var live := get_tree().get_nodes_in_group(&"bombs").size()
+	# Fizzled duds stay on the field forever — don't let them eat the
+	# live-bomb budget or the bombardment would slowly starve.
+	var live := 0
+	for b in get_tree().get_nodes_in_group(&"bombs"):
+		var bomb := b as Bomb
+		if bomb and not bomb.fizzled:
+			live += 1
 	var count := maxi(1, roundi(lerpf(1.0, float(Settings.bombs_per_drop), _difficulty())))
 	for i in count:
 		if live + i >= MAX_LIVE_BOMBS:

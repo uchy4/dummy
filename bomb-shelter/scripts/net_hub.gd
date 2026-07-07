@@ -112,6 +112,11 @@ var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var grassCells=null;var anim={};
+// Locally-simulated bombs: velocity estimated from snapshots, integrated
+// with gravity + terrain every frame, error-corrected toward host truth.
+// Bombs render at 60fps and react to your kicks instantly instead of
+// waiting a round-trip.
+var bsim=[];
 var BOMB=["#212126","#131318","#733f17","#1f5c2e","#80247f","#2952c7","#61656f","#33353d"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var VW=0,VH=0,DPR=1;
@@ -165,13 +170,13 @@ function connect(){
   if(m.t==="s"){
    if(sc)for(var i=0;i<sc.p.length&&i<m.p.length;i++)
     if(sc.p[i][2]===1&&m.p[i][2]===0){burst(m.p[i][0],m.p[i][1],roster[i]?roster[i].c:"fff");splat();}
-   sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();}
+   sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();syncBombs(m);}
   else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
    boom(Math.min(0.55,0.2+m.r/240));}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -220,12 +225,15 @@ function mkTouch(e){return{id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,
 var lastTap={t:-1e9,x:0,y:0};
 // A tap jumps; a second tap within 300ms fires an instant full-power kick
 // in the facing direction. Enables one-thumb jump-kick play.
+function sendKick(dx,dy,p){
+ if(ws&&ws.readyState===1&&joined)
+  ws.send(JSON.stringify({t:"k",dx:Math.round(dx*100)/100,dy:Math.round(dy*100)/100,p:p}));
+ predictKick(dx,dy,p);}
 function tap(x,y){var now=performance.now();
  if(now-lastTap.t<300&&Math.hypot(x-lastTap.x,y-lastTap.y)<60){
   lastTap.t=-1e9;
   var f=(anim[you]&&anim[you].face)||1;
-  if(ws&&ws.readyState===1&&joined)
-   ws.send(JSON.stringify({t:"k",dx:f*0.707,dy:-0.707,p:1}));
+  sendKick(f*0.707,-0.707,1);
   return;}
  lastTap={t:now,x:x,y:y};jumpPulse();}
 cv.addEventListener("pointerdown",function(e){e.preventDefault();
@@ -249,9 +257,7 @@ cv.addEventListener("pointermove",function(e){e.preventDefault();
 function tapOrKick(t){var dx=t.x-t.ox,dy=t.y-t.oy,d=Math.hypot(dx,dy);
  var held=performance.now()-t.t0;
  if(d<12){if(held<220)tap(t.x,t.y);return;}
- var p=Math.max(0.25,Math.min(1,d/90));
- if(ws&&ws.readyState===1&&joined)
-  ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}
+ sendKick(dx/d,dy/d,Math.round(Math.max(0.25,Math.min(1,d/90))*100)/100);}
 function endPtr(e){
  if(moveT&&e.pointerId===moveT.id){
   var quick=performance.now()-moveT.t0<220&&Math.hypot(moveT.x-moveT.ox,moveT.y-moveT.oy)<12;
@@ -274,11 +280,8 @@ cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endP
   if(!btnKickT||e.pointerId!==btnKickT.id)return;
   var t=btnKickT;btnKickT=null;
   var dx=t.x-t.ox,dy=t.y-t.oy,d=Math.hypot(dx,dy);
-  if(!ws||ws.readyState!==1||!joined)return;
-  if(d<12){var f=(anim[you]&&anim[you].face)||1;
-   ws.send(JSON.stringify({t:"k",dx:f*0.707,dy:-0.707,p:1}));}
-  else{var p=Math.max(0.25,Math.min(1,d/90));
-   ws.send(JSON.stringify({t:"k",dx:dx/d,dy:dy/d,p:Math.round(p*100)/100}));}}
+  if(d<12){var f=(anim[you]&&anim[you].face)||1;sendKick(f*0.707,-0.707,1);}
+  else sendKick(dx/d,dy/d,Math.round(Math.max(0.25,Math.min(1,d/90))*100)/100);}
  k.addEventListener("pointerup",ku);k.addEventListener("pointercancel",ku);
  document.getElementById("swap").addEventListener("click",function(){
   padLeft=!padLeft;try{localStorage.setItem("padside",padLeft?"L":"R");}catch(err){}
@@ -344,6 +347,55 @@ function predict(dt){if(dt>0.05)dt=0.05;
   var ny=PY+VY*sdt;
   if(!solidBox(PX,ny))PY=ny;
   else{var sy=VY>0?1:-1;if(VY>0)onG=true;while(!solidBox(PX,PY+sy)&&(ny-PY)*sy>0)PY+=sy;VY=0;}}}
+// --- Local bomb simulation ---
+// Match each snapshot bomb to a simulated one (same type, nearest), derive
+// velocity from successive snapshot positions, and nudge the local pos
+// toward host truth (snap on big error: an explosion moved it).
+function syncBombs(m){if(!m.b){bsim=[];return;}
+ var dt=Math.max((tc-tp)/1000,0.016),used={},out=[];
+ for(var i=0;i<m.b.length;i++){var b=m.b[i],best=-1,bd=8100,e=null;
+  for(var j=0;j<bsim.length;j++){if(used[j])continue;var s=bsim[j];
+   if(s.type!==b[2])continue;
+   var dx=s.sx-b[0],dy=s.sy-b[1],d2=dx*dx+dy*dy;
+   if(d2<bd){bd=d2;best=j;}}
+  if(best>=0){e=bsim[best];used[best]=1;
+   var vx=(b[0]-e.sx)/dt,vy=(b[1]-e.sy)/dt,vm=Math.hypot(vx,vy);
+   if(vm>900){vx*=900/vm;vy*=900/vm;}
+   e.vx=vx;e.vy=vy;
+   var ex=b[0]-e.x,ey=b[1]-e.y;
+   if(ex*ex+ey*ey>4900){e.x=b[0];e.y=b[1];}
+   else{e.x+=ex*0.3;e.y+=ey*0.3;}}
+  else e={x:b[0],y:b[1],vx:0,vy:0};
+  e.sx=b[0];e.sy=b[1];e.type=b[2];e.r=b[4];
+  e.fuse=b[3]/10;e.ft=tc;e.dud=b.length>5&&b[5]===1;
+  out.push(e);}
+ bsim=out;}
+function solidR(cx,cy,r){if(!grid)return false;
+ var c0=Math.floor((cx-r)/TS),c1=Math.floor((cx+r-0.01)/TS);
+ var r0=Math.floor((cy-r)/TS),r1=Math.floor((cy+r-0.01)/TS);
+ for(var rr=r0;rr<=r1;rr++)for(var cc=c0;cc<=c1;cc++){
+  if(cc<0||cc>=W)return true;if(rr<0||rr>=H)continue;
+  if(grid[rr*W+cc]!==0)return true;}return false;}
+function ptSolid(px,py){if(!grid)return false;
+ var c=Math.floor(px/TS),r=Math.floor(py/TS);
+ if(c<0||c>=W)return true;if(r<0||r>=H)return false;
+ return grid[r*W+c]!==0;}
+function stepBombs(dt){if(dt>0.05)dt=0.05;
+ for(var i=0;i<bsim.length;i++){var e=bsim[i];
+  var below=e.y+e.r+2;
+  var rest=ptSolid(e.x,below)||ptSolid(e.x-e.r*0.6,below)||ptSolid(e.x+e.r*0.6,below);
+  if(rest){e.vx*=Math.pow(0.05,dt);if(e.vy>0)e.vy=0;}
+  else e.vy=Math.min(e.vy+980*dt,900);
+  var nx=e.x+e.vx*dt,ny=e.y+e.vy*dt;
+  if(!solidR(nx,e.y,e.r))e.x=nx;else e.vx*=-0.3;
+  if(!solidR(e.x,ny,e.r))e.y=ny;
+  else{if(e.vy>0)e.vy*=-0.2;else e.vy=0;}}}
+// Predicted kick: fling nearby simulated bombs the instant you swipe —
+// the host snapshot corrects any difference a beat later.
+function predictKick(dx,dy,p){if(!predOK)return;
+ var f=(anim[you]&&anim[you].face)||1,cx=PX+f*10,cy=PY;
+ for(var i=0;i<bsim.length;i++){var e=bsim[i];
+  if(Math.hypot(e.x-cx,e.y-cy)<=30+e.r){e.vx=dx*430*p;e.vy=dy*430*p;}}}
 function reconcile(){if(you<0||!sc||!sc.p[you])return;var hp=sc.p[you];
  if(hp[2]!==1){predOK=false;return;}
  var hx=hp[0],hy=hp[1];
@@ -418,15 +470,16 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#8a6238";ctx.fillRect(q[0]-9,q[1]-7,18,6);
   ctx.fillStyle="#caa64a";ctx.fillRect(q[0]-9,q[1]-2,18,2);
   ctx.fillStyle="#e8c35c";ctx.fillRect(q[0]-2,q[1]-3,4,5);}
- if(sc)for(var i=0;i<sc.b.length;i++){var b=sc.b[i];
-  var dud=b.length>5&&b[5]===1;
-  ctx.fillStyle="rgba(0,0,0,.5)";ctx.beginPath();ctx.arc(b[0],b[1],b[4]+1.5,0,7);ctx.fill();
-  var blink=!dud&&b[3]<12&&(now/100|0)%2===0;
-  ctx.fillStyle=blink?"#ff5936":BOMB[b[2]]||"#212126";
-  ctx.beginPath();ctx.arc(b[0],b[1],b[4],0,7);ctx.fill();
-  ctx.fillStyle="rgba(255,255,255,.2)";ctx.beginPath();ctx.arc(b[0]-b[4]/3,b[1]-b[4]/3,b[4]/4,0,7);ctx.fill();
-  ctx.fillStyle=dud?"#9a9a9a":(b[3]<12?"#ff5936":"#fff");ctx.font="bold 11px sans-serif";ctx.textAlign="center";
-  ctx.fillText(dud?"DUD":(b[3]/10).toFixed(1),b[0],b[1]-b[4]-6);}
+ stepBombs(pdt);
+ for(var i=0;i<bsim.length;i++){var e=bsim[i];
+  var fu=e.dud?0:Math.max(e.fuse-(now-e.ft)/1000,0);
+  ctx.fillStyle="rgba(0,0,0,.5)";ctx.beginPath();ctx.arc(e.x,e.y,e.r+1.5,0,7);ctx.fill();
+  var blink=!e.dud&&fu<1.2&&(now/100|0)%2===0;
+  ctx.fillStyle=blink?"#ff5936":BOMB[e.type]||"#212126";
+  ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,7);ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.2)";ctx.beginPath();ctx.arc(e.x-e.r/3,e.y-e.r/3,e.r/4,0,7);ctx.fill();
+  ctx.fillStyle=e.dud?"#9a9a9a":(fu<1.2?"#ff5936":"#fff");ctx.font="bold 11px sans-serif";ctx.textAlign="center";
+  ctx.fillText(e.dud?"DUD":fu.toFixed(1),e.x,e.y-e.r-6);}
  if(sc)for(var i=0;i<sc.p.length;i++){var p=sc.p[i];if(!p||p[2]===0)continue;
   var pos=(i===you&&predOK)?{x:PX,y:PY}:lerpP(i);var col="#"+(roster[i]?roster[i].c:"ffffff");
   var col2=roster[i]&&roster[i].c2?"#"+roster[i].c2:col;

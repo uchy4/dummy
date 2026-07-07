@@ -54,10 +54,10 @@ var _drill_carve_acc := 0.0
 var puppet := false
 
 ## Duds (Settings.duds_enabled, ~10%): the fuse fizzles out instead of
-## detonating — but a nearby blast's concussion re-arms them.
+## detonating — but a nearby blast's concussion re-arms them. Fizzled duds
+## stay on the field for good until something sets them off.
 var is_dud := false
 var fizzled := false
-var _decay := 12.0  ## seconds a fizzled dud lies around before vanishing
 
 var _body_radius := 9.0
 var _blast_mult := 1.0
@@ -209,12 +209,7 @@ func _physics_process(delta: float) -> void:
 	_prev_vy = linear_velocity.y
 
 	if fizzled:
-		# A spent dud: lies around inert until a blast re-arms it (see
-		# ignite) or it quietly decays away.
-		_decay -= delta
-		if _decay <= 0.0:
-			queue_free()
-		return
+		return  # a spent dud lies around until a blast re-arms it (ignite)
 
 	fuse -= delta
 	if fuse <= 0.0:
