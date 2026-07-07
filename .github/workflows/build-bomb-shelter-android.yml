@@ -61,10 +61,15 @@ jobs:
 
       - name: Configure Android export (keystore + editor settings)
         run: |
-          keytool -genkeypair -v -keystore "$HOME/debug.keystore" \
-            -storepass android -keypass android -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          # ONE stable signing key (committed to the repo): every build signs
+          # with it, so Android installs new APKs over old ones as in-place
+          # updates. Never regenerate it — a key change forces every device
+          # to uninstall/reinstall once.
+          keytool -importkeystore \
+            -srckeystore bomb-shelter/ci/debug-signing.p12 -srcstoretype PKCS12 \
+            -srcstorepass android -srcalias androiddebugkey \
+            -destkeystore "$HOME/debug.keystore" -deststoretype JKS \
+            -deststorepass android -destkeypass android -noprompt
           mkdir -p "$HOME/.config/godot"
           cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
