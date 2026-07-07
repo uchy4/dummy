@@ -112,7 +112,7 @@ var roster=[],you=-1,sp=null,sc=null,tp=0,tc=0,flashes=[],sparks=[],win=null;
 var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50"],CELL2=["","#5c3d22","#3a3a44","#3f9143"];
 var grassCells=null;var anim={};
-var BOMB=["#212126","#131318","#733f17","#1f5c2e","#80247f"];
+var BOMB=["#212126","#131318","#733f17","#1f5c2e","#80247f","#8cc7f2"];
 var cam={x:800,y:300},cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var VW=0,VH=0,DPR=1;
 // --- Web Audio: procedural SFX so the web view sounds like the native app ---

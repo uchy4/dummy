@@ -250,7 +250,8 @@ func _physics_process(delta: float) -> void:
 		var rb := c.get_collider() as RigidBody2D
 		if rb:
 			var bomb := rb as Bomb
-			if bomb and bomb.carrier == null:
+			if bomb and bomb.carrier == null \
+					and not (bomb.kicker == self and bomb.kicker_grace > 0.0):
 				var rel_speed := absf((velocity - bomb.linear_velocity).dot(c.get_normal()))
 				if rel_speed > IMPACT_STUN_SPEED:
 					apply_impact_stun(c.get_normal())
@@ -286,10 +287,12 @@ func _do_kick_dir(dir: Vector2, power: float) -> void:
 		if bomb == null:
 			continue
 		if bomb.carrier == self:
+			bomb.kicked_by(self)
 			bomb.launch(dir * Settings.kick_bomb_power * power)
 			hit = true
 			continue
 		if center.distance_to(bomb.global_position) <= KICK_RANGE + bomb._body_radius:
+			bomb.kicked_by(self)
 			if bomb.carrier != null:
 				bomb.launch(dir * Settings.kick_bomb_power * power)
 			else:

@@ -231,7 +231,7 @@ func _build_settings_panel() -> void:
 	types_label.text = "Bomb types in the mix:"
 	vbox.add_child(types_label)
 	var type_names := ["Normal", "Big (huge blast)", "Cluster (splits)", "Bouncy",
-		"Sticky (kick it!)"]
+		"Sticky (kick it!)", "Shockwave (5x launch)"]
 	var grid := GridContainer.new()
 	grid.columns = 2
 	vbox.add_child(grid)

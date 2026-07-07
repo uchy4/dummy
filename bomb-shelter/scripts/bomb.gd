@@ -7,10 +7,12 @@ extends RigidBody2D
 ##
 ## Types: NORMAL; BIG (heavy, huge blast, longer fuse); CLUSTER (splits into
 ## bomblets); BOUNCY (ricochets around); STICKY (glues itself to whoever
-## touches it — kick to launch it, or brush another player to pass it on).
+## touches it — kick to launch it, or brush another player to pass it on);
+## SHOCKWAVE (almost no destructive potency, but launches everything nearby
+## with 5x force — a launcher, not an excavator).
 ## Blast sizes scale with Settings.blast_scale, tunable in-game.
 
-enum Type { NORMAL, BIG, CLUSTER, BOUNCY, STICKY }
+enum Type { NORMAL, BIG, CLUSTER, BOUNCY, STICKY, SHOCKWAVE }
 
 const BLAST_RADIUS := 80.0
 const CARVE_RADIUS := 66.0
@@ -29,6 +31,11 @@ var terrain: Terrain
 var carrier: Player = null
 var _restick_cd := 0.0  ## no re-attach right after being kicked off
 var _pass_cd := 0.0     ## brief hand-off cooldown so it can't ping-pong
+
+## The player who most recently kicked this bomb, and how long they stay
+## immune to it. A kick must never ragdoll or launch its own kicker.
+var kicker: Player = null
+var kicker_grace := 0.0
 
 ## Puppet: display-only mirror on a LAN-join client. Frozen, no fuse logic —
 ## the host streams position and fuse.
@@ -76,6 +83,10 @@ func _ready() -> void:
 			_body_color = Color(0.5, 0.14, 0.5)
 			pm.bounce = 0.05
 			pm.friction = 1.0
+		Type.SHOCKWAVE:
+			mass = 1.2
+			_body_color = Color(0.55, 0.78, 0.95)
+			pm.bounce = 0.4
 	physics_material_override = pm
 	if puppet:
 		freeze = true
@@ -126,6 +137,8 @@ func _process(_delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	if _exploded or puppet:
 		return
+	if kicker_grace > 0.0:
+		kicker_grace -= delta
 	if type == Type.STICKY:
 		_sticky_logic(delta)
 	# A carried sticky bomb has its collision disabled (see _stick_to), but
@@ -197,6 +210,13 @@ func launch(vel: Vector2) -> void:
 	angular_velocity = signf(vel.x) * 8.0
 
 
+## The player who just kicked this bomb is immune to it briefly — a kick
+## must never ragdoll or launch the kicker.
+func kicked_by(p: Player) -> void:
+	kicker = p
+	kicker_grace = 0.6
+
+
 ## Reverse case for impact-stun: a fast bomb slamming into a standing
 ## player wouldn't show up in the player's own slide-collision loop (the
 ## player isn't the one moving), so watch our own contacts instead. The
@@ -205,6 +225,8 @@ func _check_player_impact() -> void:
 	for body in get_colliding_bodies():
 		var pl := body as Player
 		if pl == null or not pl.alive or pl.puppet:
+			continue
+		if pl == kicker and kicker_grace > 0.0:
 			continue
 		var dir := global_position.direction_to(pl.global_position)
 		if dir == Vector2.ZERO:
@@ -224,14 +246,22 @@ func _touching_player(exclude: Player) -> Player:
 
 func _explode() -> void:
 	_exploded = true
+	# SHOCKWAVE: barely destructive, but launches everything nearby at 5x
+	# force and is never lethal on its own.
+	var launch_mult := 5.0 if type == Type.SHOCKWAVE else 1.0
+	var lethal_allowed := type != Type.SHOCKWAVE
 	var blast := BLAST_RADIUS * _blast_mult * Settings.blast_scale
 	var kill := KILL_RADIUS * _blast_mult * Settings.blast_scale
-	var carve := CARVE_RADIUS * _blast_mult * Settings.blast_scale
+	var carve := CARVE_RADIUS * _blast_mult * Settings.blast_scale \
+		* (0.35 if type == Type.SHOCKWAVE else 1.0)
 	var space := get_world_2d().direct_space_state
 
 	for p in get_tree().get_nodes_in_group(&"players"):
 		var pl := p as Player
 		if pl == null or not pl.alive:
+			continue
+		# A kick must never ragdoll or launch its own kicker.
+		if pl == kicker and kicker_grace > 0.0:
 			continue
 		var d := global_position.distance_to(pl.global_position)
 		if d > blast:
@@ -242,7 +272,7 @@ func _explode() -> void:
 			dir = Vector2.UP
 		var falloff := 1.0 - d / blast
 		var kick := dir * PLAYER_KNOCKBACK * (0.4 + falloff) * (0.25 if blocked else 1.0)
-		pl.take_blast(kick, d <= kill and not blocked)
+		pl.take_blast(kick * launch_mult, d <= kill and not blocked and lethal_allowed)
 
 	for b in get_tree().get_nodes_in_group(&"bombs"):
 		var bomb := b as Bomb
@@ -255,7 +285,7 @@ func _explode() -> void:
 		if dir == Vector2.ZERO:
 			dir = Vector2.UP
 		var falloff := 1.0 - d / blast
-		bomb.apply_central_impulse(dir * BOMB_IMPULSE * (0.5 + falloff) * bomb.mass)
+		bomb.apply_central_impulse(dir * BOMB_IMPULSE * launch_mult * (0.5 + falloff) * bomb.mass)
 		bomb.ignite(randf_range(0.25, 0.7))  # its death sets their fuse off
 
 	# Blasts toss settled ragdolls around too.
@@ -269,7 +299,8 @@ func _explode() -> void:
 		var dir := global_position.direction_to(part.global_position)
 		if dir == Vector2.ZERO:
 			dir = Vector2.UP
-		part.apply_central_impulse(dir * BOMB_IMPULSE * (0.6 + (1.0 - d / blast)) * part.mass)
+		part.apply_central_impulse(
+			dir * BOMB_IMPULSE * launch_mult * (0.6 + (1.0 - d / blast)) * part.mass)
 
 	# Untyped on purpose: naming Chest here would create a Bomb -> Chest ->
 	# Player -> Bomb class-loading cycle.
@@ -335,5 +366,10 @@ func _draw() -> void:
 			draw_circle(Vector2(-_body_radius * 0.6, _body_radius * 0.45), 2.6, goo)
 			draw_circle(Vector2(_body_radius * 0.55, _body_radius * 0.5), 2.2, goo)
 			draw_circle(Vector2(0, _body_radius * 0.85), 1.8, goo)
+		Type.SHOCKWAVE:
+			# Concentric shock rings signal "launcher, not excavator".
+			var ring := Color(0.75, 0.95, 1.0, 0.85)
+			draw_arc(Vector2.ZERO, _body_radius * 1.5, 0.0, TAU, 24, ring, 1.4)
+			draw_arc(Vector2.ZERO, _body_radius * 2.1, 0.0, TAU, 24, ring, 1.0)
 	draw_rect(Rect2(-2.5, -_body_radius - 4, 5, 5), Color(0.35, 0.32, 0.3))
 	draw_circle(Vector2(0, -_body_radius - 5), 1.8, Color(1.0, 0.7, 0.2))
