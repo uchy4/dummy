@@ -289,7 +289,7 @@ func _check_elimination() -> void:
 			if _win_player != null and is_instance_valid(_win_player) and _win_player.alive:
 				_declare_winner(_win_player, "Last one standing")
 			else:
-				_declare_draw()
+				_declare_deepest()
 		return
 	var living: Array[Player] = []
 	for p in players:
@@ -303,7 +303,15 @@ func _check_elimination() -> void:
 		_win_player = null
 
 
-func _declare_draw() -> void:
+## Everyone died: whoever made it lowest takes the match.
+func _declare_deepest() -> void:
+	var best: Player = null
+	for p in players:
+		if best == null or p.deepest_y > best.deepest_y:
+			best = p
+	if best != null and best.deepest_y > -99999.0:
+		_declare_winner(best, "Everyone died — made it the deepest")
+		return
 	game_over = true
 	hud.show_winner("Nobody", Color(0.7, 0.7, 0.7), elapsed, "Everyone was blown up")
 	NetHub.broadcast({"t": "win", "n": "Nobody", "c": "aaaaaa"})

@@ -22,6 +22,9 @@ var player_color := Color.WHITE
 var color2 := Color.WHITE  ## second stripe color; equals player_color when solid
 var display_name := "P?"
 var alive := true
+## Deepest point reached while alive (bigger y = lower). When everyone
+## dies, the deepest player takes the match.
+var deepest_y := -100000.0
 var armor := false  ## one-time protection from a lethal blast (from chests)
 var deaths := 0
 var respawn_left := 0.0
@@ -269,8 +272,11 @@ func _physics_process(delta: float) -> void:
 		if other and other.alive:
 			other.velocity.x += -c.get_normal().x * PLAYER_SHOVE * delta
 
-	# Failsafe: anyone who escapes the map dies and respawns in the shelter.
-	if not world_bounds.has_point(global_position):
+	# Depth record (in-bounds only): the tie-breaker when nobody survives.
+	if world_bounds.has_point(global_position):
+		deepest_y = maxf(deepest_y, global_position.y)
+	else:
+		# Failsafe: anyone who escapes the map dies.
 		die()
 
 
