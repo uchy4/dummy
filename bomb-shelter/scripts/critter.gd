@@ -1,8 +1,8 @@
 class_name Critter
 extends CharacterBody2D
-## Wandering bunker livestock: chickens and pigs. Cosmetic AI only — they
-## never die; a blast or kick just relocates them. See scripts/player.gd for
-## the gravity/facing pattern this follows.
+## Wandering bunker livestock: chickens and pigs. A kick ragdolls them (they
+## tumble, then get back up); a close bomb blast kills them outright, same
+## rules as players. See scripts/player.gd for the gravity/facing pattern.
 ##
 ## Usage: set `kind` (and optionally `home`) before adding to the tree, e.g.:
 ##   var c := Critter.new(); c.kind = Critter.Kind.CHICKEN
@@ -29,6 +29,11 @@ const MAX_FALL := 900.0
 const CHICKEN_SPEED := 40.0
 const PIG_SPEED := 30.0
 
+var alive := true
+var _ragdoll: Ragdoll = null
+var _stun_left := 0.0
+var _shape_node: CollisionShape2D
+
 var _gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var _facing := 1
 var _intent := _Intent.IDLE
@@ -46,15 +51,25 @@ func _ready() -> void:
 	collision_mask = 1  # walks on terrain, never blocks players/bombs
 	floor_snap_length = 6.0
 
-	var cs := CollisionShape2D.new()
+	_shape_node = CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
 	rs.size = Vector2(10, 9) if kind == Kind.CHICKEN else Vector2(16, 10)
-	cs.shape = rs
-	add_child(cs)
+	_shape_node.shape = rs
+	add_child(_shape_node)
 	_pick_intent()
 
 
 func _physics_process(delta: float) -> void:
+	if not alive:
+		return
+	if _stun_left > 0.0:
+		# Riding our kicked ragdoll; stand back up where it lands.
+		_stun_left -= delta
+		if _ragdoll != null and is_instance_valid(_ragdoll):
+			global_position = _ragdoll.torso_pos()
+		if _stun_left <= 0.0:
+			_end_ragdoll()
+		return
 	var fall_mult := 0.35 if _flutter_left > 0.0 else 1.0
 	velocity.y = minf(velocity.y + _gravity * fall_mult * delta, MAX_FALL)
 
@@ -126,11 +141,72 @@ func _update_hop(delta: float) -> void:
 	_hop_cooldown = maxf(_hop_cooldown - delta, 0.0)
 
 
-## Public shove hook: the lead's kick loop and blast handling call this on
-## group "props" members instead of applying a RigidBody impulse (Critter is
-## a CharacterBody2D, so it can't join "ragdoll_parts").
+## Public shove hook: kicks and blast knockback land here. A real wallop
+## ragdolls the animal — it tumbles limp and gets back up where it lands.
 func shove(vel: Vector2) -> void:
-	velocity += vel
+	if not alive:
+		return
+	if vel.length() > 140.0 and _stun_left <= 0.0:
+		_start_ragdoll(vel)
+	else:
+		velocity += vel
+
+
+## Blast handler, same rules as players: lethal range kills, otherwise the
+## concussion just launches them into a ragdoll tumble.
+func blast_hit(kick: Vector2, lethal: bool) -> void:
+	if not alive:
+		return
+	if lethal:
+		die(kick)
+	else:
+		shove(kick)
+
+
+func die(kick: Vector2) -> void:
+	if not alive:
+		return
+	alive = false
+	_end_ragdoll_silently()
+	var rd := _make_ragdoll(kick)
+	rd.persist = false  # fades out like a player's death ragdoll
+	get_tree().call_group(&"sfx", &"play_splat", global_position)
+	queue_free()
+
+
+func _start_ragdoll(vel: Vector2) -> void:
+	_stun_left = 1.3
+	_ragdoll = _make_ragdoll(velocity + vel)
+	_ragdoll.persist = true
+	hide()
+	_shape_node.set_deferred(&"disabled", true)
+	velocity = Vector2.ZERO
+
+
+func _end_ragdoll() -> void:
+	if _ragdoll != null and is_instance_valid(_ragdoll):
+		global_position = _ragdoll.torso_pos() + Vector2(0, -3)
+	_end_ragdoll_silently()
+	show()
+	_shape_node.set_deferred(&"disabled", false)
+	velocity = Vector2.ZERO
+
+
+func _end_ragdoll_silently() -> void:
+	if _ragdoll != null and is_instance_valid(_ragdoll):
+		_ragdoll.queue_free()
+	_ragdoll = null
+	_stun_left = 0.0
+
+
+func _make_ragdoll(impulse: Vector2) -> Ragdoll:
+	var rd := Ragdoll.new()
+	rd.part_scale = 0.55
+	rd.color = Color("f5f5f0") if kind == Kind.CHICKEN else Color("f4a7b9")
+	rd.impulse = impulse.limit_length(700.0)
+	rd.position = global_position
+	get_parent().add_child.call_deferred(rd)
+	return rd
 
 
 func _draw() -> void:

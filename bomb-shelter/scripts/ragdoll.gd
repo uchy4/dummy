@@ -13,6 +13,8 @@ var impulse := Vector2.ZERO
 ## Stun ragdolls persist (no fade/free) until the stunned player gets back
 ## up and frees them; death ragdolls fade out on their own.
 var persist := false
+## Critters use a shrunken rig (0.55) — same physics, smaller parts.
+var part_scale := 1.0
 
 var _age := 0.0
 var _parts: Array[RigidBody2D] = []
@@ -22,22 +24,23 @@ func _ready() -> void:
 	z_index = 5
 	if color2 == Color.TRANSPARENT:
 		color2 = color
-	var torso := _part(Vector2(0, -2), Vector2(12, 10), color)
+	var s := part_scale
+	var torso := _part(Vector2(0, -2) * s, Vector2(12, 10) * s, color)
 	if not color2.is_equal_approx(color):
-		var band := _rect_poly(Vector2(12, 3), color2)
+		var band := _rect_poly(Vector2(12, 3) * s, color2)
 		torso.add_child(band)
-	var head := _part(Vector2(0, -11), Vector2(10, 9), color.lightened(0.35))
+	var head := _part(Vector2(0, -11) * s, Vector2(10, 9) * s, color.lightened(0.35))
 	_decorate_head(head)
-	var arm_l := _part(Vector2(-7, 0), Vector2(4, 10), color.darkened(0.15))
-	var arm_r := _part(Vector2(7, 0), Vector2(4, 10), color.darkened(0.15))
-	var leg_l := _part(Vector2(-3, 9), Vector2(4, 12), color.darkened(0.35))
-	var leg_r := _part(Vector2(3, 9), Vector2(4, 12), color.darkened(0.35))
+	var arm_l := _part(Vector2(-7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
+	var arm_r := _part(Vector2(7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
+	var leg_l := _part(Vector2(-3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35))
+	var leg_r := _part(Vector2(3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35))
 
-	_pin(head, torso, Vector2(0, -7))
-	_pin(arm_l, torso, Vector2(-6, -5))
-	_pin(arm_r, torso, Vector2(6, -5))
-	_pin(leg_l, torso, Vector2(-3, 3))
-	_pin(leg_r, torso, Vector2(3, 3))
+	_pin(head, torso, Vector2(0, -7) * s)
+	_pin(arm_l, torso, Vector2(-6, -5) * s)
+	_pin(arm_r, torso, Vector2(6, -5) * s)
+	_pin(leg_l, torso, Vector2(-3, 3) * s)
+	_pin(leg_r, torso, Vector2(3, 3) * s)
 
 	for p in _parts:
 		p.linear_velocity = impulse * randf_range(0.7, 1.3) \

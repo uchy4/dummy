@@ -10,12 +10,14 @@ const TILE := 16
 var terrain: Terrain
 
 var _straw: Array[Rect2] = []  # precomputed so it doesn't flicker
+var _scorch := {}  # cell key -> Vector2i: wallpaper squares scorched by blasts
 
 
 func _ready() -> void:
 	z_index = -5
 	if terrain == null or terrain.bunker_rooms.is_empty():
 		return
+	terrain.carved.connect(_on_carved)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7  # deterministic scatter
 	for pen_name: String in ["chicken_pen", "pig_pen"]:
@@ -55,6 +57,32 @@ func _draw() -> void:
 		draw_rect(s, Color(0.85, 0.72, 0.35))
 	if terrain.finish_room.size.x > 0:
 		_draw_finish(_px(terrain.finish_room))
+	# Blast scars: wallpaper squares caught in an explosion darken by half.
+	for k in _scorch:
+		var cell: Vector2i = _scorch[k]
+		draw_rect(Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE),
+			Color(0, 0, 0, 0.5))
+
+
+## Mark every wallpaper square inside the blast circle as scorched.
+func _on_carved(world_pos: Vector2, radius: float) -> void:
+	var rects: Array[Rect2i] = []
+	for rn in terrain.bunker_rooms:
+		rects.append(terrain.bunker_rooms[rn])
+	if terrain.finish_room.size.x > 0:
+		rects.append(terrain.finish_room)
+	var c := Vector2i(int(world_pos.x / TILE), int(world_pos.y / TILE))
+	var r := ceili(radius / TILE)
+	for y in range(c.y - r, c.y + r + 1):
+		for x in range(c.x - r, c.x + r + 1):
+			var center := Vector2(x * TILE + TILE * 0.5, y * TILE + TILE * 0.5)
+			if center.distance_to(world_pos) > radius:
+				continue
+			for rc in rects:
+				if rc.has_point(Vector2i(x, y)):
+					_scorch[y * 1000 + x] = Vector2i(x, y)
+					break
+	queue_redraw()
 
 
 # --- room painters -----------------------------------------------------------

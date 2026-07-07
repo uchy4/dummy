@@ -146,15 +146,8 @@ func _generate() -> void:
 	_grid.fill(Cell.EMPTY)
 
 	for y in range(SURFACE_ROW, H):
-		var stratum := Cell.DIRT
-		if y >= DEEP_TOP:
-			stratum = Cell.DEEP
-		elif y >= STONE_TOP:
-			stratum = Cell.STONE
-		elif y >= CLAY_TOP:
-			stratum = Cell.CLAY
 		for x in W:
-			_gset(x, y, stratum)
+			_gset(x, y, _stratum_at(y))
 	# Indestructible frame: side walls and floor. The side walls rise above
 	# the surface so players can't hop off the edge of the map.
 	for y in range(SURFACE_ROW - 6, H):
@@ -334,6 +327,30 @@ func _build_finish_room() -> void:
 				_gset(x, y, Cell.EMPTY)
 
 
+## Which stratum a row belongs to, with 5 rows of dithered blending at each
+## boundary (10/30/50/70/90% of the lower material) instead of hard lines.
+func _stratum_at(y: int) -> int:
+	var bands := [
+		[CLAY_TOP, Cell.DIRT, Cell.CLAY],
+		[STONE_TOP, Cell.CLAY, Cell.STONE],
+		[DEEP_TOP, Cell.STONE, Cell.DEEP],
+	]
+	for band: Array in bands:
+		var b: int = band[0]
+		if y < b - 2:
+			continue
+		if y <= b + 2:
+			var lower_chance := float(y - b + 2) * 0.2 + 0.1
+			return int(band[2]) if rng.randf() < lower_chance else int(band[1])
+	if y >= DEEP_TOP:
+		return Cell.DEEP
+	if y >= STONE_TOP:
+		return Cell.STONE
+	if y >= CLAY_TOP:
+		return Cell.CLAY
+	return Cell.DIRT
+
+
 func _carve_tunnel(from: Vector2i, to: Vector2i) -> void:
 	var p := Vector2(from)
 	var stop_y := to.y - PLUG_ROWS
@@ -498,8 +515,69 @@ func _tick_water() -> void:
 		moves.append([idx, to])
 		if moves.size() >= WATER_MAX_MOVES:
 			break
+	if moves.size() < WATER_MAX_MOVES:
+		_equalize_bodies(moves)
 	if not moves.is_empty():
 		water_moved.emit(moves)
+
+
+## Communicating vessels: each connected body of water acts as ONE entity.
+## A few cells per tick shift from its highest surface column to its lowest
+## fillable one, so pools converge smoothly to a level surface, U-bends
+## equalize both arms, and a split basin becomes two independent bodies.
+func _equalize_bodies(moves: Array) -> void:
+	var seen := {}
+	for start in range(W, _grid.size() - W):
+		if _grid[start] != Cell.WATER or seen.has(start):
+			continue
+		# Flood the body, remembering the top water cell of every column.
+		var tops := {}
+		var stack: Array[int] = [start]
+		seen[start] = true
+		while not stack.is_empty():
+			var i: int = stack.pop_back()
+			var cx := i % W
+			var cy := i / W
+			if not tops.has(cx) or cy < int(tops[cx]):
+				tops[cx] = cy
+			for nb: int in [i - 1, i + 1, i - W, i + W]:
+				if nb >= 0 and nb < _grid.size() and not seen.has(nb) \
+						and _grid[nb] == Cell.WATER:
+					seen[nb] = true
+					stack.append(nb)
+		if tops.size() < 2:
+			continue
+		for k in 6:
+			var hi_x := -1
+			var hi_y := 1000000
+			var lo_x := -1
+			var lo_y := -1000000
+			for cxv in tops:
+				var cx2 := int(cxv)
+				var ty := int(tops[cxv])
+				if ty < hi_y:
+					hi_y = ty
+					hi_x = cx2
+				if ty > lo_y and _gget(cx2, ty - 1) == Cell.EMPTY:
+					lo_y = ty
+					lo_x = cx2
+			if hi_x < 0 or lo_x < 0 or hi_x == lo_x or hi_y >= lo_y - 1:
+				break
+			var src := hi_y * W + hi_x
+			var dst := (lo_y - 1) * W + lo_x
+			_grid[src] = Cell.EMPTY
+			_grid[dst] = Cell.WATER
+			erase_cell(Vector2i(hi_x, hi_y))
+			_flow_dir.erase(src)
+			_repaint_water_around(src, dst)
+			moves.append([src, dst])
+			if _gget(hi_x, hi_y + 1) == Cell.WATER:
+				tops[hi_x] = hi_y + 1
+			else:
+				tops.erase(hi_x)
+			tops[lo_x] = lo_y - 1
+			if moves.size() >= WATER_MAX_MOVES:
+				return
 
 
 ## Client mirror of _tick_water: replay the host's flow verbatim.

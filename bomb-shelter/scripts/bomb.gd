@@ -402,7 +402,8 @@ func _explode() -> void:
 		part.apply_central_impulse(
 			dir * BOMB_IMPULSE * launch_mult * (0.6 + (1.0 - d / blast)) * part.mass)
 
-	# Critters get punted by blasts too (they expose shove()).
+	# Critters live and die by the same rules as players: lethal range
+	# kills them, the rest of the blast ragdolls them.
 	for n in get_tree().get_nodes_in_group(&"props"):
 		var node := n as Node2D
 		if node == null or not node.has_method(&"shove"):
@@ -413,8 +414,11 @@ func _explode() -> void:
 		var ndir := global_position.direction_to(node.global_position)
 		if ndir == Vector2.ZERO:
 			ndir = Vector2.UP
-		node.call(&"shove",
-			ndir * PLAYER_KNOCKBACK * launch_mult * (0.4 + (1.0 - nd / blast)))
+		var nkick := ndir * PLAYER_KNOCKBACK * launch_mult * (0.4 + (1.0 - nd / blast))
+		if node.has_method(&"blast_hit"):
+			node.call(&"blast_hit", nkick, nd <= kill and lethal_allowed)
+		else:
+			node.call(&"shove", nkick)
 
 	# Untyped on purpose: naming Chest here would create a Bomb -> Chest ->
 	# Player -> Bomb class-loading cycle.

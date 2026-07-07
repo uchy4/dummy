@@ -129,6 +129,7 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
 var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6b4a26"];
+var SCORCH={};
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -200,7 +201,7 @@ function connect(){
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];SCORCH={};predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -333,9 +334,14 @@ function buildTerrain(){off=document.createElement("canvas");off.width=W;off.hei
 function carve(x,y,rad){if(!grid)return;
  var c0=Math.floor(x/TS),r0=Math.floor(y/TS),rr=Math.ceil(rad/TS);
  for(var r=r0-rr;r<=r0+rr;r++)for(var c=c0-rr;c<=c0+rr;c++){
-  if(r<0||r>=H||c<0||c>=W)continue;var v=grid[r*W+c];if(v===0||v===2)continue;
+  if(r<0||r>=H||c<0||c>=W)continue;
   var dx=(c+0.5)*TS-x,dy=(r+0.5)*TS-y;
-  if(dx*dx+dy*dy<=rad*rad){grid[r*W+c]=0;octx.clearRect(c,r,1,1);}}}
+  if(dx*dx+dy*dy>rad*rad)continue;
+  // Wallpaper squares caught in the blast scorch 50% darker.
+  for(var ri=0;ri<ROOMS.length;ri++){var q=ROOMS[ri];
+   if(c>=q[0]&&c<q[0]+q[2]&&r>=q[1]&&r<q[1]+q[3]){SCORCH[r*W+c]=1;break;}}
+  var v=grid[r*W+c];if(v===0||v===2)continue;
+  grid[r*W+c]=0;octx.clearRect(c,r,1,1);}}
 function burst(x,y,col){for(var i=0;i<10;i++)sparks.push({x:x,y:y,c:col,
  vx:(Math.random()-0.5)*260,vy:-Math.random()*260-40,t:performance.now()});}
 function shade(hex,f){hex=hex.replace("#","");
@@ -496,6 +502,8 @@ function render(){requestAnimationFrame(render);
     ctx.fillRect(q[0]*TS+cc*8,q[1]*TS+rr*8,8,8);}}
   else{ctx.fillStyle=ROOMTINT[q[4]]||"#54381f";
    ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}}
+ ctx.fillStyle="rgba(0,0,0,0.5)";
+ for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  if(grassCells)for(var gi=0;gi<grassCells.length;gi++){var idx=grassCells[gi];
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
