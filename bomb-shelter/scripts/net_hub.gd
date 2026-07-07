@@ -585,10 +585,10 @@ function render(){requestAnimationFrame(render);
  // checkered border, with the winners' podium on the floor.
  for(var i=0;i<ROOMS.length;i++){var q=ROOMS[i];
   if(q[4]===5){var frx=q[0]*TS,fry=q[1]*TS,frw=q[2]*TS,frh=q[3]*TS;
-   ctx.fillStyle="#c9ecec";ctx.fillRect(frx,fry,frw,frh);
+   ctx.fillStyle="#553f4d";ctx.fillRect(frx,fry,frw,frh);
    var nc=Math.round(frw/8),nr2=Math.round(frh/8);
    for(var rr=0;rr<nr2;rr++)for(var cc=0;cc<nc;cc++){
-    if(rr>0&&rr<nr2-1&&cc>0&&cc<nc-1)continue;
+    if(rr>1&&rr<nr2-2&&cc>1&&cc<nc-2)continue;
     ctx.fillStyle=((rr+cc)%2===0)?"#f0f0f0":"#1a1a1e";
     ctx.fillRect(frx+cc*8,fry+rr*8,8,8);}
    var pcx=frx+frw/2,pbase=fry+frh;

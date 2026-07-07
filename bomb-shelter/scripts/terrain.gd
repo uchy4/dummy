@@ -277,7 +277,7 @@ func _generate() -> void:
 func _build_bunker() -> void:
 	bunker_rooms = {}
 	var top := 24
-	var room_h := 6
+	var room_h := 4
 	# The homestead spawns on a random side of the map with jitter, so the
 	# outhouse is somewhere new every match (rng is seeded per run).
 	var bx := rng.randi_range(3, 8)
@@ -299,7 +299,7 @@ func _build_bunker() -> void:
 
 	# The arsenal one level below: the props layer racks guns on its walls
 	# that misfire when a blast rattles them.
-	var pen_top := top + 7
+	var pen_top := top + room_h + 1
 	var ars_x := maxi(bx - rng.randi_range(0, 2), 3)
 	if bx > 40:
 		ars_x = bx + 1  # right-side homestead: arsenal stays clear of the shelter
@@ -331,7 +331,7 @@ func _build_bunker() -> void:
 		var r: Rect2i = bunker_rooms[order[i]]
 		walls.append(r.end.x)
 	for wall_x in walls:
-		for y in range(top + 3, top + room_h):
+		for y in range(top + room_h - 3, top + room_h):
 			if _gget(wall_x, y) != Cell.BEDROCK:
 				_gset(wall_x, y, Cell.EMPTY)
 
@@ -349,9 +349,9 @@ func _build_bunker() -> void:
 	for hx in range(hole_x, hole_x + 2):
 		_gset(hx, top + room_h, Cell.EMPTY)
 	var step_x := ars_r.end.x - 1
-	_gset(step_x, pen_top + 4, Cell.STONE)
-	_gset(step_x, pen_top + 5, Cell.STONE)
-	_gset(step_x - 1, pen_top + 5, Cell.STONE)
+	_gset(step_x, pen_top + room_h - 2, Cell.STONE)
+	_gset(step_x, pen_top + room_h - 1, Cell.STONE)
+	_gset(step_x - 1, pen_top + room_h - 1, Cell.STONE)
 
 	# Protect the whole complex from random generation: caves, shafts and
 	# tunnels must never open pits into (or under) the bunker.

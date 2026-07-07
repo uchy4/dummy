@@ -150,14 +150,15 @@ func _draw_bedroom(r: Rect2) -> void:
 
 
 func _draw_bathroom(r: Rect2) -> void:
-	# Aqua ceramic tile.
+	# Aqua ceramic tile. Grout lines stay strictly inside the room — lines on
+	# the exact edges read as a pale border around the whole room.
 	draw_rect(r, Color("dcebec"))
-	var x := r.position.x
-	while x <= r.end.x:
+	var x := r.position.x + 8.0
+	while x < r.end.x - 0.5:
 		draw_line(Vector2(x, r.position.y), Vector2(x, r.end.y), Color("b8d2d4"), 1.0)
 		x += 8.0
-	var y := r.position.y
-	while y <= r.end.y:
+	var y := r.position.y + 8.0
+	while y < r.end.y - 0.5:
 		draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), Color("b8d2d4"), 1.0)
 		y += 8.0
 	# Mirror.
@@ -211,17 +212,19 @@ static func podium_steps(r: Rect2) -> Array[Rect2]:
 		Rect2(cx + 14, base - 12, 24, 12)]
 
 
-## The finish hall: pale cyan walls inside a black-and-white checkered
-## border, with a big gold/silver/bronze podium on the floor.
+## The finish hall: deep-slate purple walls (matching the bottom stratum)
+## inside a two-row black-and-white checkered border, with a big
+## gold/silver/bronze podium on the floor.
 func _draw_finish(r: Rect2) -> void:
-	draw_rect(r, Color("c9ecec"))
-	# Checkered border ring, one 8px checker band thick, all four edges.
+	draw_rect(r, Color("553f4d"))
+	# Checkered border ring, TWO 8px checker rows thick, so the border reads
+	# as a real alternating checkerboard on all four edges.
 	var sq := 8.0
 	var cols := int(round(r.size.x / sq))
 	var rows := int(round(r.size.y / sq))
 	for col in cols:
 		for row in rows:
-			if col > 0 and col < cols - 1 and row > 0 and row < rows - 1:
+			if col > 1 and col < cols - 2 and row > 1 and row < rows - 2:
 				continue
 			var c := Color(0.94, 0.94, 0.94) if (row + col) % 2 == 0 \
 				else Color(0.1, 0.1, 0.12)
