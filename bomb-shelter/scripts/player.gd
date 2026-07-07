@@ -144,6 +144,24 @@ func on_ground() -> bool:
 	return puppet_on_floor if puppet else is_on_floor()
 
 
+## Stair assist: walking into a ledge up to one tile tall climbs it without
+## a jump — any 1-block-per-1-block staircase (a 45-degree slope in block
+## terms) is simply walkable. Taller faces still need a hop.
+func _try_step_up(dir: float) -> void:
+	if absf(dir) < 0.2 or not is_on_floor():
+		return
+	var fwd := Vector2(signf(dir) * 5.0, 0)
+	if not test_move(global_transform, fwd):
+		return  # path ahead is clear: nothing to climb
+	var up := Vector2(0, -(Terrain.TILE + 2.0))
+	if test_move(global_transform, up):
+		return  # ceiling right overhead: no room to step
+	if test_move(global_transform.translated(up), fwd):
+		return  # still a wall at step height: taller than one tile
+	global_position += up + fwd * 0.5
+	velocity.y = 0.0
+
+
 func _physics_process(delta: float) -> void:
 	if puppet:
 		return
@@ -244,6 +262,8 @@ func _physics_process(delta: float) -> void:
 
 	_fall_speed = velocity.y
 	move_and_slide()
+	if not was_stunned:
+		_try_step_up(dir)
 
 	# Landing: was airborne, now grounded, was falling with real speed.
 	if is_on_floor() and not _was_on_floor and _fall_speed > 220.0:

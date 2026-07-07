@@ -368,14 +368,27 @@ document.getElementById("fs").addEventListener("click",function(){
   else goFS();
  }catch(err){}});
 setInterval(send,2000);
-function buildTerrain(){off=document.createElement("canvas");off.width=W;off.height=H;
+// Offscreen pixels per cell: room to round corners (radius 3 = 6 world px).
+var PXC=8;
+function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
+// (Re)paint one cell: deterministic light/dark speckle + rounded corners
+// wherever both adjacent sides are open — matches the native tile bevels.
+function paintCell(r,c){var i=r*W+c,v=grid[i];
+ octx.clearRect(c*PXC,r*PXC,PXC,PXC);
+ if(!v||v===4)return;// water renders live each frame with a waterline
+ var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
+ octx.fillStyle=(hh%100<30)?CELL2[dv]:CELL[dv];
+ var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
+ var rd=3,rads=[up&&lf?rd:0,up&&rt?rd:0,dn&&rt?rd:0,dn&&lf?rd:0];
+ octx.beginPath();
+ if(octx.roundRect)octx.roundRect(c*PXC,r*PXC,PXC,PXC,rads);
+ else octx.rect(c*PXC,r*PXC,PXC,PXC);
+ octx.fill();}
+function buildTerrain(){off=document.createElement("canvas");off.width=W*PXC;off.height=H*PXC;
  octx=off.getContext("2d");grassCells=[];
- for(var r=0;r<H;r++)for(var c=0;c<W;c++){var v=grid[r*W+c];if(!v||v===4)continue;
-  // Grass blocks are dirt-bodied; a thin green cap is drawn on top at render.
-  // Water (4) is skipped: it renders live each frame with a waterline.
-  var dv=(v===3)?1:v;
-  octx.fillStyle=(Math.random()<0.3)?CELL2[dv]:CELL[dv];octx.fillRect(c,r,1,1);
-  if(v===3)grassCells.push(r*W+c);}}
+ // Grass blocks are dirt-bodied; a thin green cap is drawn on top at render.
+ for(var r=0;r<H;r++)for(var c=0;c<W;c++){paintCell(r,c);
+  if(grid[r*W+c]===3)grassCells.push(r*W+c);}}
 function carve(x,y,rad){if(!grid)return;
  // Well pipe: segments in the blast core break clean off (gray metal
  // sparks); near misses scorch survivors to the carved-earth brown.
@@ -396,7 +409,10 @@ function carve(x,y,rad){if(!grid)return;
   for(var ri=0;ri<ROOMS.length;ri++){var q=ROOMS[ri];
    if(c>=q[0]&&c<q[0]+q[2]&&r>=q[1]&&r<q[1]+q[3]){SCORCH[r*W+c]=1;break;}}
   var v=grid[r*W+c];if(v===0||v===2)continue;
-  grid[r*W+c]=0;octx.clearRect(c,r,1,1);}}
+  grid[r*W+c]=0;}
+ // Repaint the survivors ringing the hole so their corners re-round.
+ for(var r=r0-rr-1;r<=r0+rr+1;r++)for(var c=c0-rr-1;c<=c0+rr+1;c++){
+  if(r<0||r>=H||c<0||c>=W)continue;paintCell(r,c);}}
 function burst(x,y,col){for(var i=0;i<10;i++)sparks.push({x:x,y:y,c:col,
  vx:(Math.random()-0.5)*260,vy:-Math.random()*260-40,t:performance.now()});}
 // Cosmetic death ragdolls, simulated locally: six body parts flung with the
@@ -466,6 +482,9 @@ function predict(dt){if(dt>0.05)dt=0.05;
   prevJ=JHELD;
   var nx=PX+VX*sdt;
   if(!solidBox(nx,PY))PX=nx;
+  // Stair assist (parity with the native player): a one-tile ledge is
+  // walkable — lift over it instead of stopping, taller still blocks.
+  else if(onG&&Math.abs(dir)>0.2&&!solidBox(PX,PY-17)&&!solidBox(nx,PY-17)){PY-=17;PX=nx;}
   else{var sx=VX>0?1:-1;while(!solidBox(PX+sx,PY)&&(nx-PX)*sx>0)PX+=sx;VX=0;}
   var ny=PY+VY*sdt;
   if(!solidBox(PX,ny))PY=ny;
@@ -609,7 +628,7 @@ function render(){requestAnimationFrame(render);
     ctx.fillRect(hx,q[1]*TS,Math.min(8,(q[0]+q[2])*TS-hx),5);}}}}
  ctx.fillStyle="rgba(43,26,12,0.9)";
  for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
- ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
+ ctx.drawImage(off,0,0,W*PXC,H*PXC,0,0,W*TS,H*TS);
  // Well pipe: cutaway art from the pump down to the reservoir.
  if(PIPE){var px2=(PIPE[0]+0.5)*TS;
   for(var prw=PIPE[1];prw<=PIPE[2];prw++){if(PIPEBRK[prw])continue;

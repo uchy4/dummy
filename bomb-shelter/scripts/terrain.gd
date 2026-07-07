@@ -108,8 +108,15 @@ func load_from_string(s: String) -> void:
 
 # ---------------------------------------------------------------- tileset ---
 
+## Corner rounding radius (px): any solid cell whose two adjacent sides are
+## both open gets that corner rounded — visually AND in its collision
+## polygon, so physics follows the curve.
+const BEVEL_R := 6.0
+
 func _build_tileset() -> void:
-	var img := Image.create(TILE * 12, TILE, false, Image.FORMAT_RGBA8)
+	# 12 materials wide x 16 corner-mask rows tall. Row = mask, bits:
+	# 1 = NW, 2 = NE, 4 = SE, 8 = SW rounded. Water keeps row 0 only.
+	var img := Image.create(TILE * 12, TILE * 16, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -136,6 +143,19 @@ func _build_tileset() -> void:
 		for x in TILE:
 			img.set_pixel(Tile.WATER_TOP * TILE + x, y, WATER_COLOR)
 
+	# Replicate each base tile down the 15 masked rows, erasing a rounded
+	# quarter-circle of pixels at every masked corner.
+	for mask in range(1, 16):
+		for mat in 12:
+			if mat == Tile.WATER or mat == Tile.WATER_TOP:
+				continue
+			for y in TILE:
+				for x in TILE:
+					var col := img.get_pixel(mat * TILE + x, y)
+					if _corner_cut(mask, x, y):
+						col = Color(0, 0, 0, 0)
+					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
+
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
 	src.texture_region_size = Vector2i(TILE, TILE)
@@ -146,19 +166,66 @@ func _build_tileset() -> void:
 	ts.set_physics_layer_collision_layer(0, 1)
 	_src_id = ts.add_source(src)
 
-	var h := TILE / 2.0
-	var square := PackedVector2Array([
-		Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h),
-	])
 	for i in 12:
-		src.create_tile(Vector2i(i, 0))
-		if i == Tile.WATER or i == Tile.WATER_TOP:
-			continue  # water is swim-through: no collision polygon
-		var td := src.get_tile_data(Vector2i(i, 0), 0)
-		td.add_collision_polygon(0)
-		td.set_collision_polygon_points(0, 0, square)
+		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 16
+		for mask in variants:
+			src.create_tile(Vector2i(i, mask))
+			if i == Tile.WATER or i == Tile.WATER_TOP:
+				continue  # water is swim-through: no collision polygon
+			var td := src.get_tile_data(Vector2i(i, mask), 0)
+			td.add_collision_polygon(0)
+			td.set_collision_polygon_points(0, 0, _corner_poly(mask))
 
 	tile_set = ts
+
+
+## True when pixel (x, y) of a tile falls outside the rounded corner arc
+## for any corner set in `mask` (bits: 1 NW, 2 NE, 4 SE, 8 SW).
+func _corner_cut(mask: int, x: int, y: int) -> bool:
+	var r := BEVEL_R
+	var fx := float(x) + 0.5
+	var fy := float(y) + 0.5
+	var t := float(TILE)
+	if mask & 1 and fx < r and fy < r \
+			and Vector2(fx, fy).distance_to(Vector2(r, r)) > r:
+		return true
+	if mask & 2 and fx > t - r and fy < r \
+			and Vector2(fx, fy).distance_to(Vector2(t - r, r)) > r:
+		return true
+	if mask & 4 and fx > t - r and fy > t - r \
+			and Vector2(fx, fy).distance_to(Vector2(t - r, t - r)) > r:
+		return true
+	if mask & 8 and fx < r and fy > t - r \
+			and Vector2(fx, fy).distance_to(Vector2(r, t - r)) > r:
+		return true
+	return false
+
+
+## Collision outline matching the drawn tile: the unit square with every
+## masked corner replaced by a 3-point arc — physics follows the curve.
+func _corner_poly(mask: int) -> PackedVector2Array:
+	var h := TILE / 2.0
+	var r := BEVEL_R
+	var pts := PackedVector2Array()
+	# Perimeter clockwise from top-left: NW (bit 1), NE (2), SE (4), SW (8).
+	var defs := [[1, -1.0, -1.0], [2, 1.0, -1.0], [4, 1.0, 1.0], [8, -1.0, 1.0]]
+	for d: Array in defs:
+		var bit: int = d[0]
+		var sx: float = d[1]
+		var sy: float = d[2]
+		if mask & bit == 0:
+			pts.append(Vector2(sx * h, sy * h))
+			continue
+		var e1 := Vector2(sx * h, sy * (h - r))       # point on the vertical edge
+		var e2 := Vector2(sx * (h - r), sy * h)       # point on the horizontal edge
+		if bit == 2 or bit == 8:
+			var tmp := e1  # NE/SW are entered along the horizontal edge first
+			e1 = e2
+			e2 = tmp
+		pts.append(e1)
+		pts.append(Vector2(sx * (h - r), sy * (h - r)) + Vector2(sx, sy) * (r * 0.7071))
+		pts.append(e2)
+	return pts
 
 
 func _fill_tile(img: Image, index: int, base: Color, speck: Color, chance: float) -> void:
@@ -554,25 +621,70 @@ func _nearest(points: Array[Vector2i], to: Vector2i) -> Vector2i:
 func _paint_all() -> void:
 	for y in H:
 		for x in W:
-			var t := -1
-			match _gget(x, y):
-				Cell.GRASS:
-					t = Tile.GRASS
-				Cell.BEDROCK:
-					t = Tile.BEDROCK
-				Cell.WATER:
-					t = Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
+			_paint_cell(x, y)
+
+
+## A side counts as open (corner can round toward it) when it's empty OR
+## water — water swapping with air then never changes solid cells' masks,
+## so the fluid sim doesn't cause repaint churn.
+func _side_open(x: int, y: int) -> bool:
+	var cv := _gget(x, y)
+	return cv == Cell.EMPTY or cv == Cell.WATER
+
+
+## Corner-rounding mask for a solid cell: a corner rounds when BOTH of its
+## adjacent sides are open. Bits: 1 NW, 2 NE, 4 SE, 8 SW.
+func _tile_mask(x: int, y: int) -> int:
+	var up := _side_open(x, y - 1)
+	var dn := _side_open(x, y + 1)
+	var lf := _side_open(x - 1, y)
+	var rt := _side_open(x + 1, y)
+	var m := 0
+	if up and lf:
+		m |= 1
+	if up and rt:
+		m |= 2
+	if dn and rt:
+		m |= 4
+	if dn and lf:
+		m |= 8
+	return m
+
+
+## Position-hashed light/dark variant pick: deterministic, so repainting a
+## cell (mask changes after a nearby carve) never re-rolls its speckle.
+func _variant_dark(x: int, y: int, chance: float) -> bool:
+	return float(hash(Vector2i(x, y)) % 1000) / 1000.0 < chance
+
+
+## (Re)paint one cell from the grid: tile, light/dark variant and corner
+## mask. Safe to call any time — carve repaints a ring of neighbors so
+## their corners update too.
+func _paint_cell(x: int, y: int) -> void:
+	var cv := _gget(x, y)
+	match cv:
+		Cell.EMPTY:
+			erase_cell(Vector2i(x, y))
+		Cell.WATER:
+			if not _transit.has(y * W + x):  # in-flight water stays a droplet
+				_paint_water_cell(x, y)
+		Cell.GRASS:
+			set_cell(Vector2i(x, y), _src_id, Vector2i(Tile.GRASS, _tile_mask(x, y)))
+		Cell.BEDROCK:
+			set_cell(Vector2i(x, y), _src_id, Vector2i(Tile.BEDROCK, _tile_mask(x, y)))
+		_:
+			var t := Tile.DIRT
+			match cv:
 				Cell.CLAY:
-					t = Tile.CLAY_DARK if rng.randf() < 0.35 else Tile.CLAY
+					t = Tile.CLAY_DARK if _variant_dark(x, y, 0.35) else Tile.CLAY
 				Cell.STONE:
-					t = Tile.STONE_DARK if rng.randf() < 0.35 else Tile.STONE
+					t = Tile.STONE_DARK if _variant_dark(x, y, 0.35) else Tile.STONE
 				Cell.DEEP:
-					t = Tile.DEEP_DARK if rng.randf() < 0.35 else Tile.DEEP
+					t = Tile.DEEP_DARK if _variant_dark(x, y, 0.35) else Tile.DEEP
 				Cell.DIRT:
 					var dark_chance := remap(float(y), SURFACE_ROW, H, 0.1, 0.55)
-					t = Tile.DIRT_DARK if rng.randf() < dark_chance else Tile.DIRT
-			if t >= 0:
-				set_cell(Vector2i(x, y), _src_id, Vector2i(t, 0))
+					t = Tile.DIRT_DARK if _variant_dark(x, y, dark_chance) else Tile.DIRT
+			set_cell(Vector2i(x, y), _src_id, Vector2i(t, _tile_mask(x, y)))
 
 
 # ------------------------------------------------------------- destruction ---
@@ -850,6 +962,8 @@ func _paint_water_cell(x: int, y: int) -> void:
 
 
 ## Blow a circular hole (world-space position and radius). Bedrock survives.
+## Survivors around the hole repaint so their rounded corners follow the
+## new outline.
 func carve_circle(world_pos: Vector2, radius: float) -> void:
 	carved.emit(world_pos, radius)
 	var c := local_to_map(to_local(world_pos))
@@ -861,6 +975,10 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) <= radius:
 				_gset(x, y, Cell.EMPTY)
 				erase_cell(Vector2i(x, y))
+	for y in range(maxi(c.y - r - 1, 0), mini(c.y + r + 2, H)):
+		for x in range(maxi(c.x - r - 1, 0), mini(c.x + r + 2, W)):
+			if _gget(x, y) != Cell.EMPTY:
+				_paint_cell(x, y)
 
 
 # ----------------------------------------------------------------- queries ---
