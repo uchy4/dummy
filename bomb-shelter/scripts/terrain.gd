@@ -32,9 +32,10 @@ const DEEP_TOP := 90
 ## Emitted for every blast so web clients can mirror the destruction.
 signal carved(world_pos: Vector2, radius: float)
 
-## Emitted each water tick with the cells that flowed: [[from_idx, to_idx]].
-## Clients replay these to keep their grids identical.
-signal water_moved(moves: Array)
+## Emitted each water tick: `moves` are traveling drops ([[from, to]], with
+## to = -1 when a looping drop evaporates), `eq` are settled-pool level
+## shifts. Clients replay both to keep their grids identical.
+signal water_moved(moves: Array, eq: Array)
 
 const WATER_TICK := 0.1     ## seconds between fluid steps
 const WATER_MAX_MOVES := 600
@@ -61,7 +62,9 @@ var _gen_guard := Rect2i()
 var _grid := PackedByteArray()
 var _src_id := 0
 var _water_acc := 0.0
-var _flow_dir := {}  ## water cell index -> current flow heading (-1 / +1)
+var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
+var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
+var _drop_trail := {} ## per-drop visited cells: revisiting one = loop = evaporate
 
 
 ## Client mode: no generation — the grid arrives from the host over the
@@ -503,6 +506,7 @@ func _process(delta: float) -> void:
 ## Settled water is perfectly still and costs no bandwidth.
 func _tick_water() -> void:
 	var moves := []
+	var new_transit := {}
 	# Bottom-up scan: lower water settles first, columns compact naturally.
 	for idx in range(_grid.size() - W - 1, W, -1):
 		if _grid[idx] != Cell.WATER:
@@ -552,19 +556,47 @@ func _tick_water() -> void:
 				_flow_dir.erase(idx)
 				continue
 		_flow_dir.erase(idx)
+		var trail: Dictionary = _drop_trail.get(idx, {})
+		_drop_trail.erase(idx)
+		_grid[idx] = Cell.EMPTY
+		erase_cell(Vector2i(x, y))
+		_paint_water_cell(x, y + 1)  # the cell under us may surface
+		if trail.has(to) or trail.size() > 48:
+			# Been here before: it's looping with nowhere left to settle.
+			# The drop evaporates.
+			moves.append([idx, -1])
+			continue
+		trail[idx] = true
+		_drop_trail[to] = trail
 		if d != 0:
 			_flow_dir[to] = d
-		_grid[idx] = Cell.EMPTY
 		_grid[to] = Cell.WATER
-		erase_cell(Vector2i(x, y))
-		_repaint_water_around(idx, to)
+		new_transit[to] = true
+		erase_cell(Vector2i(to % W, to / W))  # in flight: droplet, not a tile
 		moves.append([idx, to])
 		if moves.size() >= WATER_MAX_MOVES:
 			break
+	var eq := []
 	if moves.size() < WATER_MAX_MOVES:
-		_equalize_bodies(moves)
-	if not moves.is_empty():
-		water_moved.emit(moves)
+		_equalize_bodies(eq)
+	_settle_transit(new_transit)
+	if not moves.is_empty() or not eq.is_empty():
+		water_moved.emit(moves, eq)
+	queue_redraw()
+
+
+## Cells that were flying last tick but didn't move this tick have landed:
+## give them their block tile back and forget their trails.
+func _settle_transit(new_transit: Dictionary) -> void:
+	for tkey in _transit:
+		var i := int(tkey)
+		if new_transit.has(i):
+			continue
+		_drop_trail.erase(i)
+		if _grid[i] == Cell.WATER:
+			_paint_water_cell(i % W, i / W)
+			_paint_water_cell(i % W, i / W + 1)
+	_transit = new_transit
 
 
 ## Communicating vessels: each connected body of water acts as ONE entity.
@@ -626,9 +658,25 @@ func _equalize_bodies(moves: Array) -> void:
 				return
 
 
-## Client mirror of _tick_water: replay the host's flow verbatim.
-func apply_water_moves(moves: Array) -> void:
+## Client mirror of _tick_water: replay the host's flow verbatim, drawing
+## traveling drops as droplets and settled shifts as tiles.
+func apply_water_moves(moves: Array, eq: Array = []) -> void:
+	var new_transit := {}
 	for mv in moves:
+		var pair: Array = mv
+		if pair.size() < 2:
+			continue
+		var f := int(pair[0])
+		var t := int(pair[1])
+		if f >= 0 and f < _grid.size():
+			_grid[f] = Cell.EMPTY
+			erase_cell(Vector2i(f % W, f / W))
+			_paint_water_cell(f % W, f / W + 1)
+		if t >= 0 and t < _grid.size():
+			_grid[t] = Cell.WATER
+			new_transit[t] = true
+			erase_cell(Vector2i(t % W, t / W))
+	for mv in eq:
 		var pair: Array = mv
 		if pair.size() < 2:
 			continue
@@ -640,6 +688,19 @@ func apply_water_moves(moves: Array) -> void:
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
 			_repaint_water_around(f, t)
+	_settle_transit(new_transit)
+	queue_redraw()
+
+
+## Traveling water renders as droplet particles instead of blocks.
+func _draw() -> void:
+	for tkey in _transit:
+		var i := int(tkey)
+		if i < 0 or i >= _grid.size() or _grid[i] != Cell.WATER:
+			continue
+		var p := Vector2((i % W) * TILE + TILE * 0.5, (i / W) * TILE + TILE * 0.5)
+		draw_circle(p, 5.0, WATER_COLOR)
+		draw_circle(p + Vector2(-1.6, -1.6), 1.7, Color(0.8, 0.92, 1.0, 0.5))
 
 
 ## Repaint a moved drop and its vertical neighbors: covered water uses the

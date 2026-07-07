@@ -69,8 +69,8 @@ func _ready() -> void:
 	terrain.name = "Terrain"
 	world.add_child(terrain)  # generates in _ready
 	terrain.carved.connect(_on_carved)
-	terrain.water_moved.connect(func(moves: Array) -> void:
-		NetHub.broadcast({"t": "w", "m": moves}))
+	terrain.water_moved.connect(func(moves: Array, eq: Array) -> void:
+		NetHub.broadcast({"t": "w", "m": moves, "q": eq}))
 	# Fresh match, fresh map: every web viewer needs the new terrain.
 	for id in NetHub.clients:
 		if NetHub.clients[id].joined:

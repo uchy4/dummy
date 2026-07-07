@@ -58,23 +58,13 @@ func _draw() -> void:
 	if terrain.finish_room.size.x > 0:
 		_draw_finish(_px(terrain.finish_room))
 	# Blast scars: wallpaper squares caught in an explosion darken 90%
-	# toward the surrounding stratum's dark block color.
+	# toward the carved-earth backdrop color — the same extra-dark brown
+	# you see where the ground has been blown away.
+	var scar := Color("2b1a0c")
+	scar.a = 0.9
 	for k in _scorch:
 		var cell: Vector2i = _scorch[k]
-		draw_rect(Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE),
-			_scorch_color(cell.y))
-
-
-func _scorch_color(y: int) -> Color:
-	var c := Color("5c3d22")  # dirt dark
-	if y >= Terrain.DEEP_TOP:
-		c = Color("41303b")
-	elif y >= Terrain.STONE_TOP:
-		c = Color("575f6a")
-	elif y >= Terrain.CLAY_TOP:
-		c = Color("8a4f2e")
-	c.a = 0.9
-	return c
+		draw_rect(Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE), scar)
 
 
 ## Mark every wallpaper square inside the blast circle as scorched.

@@ -129,7 +129,7 @@ var opts=[],selKey=null,cycleIdx=0;
 var CELL=["","#7a5230","#4b4b55","#4caf50","#2e6bc9","#a5623b","#6e7681","#553f4d"];
 var CELL2=["","#5c3d22","#3a3a44","#3f9143","#2a60b5","#874e2e","#59616b","#42313c"];
 var ROOMS=[];var ROOMTINT=["#54381f","#e4d3ac","#aebccd","#dcebec","#6d4826"];
-var SCORCH={};var PIPE=null;
+var SCORCH={};var PIPE=null;var WTRANS={};
 var grassCells=null;var anim={};
 // Locally-simulated bombs: velocity estimated from snapshots, integrated
 // with gravity + terrain every frame, error-corrected toward host truth.
@@ -195,13 +195,18 @@ function connect(){
    sp=sc;tp=tc;sc=m;tc=performance.now();reconcile();syncBombs(m);}
   else if(m.t==="carve"){carve(m.x,m.y,m.r);flashes.push({x:m.x,y:m.y,r:m.r,t:performance.now()});
    boom(Math.min(0.55,0.2+m.r/240));}
-  else if(m.t==="w"){if(grid)for(var i=0;i<m.m.length;i++){var f=m.m[i][0],t2=m.m[i][1];
-   if(f>=0&&f<grid.length)grid[f]=0;
-   if(t2>=0&&t2<grid.length)grid[t2]=4;}}
+  else if(m.t==="w"){if(grid){var nt={};
+   var mm=m.m||[];for(var i=0;i<mm.length;i++){var f=mm[i][0],t2=mm[i][1];
+    if(f>=0&&f<grid.length)grid[f]=0;
+    if(t2>=0&&t2<grid.length){grid[t2]=4;nt[t2]=1;}}
+   var qq=m.q||[];for(var i=0;i<qq.length;i++){var f=qq[i][0],t2=qq[i][1];
+    if(f>=0&&f<grid.length)grid[f]=0;
+    if(t2>=0&&t2<grid.length)grid[t2]=4;}
+   WTRANS=nt;}}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
    for(var i=0;i<m.grid.length;i++)grid[i]=m.grid.charCodeAt(i)-48;
-   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];SCORCH={};predOK=false;}
+   buildTerrain();sp=sc=null;flashes=[];sparks=[];win=null;anim={};bsim=[];SCORCH={};WTRANS={};predOK=false;}
   else if(m.t==="roster"){roster=m.p;updateBtn();}
   else if(m.t==="you"){you=m.i;updateBtn();}
   else if(m.t==="colors"){opts=m.opts;
@@ -502,9 +507,8 @@ function render(){requestAnimationFrame(render);
     ctx.fillRect(q[0]*TS+cc*8,q[1]*TS+rr*8,8,8);}}
   else{ctx.fillStyle=ROOMTINT[q[4]]||"#54381f";
    ctx.fillRect(q[0]*TS,q[1]*TS,q[2]*TS,q[3]*TS);}}
- for(var sk in SCORCH){var si=+sk,srw=(si/W)|0;
-  var scol=srw>=90?"65,48,59":srw>=65?"87,95,106":srw>=40?"138,79,46":"92,61,34";
-  ctx.fillStyle="rgba("+scol+",0.9)";ctx.fillRect((si%W)*TS,srw*TS,TS,TS);}
+ ctx.fillStyle="rgba(43,26,12,0.9)";
+ for(var sk in SCORCH){var si=+sk;ctx.fillRect((si%W)*TS,((si/W)|0)*TS,TS,TS);}
  ctx.drawImage(off,0,0,W,H,0,0,W*TS,H*TS);
  // Well pipe: cutaway art from the pump down to the reservoir.
  if(PIPE){var px2=(PIPE[0]+0.5)*TS;
@@ -518,7 +522,9 @@ function render(){requestAnimationFrame(render);
  // down so pools show a waterline.
  if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
-   var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS,wo=grid[wi-W]!==4?5:0;
+   var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS;
+   if(WTRANS[wi]){ctx.beginPath();ctx.arc(wx2+TS/2,wy2+TS/2,5,0,7);ctx.fill();continue;}
+   var wo=grid[wi-W]!==4?5:0;
    ctx.fillRect(wx2,wy2+wo,TS,TS-wo);}}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
