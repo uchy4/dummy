@@ -679,11 +679,25 @@ function render(){requestAnimationFrame(render);
  // Water: one flat translucent color, drawn live; surface cells start 5px
  // down so pools show a waterline.
  if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
+  // Water edges chamfer against truly empty air, like the terrain tiles.
+  var wem=function(rr3,cc3){return cc3>=0&&cc3<W&&rr3>=0&&rr3<H&&grid[rr3*W+cc3]===0;};
   for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
-   var wx2=(wi%W)*TS,wy2=((wi/W)|0)*TS;
+   var wc=wi%W,wr=(wi/W)|0,wx2=wc*TS,wy2=wr*TS;
    if(WTRANS[wi])continue;// in flight: rendered as splash sparks, not a block
    var wo=grid[wi-W]!==4?5:0;
-   ctx.fillRect(wx2,wy2+wo,TS,TS-wo);}}
+   var wu=wem(wr-1,wc),wd=wem(wr+1,wc),wl=wem(wr,wc-1),wrt=wem(wr,wc+1);
+   var nw=wu&&wl?6:0,ne=wu&&wrt?6:0,se=wd&&wrt?6:0,sw=wd&&wl?6:0;
+   var ty=wy2+wo,by2=wy2+TS;
+   if(!(nw||ne||se||sw)){ctx.fillRect(wx2,ty,TS,TS-wo);continue;}
+   ctx.beginPath();
+   ctx.moveTo(wx2+nw,ty);ctx.lineTo(wx2+TS-ne,ty);
+   if(ne)ctx.lineTo(wx2+TS,ty+ne);
+   ctx.lineTo(wx2+TS,by2-se);
+   if(se)ctx.lineTo(wx2+TS-se,by2);
+   ctx.lineTo(wx2+sw,by2);
+   if(sw)ctx.lineTo(wx2,by2-sw);
+   ctx.lineTo(wx2,ty+nw);
+   ctx.closePath();ctx.fill();}}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
   ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);

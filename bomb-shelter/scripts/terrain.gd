@@ -126,7 +126,8 @@ func _build_tileset() -> void:
 	# repeat them blast-scorched (x0.5 brightness), and rows 32-47 are the
 	# anti-bevel fills — JUST the chamfer triangles, painted into empty
 	# inside-corner cells so facing bevels join into one continuous slant.
-	# Water keeps row 0 only.
+	# Water gets the mask rows too (its corners chamfer against empty air)
+	# but never scorches, fills, or collides.
 	var img := Image.create(TILE * 12, TILE * 48, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
@@ -158,8 +159,6 @@ func _build_tileset() -> void:
 	# triangle of pixels at every masked corner.
 	for mask in range(1, 16):
 		for mat in 12:
-			if mat == Tile.WATER or mat == Tile.WATER_TOP:
-				continue
 			for y in TILE:
 				for x in TILE:
 					var col := img.get_pixel(mat * TILE + x, y)
@@ -194,13 +193,12 @@ func _build_tileset() -> void:
 	_src_id = ts.add_source(src)
 
 	for i in 12:
-		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 48
+		var water := i == Tile.WATER or i == Tile.WATER_TOP
+		var variants := 16 if water else 48
 		for v in variants:
 			src.create_tile(Vector2i(i, v))
-			if i == Tile.WATER or i == Tile.WATER_TOP:
-				continue  # water is swim-through: no collision polygon
-			if v >= 32:
-				continue  # anti-bevel fills are decorative: no collision
+			if water or v >= 32:
+				continue  # water is swim-through; fills are decorative
 			var td := src.get_tile_data(Vector2i(i, v), 0)
 			td.add_collision_polygon(0)
 			td.set_collision_polygon_points(0, 0, _corner_poly(v % 16))
@@ -873,6 +871,7 @@ func _tick_water() -> void:
 		_grid[idx] = Cell.EMPTY
 		_paint_cell(x, y)  # erases — or paints anti-bevel fills if cornered
 		_paint_water_cell(x, y + 1)  # the cell under us may surface
+		_repaint_water_nb(x, y)  # side neighbors' chamfers may change
 		if trail.has(to) or trail.size() > 48:
 			# Been here before: it's looping with nowhere left to settle.
 			# The drop evaporates.
@@ -901,7 +900,9 @@ func _tick_water() -> void:
 ## Cells that were flying last tick but didn't move this tick have landed:
 ## give them their block tile back and forget their trails.
 func _settle_transit(new_transit: Dictionary) -> void:
-	for tkey in _transit:
+	var old := _transit
+	_transit = new_transit  # swap first: _paint_water_cell skips transit
+	for tkey in old:
 		var i := int(tkey)
 		if new_transit.has(i):
 			continue
@@ -909,7 +910,7 @@ func _settle_transit(new_transit: Dictionary) -> void:
 		if _grid[i] == Cell.WATER:
 			_paint_water_cell(i % W, i / W)
 			_paint_water_cell(i % W, i / W + 1)
-	_transit = new_transit
+			_repaint_water_nb(i % W, i / W)
 
 
 ## Communicating vessels: each connected body of water acts as ONE entity.
@@ -961,6 +962,8 @@ func _equalize_bodies(moves: Array) -> void:
 			_paint_cell(hi_x, hi_y)
 			_flow_dir.erase(src)
 			_repaint_water_around(src, dst)
+			_repaint_water_nb(hi_x, hi_y)
+			_repaint_water_nb(lo_x, lo_y - 1)
 			moves.append([src, dst])
 			if _gget(hi_x, hi_y + 1) == Cell.WATER:
 				tops[hi_x] = hi_y + 1
@@ -985,6 +988,7 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 			_grid[f] = Cell.EMPTY
 			_paint_cell(f % W, f / W)
 			_paint_water_cell(f % W, f / W + 1)
+			_repaint_water_nb(f % W, f / W)
 			_splash(f, t)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
@@ -999,9 +1003,11 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 		if f >= 0 and f < _grid.size():
 			_grid[f] = Cell.EMPTY
 			_paint_cell(f % W, f / W)
+			_repaint_water_nb(f % W, f / W)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
 			_repaint_water_around(f, t)
+			_repaint_water_nb(t % W, t / W)
 	_settle_transit(new_transit)
 	queue_redraw()
 
@@ -1025,10 +1031,38 @@ func _repaint_water_around(from_idx: int, to_idx: int) -> void:
 
 
 func _paint_water_cell(x: int, y: int) -> void:
-	if _gget(x, y) != Cell.WATER:
+	if _gget(x, y) != Cell.WATER or _transit.has(y * W + x):
 		return
 	var t := Tile.WATER if _gget(x, y - 1) == Cell.WATER else Tile.WATER_TOP
-	set_cell(Vector2i(x, y), _src_id, Vector2i(t, 0))
+	set_cell(Vector2i(x, y), _src_id, Vector2i(t, _water_mask(x, y)))
+
+
+## Water chamfers only against truly empty air — adjacent water is the
+## same body and solid ground is the pool's basin.
+func _water_mask(x: int, y: int) -> int:
+	var up := _gget(x, y - 1) == Cell.EMPTY
+	var dn := _gget(x, y + 1) == Cell.EMPTY
+	var lf := _gget(x - 1, y) == Cell.EMPTY
+	var rt := _gget(x + 1, y) == Cell.EMPTY
+	var m := 0
+	if up and lf:
+		m |= 1
+	if up and rt:
+		m |= 2
+	if dn and rt:
+		m |= 4
+	if dn and lf:
+		m |= 8
+	return m
+
+
+## Repaint any settled water among a changed cell's four neighbors — their
+## corner chamfers depend on what sits beside them.
+func _repaint_water_nb(x: int, y: int) -> void:
+	_paint_water_cell(x - 1, y)
+	_paint_water_cell(x + 1, y)
+	_paint_water_cell(x, y - 1)
+	_paint_water_cell(x, y + 1)
 
 
 ## Blow a circular hole (world-space position and radius). Bedrock survives.
