@@ -235,11 +235,11 @@ function connect(){
       y:fy2+(Math.random()-0.5)*8,c:"#7fd4ff",
       vx:ddx/dl*95+(Math.random()-0.5)*60,vy:ddy/dl*95-Math.random()*40,
       t:performance.now()});}
-    if(f>=0&&f<grid.length)grid[f]=0;
-    if(t2>=0&&t2<grid.length){grid[t2]=4;nt[t2]=1;}}
+    if(f>=0&&f<grid.length){grid[f]=0;paintCell((f/W)|0,f%W);}
+    if(t2>=0&&t2<grid.length){grid[t2]=4;nt[t2]=1;paintCell((t2/W)|0,t2%W);}}
    var qq=m.q||[];for(var i=0;i<qq.length;i++){var f=qq[i][0],t2=qq[i][1];
-    if(f>=0&&f<grid.length)grid[f]=0;
-    if(t2>=0&&t2<grid.length)grid[t2]=4;}
+    if(f>=0&&f<grid.length){grid[f]=0;paintCell((f/W)|0,f%W);}
+    if(t2>=0&&t2<grid.length){grid[t2]=4;paintCell((t2/W)|0,t2%W);}}
    WTRANS=nt;}}
   else if(m.t==="init"){W=m.w;H=m.h;TS=m.ts;SURF=m.surf;FIN=m.fin;ROOMS=m.rooms||[];PIPE=m.pipe||null;
    grid=new Uint8Array(m.grid.length);
@@ -372,15 +372,34 @@ setInterval(send,2000);
 var PXC=8;var TSCORCH={};
 function openC(r,c){if(r<0||r>=H||c<0||c>=W)return false;var v=grid[r*W+c];return v===0||v===4;}
 // (Re)paint one cell: deterministic light/dark speckle, blast-scorch
-// darkening, and 45-degree chamfered corners wherever both adjacent sides
-// are open — matches the native tile bevels.
+// darkening (50%), 45-degree chamfered corners wherever both adjacent
+// sides are open, and anti-bevel fills in empty inside corners — matches
+// the native tiles.
 function paintCell(r,c){var i=r*W+c,v=grid[i];
  octx.clearRect(c*PXC,r*PXC,PXC,PXC);
- if(!v||v===4)return;// water renders live each frame with a waterline
+ if(v===4)return;// water renders live each frame with a waterline
+ if(!v){
+  // Anti-bevel: where two solid sides meet at a corner, fill the wedge so
+  // the neighbors' chamfers join into one continuous slant.
+  var fu=!openC(r-1,c),fd2=!openC(r+1,c),fl=!openC(r,c-1),fr2=!openC(r,c+1);
+  if(!((fu||fd2)&&(fl||fr2)))return;
+  var colFor=function(rr2,cc2){if(rr2<0||rr2>=H||cc2<0||cc2>=W)return CELL[2];
+   var vv=grid[rr2*W+cc2];vv=(vv===3)?1:vv;return CELL[vv]||CELL[1];};
+  var tri=function(a,b,c3){octx.beginPath();octx.moveTo(a[0],a[1]);
+   octx.lineTo(b[0],b[1]);octx.lineTo(c3[0],c3[1]);octx.closePath();octx.fill();};
+  var fb=3,fx3=c*PXC,fy3=r*PXC,fs=PXC;
+  if(fu&&fl){octx.fillStyle=colFor(r-1,c);
+   tri([fx3,fy3],[fx3+fb,fy3],[fx3,fy3+fb]);}
+  if(fu&&fr2){octx.fillStyle=colFor(r-1,c);
+   tri([fx3+fs,fy3],[fx3+fs,fy3+fb],[fx3+fs-fb,fy3]);}
+  if(fd2&&fr2){octx.fillStyle=colFor(r+1,c);
+   tri([fx3+fs,fy3+fs],[fx3+fs-fb,fy3+fs],[fx3+fs,fy3+fs-fb]);}
+  if(fd2&&fl){octx.fillStyle=colFor(r+1,c);
+   tri([fx3,fy3+fs],[fx3,fy3+fs-fb],[fx3+fb,fy3+fs]);}
+  return;}
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
  var col=(hh%100<30)?CELL2[dv]:CELL[dv];
- var lvl=TSCORCH[i]||0;
- octx.fillStyle=lvl?shade(col,1-0.25*lvl):col;
+ octx.fillStyle=TSCORCH[i]?shade(col,0.5):col;
  var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
  var bd=3,bnw=up&&lf?bd:0,bne=up&&rt?bd:0,bse=dn&&rt?bd:0,bsw=dn&&lf?bd:0;
  var bx=c*PXC,by=r*PXC,s=PXC;
@@ -419,16 +438,14 @@ function carve(x,y,rad){if(!grid)return;
    if(c>=q[0]&&c<q[0]+q[2]&&r>=q[1]&&r<q[1]+q[3]){SCORCH[r*W+c]=1;break;}}
   var v=grid[r*W+c];if(v===0||v===2)continue;
   grid[r*W+c]=0;}
- // Survivors the blast touched scorch darker the closer they were:
- // 75/50/25% darker in one-tile bands past the carve edge.
- var r3=rr+3;
+ // Survivors the blast touched (one tile past the carve edge) scorch to
+ // 50% brightness, permanently.
+ var r3=rr+1;
  for(var r=r0-r3;r<=r0+r3;r++)for(var c=c0-r3;c<=c0+r3;c++){
   if(r<0||r>=H||c<0||c>=W)continue;
   var v2=grid[r*W+c];if(v2===0||v2===4)continue;
-  var d=Math.hypot((c+0.5)*TS-x,(r+0.5)*TS-y),lvl=0;
-  if(d<=rad+TS)lvl=3;else if(d<=rad+TS*2)lvl=2;else if(d<=rad+TS*3)lvl=1;
-  if(lvl>(TSCORCH[r*W+c]||0))TSCORCH[r*W+c]=lvl;}
- // Repaint the touched region so chamfers and scorch levels update.
+  if(Math.hypot((c+0.5)*TS-x,(r+0.5)*TS-y)<=rad+TS)TSCORCH[r*W+c]=1;}
+ // Repaint the touched region so chamfers, fills and scorch update.
  for(var r=r0-r3-1;r<=r0+r3+1;r++)for(var c=c0-r3-1;c<=c0+r3+1;c++){
   if(r<0||r>=H||c<0||c>=W)continue;paintCell(r,c);}}
 function burst(x,y,col){for(var i=0;i<10;i++)sparks.push({x:x,y:y,c:col,

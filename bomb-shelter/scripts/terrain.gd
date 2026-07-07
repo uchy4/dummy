@@ -70,8 +70,8 @@ var _gen_guard := Rect2i()
 var _grid := PackedByteArray()
 var _src_id := 0
 var _water_acc := 0.0
-## Blast scorch per surviving cell: index -> level 1..3. Blocks the blast
-## touched but didn't destroy darken by 75/50/25% as they get farther.
+## Blast scorch per surviving cell: index -> 1. Blocks the blast touched
+## but didn't destroy darken to 50% brightness, permanently.
 var _scorch := {}
 var _flow_dir := {}   ## water cell index -> current flow heading (-1 / +1)
 var _transit := {}    ## cells in flight this tick: drawn as droplets, not tiles
@@ -121,11 +121,13 @@ func load_from_string(s: String) -> void:
 const BEVEL_R := 6.0
 
 func _build_tileset() -> void:
-	# 12 materials wide x 64 rows tall: rows 0-15 are the corner-mask
-	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW chamfered), and rows
-	# 16-63 repeat them at 3 blast-scorch darkness levels (x0.75 / x0.5 /
-	# x0.25 brightness). Water keeps row 0 only.
-	var img := Image.create(TILE * 12, TILE * 64, false, Image.FORMAT_RGBA8)
+	# 12 materials wide x 48 rows tall: rows 0-15 are the corner-mask
+	# variants (bits: 1 = NW, 2 = NE, 4 = SE, 8 = SW chamfered), rows 16-31
+	# repeat them blast-scorched (x0.5 brightness), and rows 32-47 are the
+	# anti-bevel fills — JUST the chamfer triangles, painted into empty
+	# inside-corner cells so facing bevels join into one continuous slant.
+	# Water keeps row 0 only.
+	var img := Image.create(TILE * 12, TILE * 48, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)
@@ -164,19 +166,22 @@ func _build_tileset() -> void:
 					if _corner_cut(mask, x, y):
 						col = Color(0, 0, 0, 0)
 					img.set_pixel(mat * TILE + x, mask * TILE + y, col)
-	# Scorch levels: rows 16-63 are the mask rows re-tinted darker. Level
-	# row group L holds masks at (1 - 0.25 * L) brightness.
-	for level in range(1, 4):
-		var f := 1.0 - 0.25 * level
-		for mat in 12:
-			if mat == Tile.WATER or mat == Tile.WATER_TOP:
-				continue
-			for mask in 16:
-				for y in TILE:
-					for x in TILE:
-						var col := img.get_pixel(mat * TILE + x, mask * TILE + y)
-						img.set_pixel(mat * TILE + x, (level * 16 + mask) * TILE + y,
-							Color(col.r * f, col.g * f, col.b * f, col.a))
+	# Scorch: rows 16-31 are the mask rows at half brightness.
+	# Anti-bevel fills: rows 32-47 keep ONLY the chamfer-triangle pixels.
+	for mat in 12:
+		if mat == Tile.WATER or mat == Tile.WATER_TOP:
+			continue
+		for mask in 16:
+			for y in TILE:
+				for x in TILE:
+					var col := img.get_pixel(mat * TILE + x, mask * TILE + y)
+					img.set_pixel(mat * TILE + x, (16 + mask) * TILE + y,
+						Color(col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a))
+					if mask > 0:
+						var base := img.get_pixel(mat * TILE + x, y)
+						if not _corner_cut(mask, x, y):
+							base = Color(0, 0, 0, 0)
+						img.set_pixel(mat * TILE + x, (32 + mask) * TILE + y, base)
 
 	var src := TileSetAtlasSource.new()
 	src.texture = ImageTexture.create_from_image(img)
@@ -189,11 +194,13 @@ func _build_tileset() -> void:
 	_src_id = ts.add_source(src)
 
 	for i in 12:
-		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 64
+		var variants := 1 if (i == Tile.WATER or i == Tile.WATER_TOP) else 48
 		for v in variants:
 			src.create_tile(Vector2i(i, v))
 			if i == Tile.WATER or i == Tile.WATER_TOP:
 				continue  # water is swim-through: no collision polygon
+			if v >= 32:
+				continue  # anti-bevel fills are decorative: no collision
 			var td := src.get_tile_data(Vector2i(i, v), 0)
 			td.add_collision_polygon(0)
 			td.set_collision_polygon_points(0, 0, _corner_poly(v % 16))
@@ -649,7 +656,7 @@ func _side_open(x: int, y: int) -> bool:
 	return cv == Cell.EMPTY or cv == Cell.WATER
 
 
-## Corner-rounding mask for a solid cell: a corner rounds when BOTH of its
+## Corner-chamfer mask for a solid cell: a corner cuts when BOTH of its
 ## adjacent sides are open. Bits: 1 NW, 2 NE, 4 SE, 8 SW.
 func _tile_mask(x: int, y: int) -> int:
 	var up := _side_open(x, y - 1)
@@ -668,6 +675,45 @@ func _tile_mask(x: int, y: int) -> int:
 	return m
 
 
+## Anti-bevel mask for an EMPTY cell: a corner fills when BOTH of its
+## adjacent sides are solid, so the neighbors' chamfers join into one
+## continuous slant (a 1-in-1 staircase reads as a straight 45° ramp).
+func _fill_mask(x: int, y: int) -> int:
+	var up := not _side_open(x, y - 1)
+	var dn := not _side_open(x, y + 1)
+	var lf := not _side_open(x - 1, y)
+	var rt := not _side_open(x + 1, y)
+	var m := 0
+	if up and lf:
+		m |= 1
+	if up and rt:
+		m |= 2
+	if dn and rt:
+		m |= 4
+	if dn and lf:
+		m |= 8
+	return m
+
+
+## Which material an anti-bevel fill borrows: the first solid neighbor,
+## floor first (grass fills as plain dirt — no stray green wedges).
+func _fill_tile_for(x: int, y: int) -> int:
+	for off: Vector2i in [Vector2i(0, 1), Vector2i(0, -1),
+			Vector2i(-1, 0), Vector2i(1, 0)]:
+		match _gget(x + off.x, y + off.y):
+			Cell.DIRT, Cell.GRASS:
+				return Tile.DIRT
+			Cell.BEDROCK:
+				return Tile.BEDROCK
+			Cell.CLAY:
+				return Tile.CLAY
+			Cell.STONE:
+				return Tile.STONE
+			Cell.DEEP:
+				return Tile.DEEP
+	return Tile.DIRT
+
+
 ## Position-hashed light/dark variant pick: deterministic, so repainting a
 ## cell (mask changes after a nearby carve) never re-rolls its speckle.
 func _variant_dark(x: int, y: int, chance: float) -> bool:
@@ -681,7 +727,12 @@ func _paint_cell(x: int, y: int) -> void:
 	var cv := _gget(x, y)
 	match cv:
 		Cell.EMPTY:
-			erase_cell(Vector2i(x, y))
+			var fm := _fill_mask(x, y)
+			if fm == 0:
+				erase_cell(Vector2i(x, y))
+			else:
+				set_cell(Vector2i(x, y), _src_id,
+					Vector2i(_fill_tile_for(x, y), 32 + fm))
 		Cell.WATER:
 			if not _transit.has(y * W + x):  # in-flight water stays a droplet
 				_paint_water_cell(x, y)
@@ -820,7 +871,7 @@ func _tick_water() -> void:
 		var trail: Dictionary = _drop_trail.get(idx, {})
 		_drop_trail.erase(idx)
 		_grid[idx] = Cell.EMPTY
-		erase_cell(Vector2i(x, y))
+		_paint_cell(x, y)  # erases — or paints anti-bevel fills if cornered
 		_paint_water_cell(x, y + 1)  # the cell under us may surface
 		if trail.has(to) or trail.size() > 48:
 			# Been here before: it's looping with nowhere left to settle.
@@ -907,7 +958,7 @@ func _equalize_bodies(moves: Array) -> void:
 			var dst := (lo_y - 1) * W + lo_x
 			_grid[src] = Cell.EMPTY
 			_grid[dst] = Cell.WATER
-			erase_cell(Vector2i(hi_x, hi_y))
+			_paint_cell(hi_x, hi_y)
 			_flow_dir.erase(src)
 			_repaint_water_around(src, dst)
 			moves.append([src, dst])
@@ -932,7 +983,7 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 		var t := int(pair[1])
 		if f >= 0 and f < _grid.size():
 			_grid[f] = Cell.EMPTY
-			erase_cell(Vector2i(f % W, f / W))
+			_paint_cell(f % W, f / W)
 			_paint_water_cell(f % W, f / W + 1)
 			_splash(f, t)
 		if t >= 0 and t < _grid.size():
@@ -947,7 +998,7 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 		var t := int(pair[1])
 		if f >= 0 and f < _grid.size():
 			_grid[f] = Cell.EMPTY
-			erase_cell(Vector2i(f % W, f / W))
+			_paint_cell(f % W, f / W)
 		if t >= 0 and t < _grid.size():
 			_grid[t] = Cell.WATER
 			_repaint_water_around(f, t)
@@ -994,28 +1045,22 @@ func carve_circle(world_pos: Vector2, radius: float) -> void:
 			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) <= radius:
 				_gset(x, y, Cell.EMPTY)
 				erase_cell(Vector2i(x, y))
-	# Survivors the blast touched scorch darker the closer they were:
-	# 75% / 50% / 25% darker in one-tile bands past the carve edge.
-	var r3 := r + 3
-	for y in range(maxi(c.y - r3, 0), mini(c.y + r3 + 1, H)):
-		for x in range(maxi(c.x - r3, 0), mini(c.x + r3 + 1, W)):
+	# Survivors the blast touched (one tile past the carve edge) scorch to
+	# 50% brightness, permanently.
+	var r1 := r + 1
+	for y in range(maxi(c.y - r1, 0), mini(c.y + r1 + 1, H)):
+		for x in range(maxi(c.x - r1, 0), mini(c.x + r1 + 1, W)):
 			var cv := _gget(x, y)
 			if cv == Cell.EMPTY or cv == Cell.WATER:
 				continue
-			var d := map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos))
-			var lvl := 0
-			if d <= radius + TILE:
-				lvl = 3
-			elif d <= radius + TILE * 2.0:
-				lvl = 2
-			elif d <= radius + TILE * 3.0:
-				lvl = 1
-			if lvl > int(_scorch.get(y * W + x, 0)):
-				_scorch[y * W + x] = lvl
-	for y in range(maxi(c.y - r3 - 1, 0), mini(c.y + r3 + 2, H)):
-		for x in range(maxi(c.x - r3 - 1, 0), mini(c.x + r3 + 2, W)):
-			if _gget(x, y) != Cell.EMPTY:
-				_paint_cell(x, y)
+			if map_to_local(Vector2i(x, y)).distance_to(to_local(world_pos)) \
+					<= radius + TILE:
+				_scorch[y * W + x] = 1
+	# Repaint everything the hole touched — including empty cells, whose
+	# anti-bevel fills change with their neighbors.
+	for y in range(maxi(c.y - r1 - 1, 0), mini(c.y + r1 + 2, H)):
+		for x in range(maxi(c.x - r1 - 1, 0), mini(c.x + r1 + 2, W)):
+			_paint_cell(x, y)
 
 
 # ----------------------------------------------------------------- queries ---
