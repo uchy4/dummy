@@ -15,6 +15,8 @@ var impulse := Vector2.ZERO
 var persist := false
 ## Critters use a shrunken rig (0.55) — same physics, smaller parts.
 var part_scale := 1.0
+## Still wearing the hard hat when stunned? The rig's head wears it too.
+var hat := false
 
 var _age := 0.0
 var _parts: Array[RigidBody2D] = []
@@ -31,6 +33,13 @@ func _ready() -> void:
 		torso.add_child(band)
 	var head := _part_dome(Vector2(0, -11) * s, Vector2(10, 9) * s, color)
 	_decorate_head(head)
+	if hat:
+		var hb := _dome_poly(5.6 * s, 0.0, Color.BLACK)
+		hb.position = Vector2(0, -3.6) * s
+		head.add_child(hb)
+		var hy := _dome_poly(5.0 * s, 0.0, Color("f5c518"))
+		hy.position = Vector2(0, -3.5) * s
+		head.add_child(hy)
 	var arm_l := _part(Vector2(-7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
 	var arm_r := _part(Vector2(7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
 	var leg_l := _part(Vector2(-3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35))

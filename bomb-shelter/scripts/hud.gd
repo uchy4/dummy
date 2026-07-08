@@ -235,6 +235,10 @@ func _build_settings_panel() -> void:
 		Settings.stun_time,
 		func(v: float) -> void: Settings.stun_time = v)
 
+	_add_slider(vbox, "Auto-climb step height (px, 0 = off)", 0.0, 24.0, 2.0,
+		Settings.step_climb,
+		func(v: float) -> void: Settings.step_climb = v)
+
 	if _touch:
 		var side_cb := CheckBox.new()
 		side_cb.text = "Touch buttons on the LEFT side"

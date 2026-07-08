@@ -40,6 +40,10 @@ static var kick_player_power := 280.0
 ## hit. 0 disables stun entirely.
 static var stun_time := 1.0
 
+## Auto-climb: how tall a ledge (px) players walk up without jumping.
+## 0 = off (default) — every step needs a hop; 16 = one full tile.
+static var step_climb := 0.0
+
 ## Touch layout: jump/kick buttons sit on the right by default; flip them
 ## to the left from Quick Settings or the on-screen swap icon.
 static var touch_buttons_left := false

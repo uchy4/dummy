@@ -528,9 +528,10 @@ function predict(dt){if(dt>0.05)dt=0.05;
   prevJ=JHELD;
   var nx=PX+VX*sdt;
   if(!solidBox(nx,PY))PX=nx;
-  // Stair assist (parity with the native player): a one-tile ledge is
-  // walkable — lift over it instead of stopping, taller still blocks.
-  else if(onG&&Math.abs(dir)>0.2&&!solidBox(PX,PY-17)&&!solidBox(nx,PY-17)){PY-=17;PX=nx;}
+  // Stair assist follows the host's auto-climb slider (sc.st, 0 = off):
+  // lift over ledges up to that height instead of stopping.
+  else if(onG&&Math.abs(dir)>0.2&&sc&&sc.st>0.5
+   &&!solidBox(PX,PY-sc.st-1)&&!solidBox(nx,PY-sc.st-1)){PY-=sc.st+1;PX=nx;}
   else{var sx=VX>0?1:-1;while(!solidBox(PX+sx,PY)&&(nx-PX)*sx>0)PX+=sx;VX=0;}
   var ny=PY+VY*sdt;
   if(!solidBox(PX,ny))PY=ny;
@@ -600,7 +601,11 @@ function mul(c,f){return "rgb("+(c[0]*f|0)+","+(c[1]*f|0)+","+(c[2]*f|0)+")";}
 function lw(c,f){return "rgb("+((c[0]+(255-c[0])*f)|0)+","+((c[1]+(255-c[1])*f)|0)+","+((c[2]+(255-c[2])*f)|0)+")";}
 function limbW(x,y,ax,ay,ang,len,col,f){ctx.save();ctx.translate(x+ax*f,y+ay);ctx.rotate(ang*f);
  ctx.fillStyle="#000";ctx.fillRect(-3,-1,6,len+2);
- ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);ctx.restore();}
+ ctx.beginPath();ctx.arc(0,0,3,0,7);ctx.fill();
+ ctx.beginPath();ctx.arc(0,len+1,3,0,7);ctx.fill();
+ ctx.fillStyle=col;ctx.fillRect(-2,0,4,len);
+ ctx.beginPath();ctx.arc(0,0.5,2,0,7);ctx.fill();
+ ctx.beginPath();ctx.arc(0,len+0.5,2,0,7);ctx.fill();ctx.restore();}
 function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  var c=rgbOf(col),armc=mul(c,0.85),legc=mul(c,0.65);
  var ra,la,rl,ll,lx,llen=12;
@@ -622,11 +627,9 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  ctx.beginPath();ctx.arc(x,y-8,5.9,0,7);ctx.fill();
  ctx.fillRect(x-6,y-7,12,10);
  if(col2&&col2!==col){ctx.fillStyle=col2;ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
- if(armor){// the safety-yellow hard hat: a blast knocks it off
-  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-13.2,5.2,0,7);ctx.fill();
-  ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-13,4.6,0,7);ctx.fill();
-  ctx.fillStyle="#000";ctx.fillRect(x-7,y-13.2,14,2.2);
-  ctx.fillStyle="#e3b214";ctx.fillRect(x-6.5,y-13,13,1.8);}
+ if(armor){// hard hat: flat-bottomed dome, no brim over the eyes
+  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-12.4,5.4,Math.PI,0);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-12.2,4.8,Math.PI,0);ctx.closePath();ctx.fill();}
  var fx=face;
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
  ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);

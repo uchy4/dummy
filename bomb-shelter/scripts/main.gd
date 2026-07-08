@@ -433,7 +433,7 @@ func _net_service() -> void:
 		es.append([int(node.global_position.x), int(node.global_position.y),
 			pk, int(node.rotation * 10.0)])
 	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs, "e": es,
-		"z": Settings.zoom_scale})
+		"z": Settings.zoom_scale, "st": Settings.step_climb})
 
 
 func _pair_key(a: Color, b: Color) -> String:

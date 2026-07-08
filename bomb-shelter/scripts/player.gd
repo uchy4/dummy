@@ -164,16 +164,18 @@ func _ripple(power: float) -> void:
 ## a jump — any 1-block-per-1-block staircase (a 45-degree slope in block
 ## terms) is simply walkable. Taller faces still need a hop.
 func _try_step_up(dir: float) -> void:
+	if Settings.step_climb <= 0.5:
+		return  # auto-climb disabled (Quick Settings slider)
 	if absf(dir) < 0.2 or not is_on_floor():
 		return
 	var fwd := Vector2(signf(dir) * 5.0, 0)
 	if not test_move(global_transform, fwd):
 		return  # path ahead is clear: nothing to climb
-	var up := Vector2(0, -(Terrain.TILE + 2.0))
+	var up := Vector2(0, -(Settings.step_climb + 2.0))
 	if test_move(global_transform, up):
 		return  # ceiling right overhead: no room to step
 	if test_move(global_transform.translated(up), fwd):
-		return  # still a wall at step height: taller than one tile
+		return  # still a wall at step height: taller than the climb limit
 	global_position += up + fwd * 0.5
 	velocity.y = 0.0
 
@@ -447,6 +449,7 @@ func apply_stun(duration: float) -> void:
 		return
 	_ragdoll_time = 0.0
 	_stun_ragdoll = Ragdoll.new()
+	_stun_ragdoll.hat = armor  # still wearing the hard hat? ragdoll wears it too
 	_stun_ragdoll.persist = true
 	_stun_ragdoll.color = player_color
 	_stun_ragdoll.color2 = color2
@@ -582,7 +585,20 @@ func _puff(amount: int) -> void:
 func _limb(anchor: Vector2, angle: float, length: float, col: Color, f: float) -> void:
 	draw_set_transform(Vector2(anchor.x * f, anchor.y), angle * f, Vector2.ONE)
 	draw_rect(Rect2(-3, -1, 6, length + 2), Color.BLACK)  # outline
+	draw_circle(Vector2(0, 0), 3.0, Color.BLACK)          # rounded caps
+	draw_circle(Vector2(0, length + 1), 3.0, Color.BLACK)
 	draw_rect(Rect2(-2, 0, 4, length), col)
+	draw_circle(Vector2(0, 0.5), 2.0, col)
+	draw_circle(Vector2(0, length + 0.5), 2.0, col)
+
+
+## A flat-bottomed dome (round top, straight chord across the bottom).
+func _draw_dome(c: Vector2, r: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 9:
+		var t := PI * i / 8.0
+		pts.append(c + Vector2(cos(t) * r, -sin(t) * r))
+	draw_colored_polygon(pts, col)
 
 
 func _draw() -> void:
@@ -646,13 +662,10 @@ func _draw() -> void:
 		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
 		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
 	if armor:
-		# The safety-yellow hard hat: dome over the head plus a brim. A
-		# lethal blast knocks it off (take_blast sends it flying).
-		var hat := Color("f5c518")
-		draw_circle(Vector2(0, -13.2), 5.2, Color.BLACK)
-		draw_circle(Vector2(0, -13.0), 4.6, hat)
-		draw_rect(Rect2(-7, -13.2, 14, 2.2), Color.BLACK)
-		draw_rect(Rect2(-6.5, -13.0, 13, 1.8), hat.darkened(0.12))
+		# The safety-yellow hard hat: a flat-bottomed dome capping the head
+		# (no brim — nothing covers the eyes). A lethal blast knocks it off.
+		_draw_dome(Vector2(0, -12.4), 5.4, Color.BLACK)
+		_draw_dome(Vector2(0, -12.2), 4.8, Color("f5c518"))
 	var fx := f * 1.0
 	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
 	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)
