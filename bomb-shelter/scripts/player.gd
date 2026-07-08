@@ -25,7 +25,9 @@ var alive := true
 ## Deepest point reached while alive (bigger y = lower). When everyone
 ## dies, the deepest player takes the match.
 var deepest_y := -100000.0
-var armor := false  ## one-time protection from a lethal blast (from chests)
+## The hard hat: everyone spawns wearing one. It eats one lethal blast and
+## flies off; construction crates hand out replacements.
+var armor := true
 var deaths := 0
 var respawn_left := 0.0
 var respawn_point := Vector2.ZERO
@@ -490,8 +492,17 @@ func take_blast(kick: Vector2, lethal: bool) -> void:
 		return
 	if lethal and _invuln_left <= 0.0:
 		if armor:
-			# The armor eats the blast: hurled but alive, briefly untouchable.
+			# The hard hat eats the blast and flies off — hurled but alive,
+			# briefly untouchable. Crates hand out new hats.
 			armor = false
+			var hat := BunkerProps.Plank.new()
+			hat.size = Vector2(11, 4)
+			hat.col = Color("f5c518")
+			hat.position = global_position + Vector2(0, -16)
+			hat.rotation = randf_range(-0.4, 0.4)
+			hat.linear_velocity = Vector2(randf_range(-130.0, 130.0), -290.0)
+			hat.angular_velocity = randf_range(-9.0, 9.0)
+			get_parent().add_child(hat)
 			_invuln_left = 1.2
 			velocity += kick
 			_coyote = 0.0
@@ -553,6 +564,7 @@ func _respawn() -> void:
 	stun_left = 0.0
 	rotation = 0.0
 	alive = true
+	armor = true  # fresh spawn, fresh hard hat
 	_invuln_left = INVULN_TIME
 	show()
 	_shape.set_deferred("disabled", false)
@@ -622,20 +634,23 @@ func _draw() -> void:
 	_limb(Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
 	if not kick_pose:
 		_limb(Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
-	# Torso and head in body space (symmetric), black silhouette first.
+	# Torso and ROUND head in body space, black silhouette first.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
-	draw_rect(Rect2(-6, -16, 12, 11), Color.BLACK)
-	draw_rect(Rect2(-7, -18, 14, 6), Color.BLACK)
+	draw_circle(Vector2(0, -11), 6.8, Color.BLACK)
 	draw_rect(Rect2(-6, -7, 12, 10), player_color)
 	if is_striped():
 		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
 		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
+	draw_circle(Vector2(0, -11), 5.8, player_color.lightened(0.35))
 	if armor:
-		draw_rect(Rect2(-6, -7, 12, 4), Color(0.82, 0.85, 0.9))   # chestplate
-		draw_rect(Rect2(-6, -3.2, 12, 1.2), Color(0.6, 0.63, 0.7))
-	draw_rect(Rect2(-5, -15, 10, 9), player_color.lightened(0.35))
-	draw_rect(Rect2(-6, -17, 12, 4), player_color.lightened(0.15))  # hard hat
+		# The safety-yellow hard hat: dome over the head plus a brim. A
+		# lethal blast knocks it off (take_blast sends it flying).
+		var hat := Color("f5c518")
+		draw_circle(Vector2(0, -14.4), 5.4, Color.BLACK)
+		draw_circle(Vector2(0, -14.2), 4.8, hat)
+		draw_rect(Rect2(-7, -14.2, 14, 2.2), Color.BLACK)
+		draw_rect(Rect2(-6.5, -14.0, 13, 1.8), hat.darkened(0.12))
 	var fx := f * 1.0
 	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
 	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)

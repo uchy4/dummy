@@ -613,13 +613,17 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
  limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
  if(!kick)limbW(x,y,-lx,2,ll,llen,legc,face);    // front leg
- ctx.fillStyle="#000";                            // torso/head silhouette
- ctx.fillRect(x-7,y-8,14,12);ctx.fillRect(x-6,y-16,12,11);ctx.fillRect(x-7,y-18,14,6);
+ ctx.fillStyle="#000";                            // torso + round head silhouette
+ ctx.fillRect(x-7,y-8,14,12);
+ ctx.beginPath();ctx.arc(x,y-11,6.8,0,7);ctx.fill();
  ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
  if(col2&&col2!==col){ctx.fillStyle=col2;ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
- if(armor){ctx.fillStyle="#d1d9e6";ctx.fillRect(x-6,y-7,12,4);ctx.fillStyle="#99a2b3";ctx.fillRect(x-6,y-3.2,12,1.2);}
- ctx.fillStyle=lw(c,0.35);ctx.fillRect(x-5,y-15,10,9);      // head
- ctx.fillStyle=lw(c,0.15);ctx.fillRect(x-6,y-17,12,4);      // hat
+ ctx.fillStyle=lw(c,0.35);ctx.beginPath();ctx.arc(x,y-11,5.8,0,7);ctx.fill();  // round head
+ if(armor){// the safety-yellow hard hat: a blast knocks it off
+  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-14.4,5.4,0,7);ctx.fill();
+  ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-14.2,4.8,0,7);ctx.fill();
+  ctx.fillStyle="#000";ctx.fillRect(x-7,y-14.2,14,2.2);
+  ctx.fillStyle="#e3b214";ctx.fillRect(x-6.5,y-14,13,1.8);}
  var fx=face;
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
  ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);
@@ -691,11 +695,15 @@ function render(){requestAnimationFrame(render);
   ctx.fillStyle="#3f9143";ctx.fillRect(gx,gy+4,TS,1.5);}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
-  ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
-  ctx.fillStyle="#6d4c2f";ctx.fillRect(q[0]-9,q[1]-1,18,8);
-  ctx.fillStyle="#8a6238";ctx.fillRect(q[0]-9,q[1]-7,18,6);
-  ctx.fillStyle="#caa64a";ctx.fillRect(q[0]-9,q[1]-2,18,2);
-  ctx.fillStyle="#e8c35c";ctx.fillRect(q[0]-2,q[1]-3,4,5);}
+  // sturdy construction crate: orange body + black hazard stripes
+  ctx.fillStyle="#000";ctx.fillRect(q[0]-11,q[1]-8,22,16);
+  ctx.fillStyle="#e8892b";ctx.fillRect(q[0]-10,q[1]-7,20,14);
+  ctx.fillStyle="#26262b";
+  for(var hzt=0;hzt<3;hzt++){var hx0=q[0]-9+hzt*6;
+   ctx.beginPath();ctx.moveTo(hx0,q[1]+5);ctx.lineTo(hx0+3,q[1]+5);
+   ctx.lineTo(hx0+7,q[1]-5);ctx.lineTo(hx0+4,q[1]-5);ctx.closePath();ctx.fill();}
+  ctx.fillStyle="#f2a54a";ctx.fillRect(q[0]-10,q[1]-7,20,2.2);
+  ctx.fillStyle="#c9741f";ctx.fillRect(q[0]-10,q[1]+4.8,20,2.2);}
  if(sc&&sc.e)for(var i=0;i<sc.e.length;i++){var q=sc.e[i];
   ctx.save();ctx.translate(q[0],q[1]);ctx.rotate((q[3]||0)/10);drawProp(q[2]);ctx.restore();}
  stepRags(pdt);drawRags();
@@ -906,7 +914,8 @@ function drawProp(k){
   ctx.fillStyle="#e53935";ctx.fillRect(-1,-7,3,3);
   ctx.fillStyle="#fbc02d";ctx.fillRect(4,-2,4,2);
   ctx.fillStyle="#c98d29";ctx.fillRect(-2,5,2,3);ctx.fillRect(1,5,2,3);}
- else if(k===7){ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,9.5,6.5,0,0,7);ctx.fill();
+ else if(k===7){ctx.scale(2,2);// pigs are twice the size
+  ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,9.5,6.5,0,0,7);ctx.fill();
   ctx.fillStyle="#f2a3b3";ctx.beginPath();ctx.ellipse(0,0,8.5,5.5,0,0,7);ctx.fill();
   ctx.fillStyle="#d98795";ctx.fillRect(6,-2,4,4);
   ctx.fillStyle="#c9868f";ctx.fillRect(-6,4,2,3);ctx.fillRect(4,4,2,3);}
@@ -938,7 +947,7 @@ function drawProp(k){
   ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
  else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
   ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}
- else if(k===16){
+ else if(k===16){ctx.scale(1.8,1.8);// scaled to the taller walk-in entrance
   // one continuous lumpy rock mound with a dark maw (matches native art)
   var MD=[[-24,2],[-23,-6],[-18,-12],[-14,-12],[-9,-18],[-3,-22],[4,-21],
    [9,-17],[14,-15],[18,-10],[22,-7],[24,2]];

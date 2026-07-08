@@ -1,8 +1,8 @@
 class_name Chest
 extends Area2D
-## A rare trunk found at cavern dead ends. Walking into it grants body armor:
-## one-time protection from a lethal blast. Unshielded explosions destroy
-## unopened chests.
+## A sturdy construction crate found at cavern dead ends. Walking into it
+## hands out a fresh hard hat (one-time protection from a lethal blast).
+## Unshielded explosions destroy unopened crates.
 
 ## Puppet: display-only mirror on a LAN-join client (host handles pickups).
 var puppet := false
@@ -50,9 +50,16 @@ func _poof() -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-10, -8, 20, 16), Color.BLACK)              # outline
-	draw_rect(Rect2(-9, -1, 18, 8), Color("6d4c2f"))            # base
-	draw_rect(Rect2(-9, -7, 18, 6), Color("8a6238"))            # lid
-	draw_rect(Rect2(-9, -2, 18, 2), Color("caa64a"))            # gold band
-	draw_rect(Rect2(-2, -3, 4, 5), Color("e8c35c"))             # latch
-	draw_rect(Rect2(-1, -2, 2, 2), Color("4a3517"))             # keyhole
+	# Safety-orange construction crate: hazard stripes, steel rails, bolts.
+	draw_rect(Rect2(-11, -8, 22, 16), Color.BLACK)              # outline
+	draw_rect(Rect2(-10, -7, 20, 14), Color("e8892b"))          # body
+	for i in 3:
+		var sx := -9.0 + i * 6.0
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(sx, 5.0), Vector2(sx + 3.0, 5.0),
+			Vector2(sx + 7.0, -5.0), Vector2(sx + 4.0, -5.0)]), Color("26262b"))
+	draw_rect(Rect2(-10, -7, 20, 2.2), Color("f2a54a"))         # top rail
+	draw_rect(Rect2(-10, 4.8, 20, 2.2), Color("c9741f"))        # bottom rail
+	for cpos: Vector2 in [Vector2(-8, -4.6), Vector2(8, -4.6),
+			Vector2(-8, 4.6), Vector2(8, 4.6)]:
+		draw_circle(cpos, 1.3, Color("2f2f35"))                 # corner bolts

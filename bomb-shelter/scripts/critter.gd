@@ -1,18 +1,17 @@
 class_name Critter
 extends CharacterBody2D
-## Wandering bunker livestock: chickens and pigs. A kick ragdolls them (they
-## tumble, then get back up); a close bomb blast kills them outright, same
-## rules as players. See scripts/player.gd for the gravity/facing pattern.
+## Wandering livestock: chickens and pigs. A kick sends them tumbling (they
+## keep their shape — the body rocks side to side while the legs flail —
+## and get back up); a close bomb blast kills them outright, same rules as
+## players.
 ##
 ## Usage: set `kind` (and optionally `home`) before adding to the tree, e.g.:
 ##   var c := Critter.new(); c.kind = Critter.Kind.CHICKEN
 ##   c.home = pen_rect_world_px; add_child(c)
-## `position` is the critter's CENTER (chicken 10x9, pig 16x10) — to stand it
-## on a floor at world y `floor_y`, set position.y = floor_y - h/2.
-## They are CharacterBody2D, so they can't join "ragdoll_parts" like
-## Furniture does — the lead's kick loop and blast handling should call
-## `shove(vel)` on group "props" members instead of relying on RigidBody
-## impulses.
+## `position` is the critter's CENTER (chicken 10x9, pig 32x20 — pigs draw
+## at double scale) — to stand it on a floor at world y `floor_y`, set
+## position.y = floor_y - h/2. They are CharacterBody2D; the lead's kick
+## loop and blast handling call `shove(vel)` on group "props" members.
 
 enum Kind { CHICKEN, PIG }
 
@@ -30,8 +29,8 @@ const CHICKEN_SPEED := 40.0
 const PIG_SPEED := 30.0
 
 var alive := true
-var _ragdoll: Ragdoll = null
 var _stun_left := 0.0
+var _flail := 0.0  # tumble phase: body rock + leg flailing
 var _shape_node: CollisionShape2D
 
 var _gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
@@ -53,7 +52,7 @@ func _ready() -> void:
 
 	_shape_node = CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
-	rs.size = Vector2(10, 9) if kind == Kind.CHICKEN else Vector2(16, 10)
+	rs.size = Vector2(10, 9) if kind == Kind.CHICKEN else Vector2(32, 20)
 	_shape_node.shape = rs
 	add_child(_shape_node)
 	_pick_intent()
@@ -63,12 +62,18 @@ func _physics_process(delta: float) -> void:
 	if not alive:
 		return
 	if _stun_left > 0.0:
-		# Riding our kicked ragdoll; stand back up where it lands.
+		# Tumbling: the body keeps its shape and just rocks side to side
+		# (never capsizes) while the legs flail; plain gravity applies.
 		_stun_left -= delta
-		if _ragdoll != null and is_instance_valid(_ragdoll):
-			global_position = _ragdoll.torso_pos()
+		_flail += delta * 16.0
+		velocity.y = minf(velocity.y + _gravity * delta, MAX_FALL)
+		velocity.x = move_toward(velocity.x, 0.0, 80.0 * delta)
+		move_and_slide()
+		rotation = sin(_flail * 0.9) * 0.45
 		if _stun_left <= 0.0:
-			_end_ragdoll()
+			rotation = 0.0
+			velocity = Vector2.ZERO
+		queue_redraw()
 		return
 	var fall_mult := 0.35 if _flutter_left > 0.0 else 1.0
 	velocity.y = minf(velocity.y + _gravity * fall_mult * delta, MAX_FALL)
@@ -142,18 +147,20 @@ func _update_hop(delta: float) -> void:
 
 
 ## Public shove hook: kicks and blast knockback land here. A real wallop
-## ragdolls the animal — it tumbles limp and gets back up where it lands.
+## sends the animal tumbling — it flails and gets back up where it lands.
 func shove(vel: Vector2) -> void:
 	if not alive:
 		return
 	if vel.length() > 140.0 and _stun_left <= 0.0:
-		_start_ragdoll(vel)
+		_stun_left = 1.3
+		_flail = 0.0
+		velocity += vel.limit_length(500.0)
 	else:
 		velocity += vel
 
 
 ## Blast handler, same rules as players: lethal range kills, otherwise the
-## concussion just launches them into a ragdoll tumble.
+## concussion just launches them into a tumble.
 func blast_hit(kick: Vector2, lethal: bool) -> void:
 	if not alive:
 		return
@@ -171,79 +178,91 @@ func die(kick: Vector2) -> void:
 		NetHub.broadcast({"t": "fx", "k": 12, "x": int(global_position.x),
 			"y": int(global_position.y),
 			"c": "h" if kind == Kind.CHICKEN else "p"})
-	_end_ragdoll_silently()
-	var rd := _make_ragdoll(kick)
-	rd.persist = false  # fades out like a player's death ragdoll
+	# The corpse keeps the animal's shape: same art, tumbling and fading.
+	var corpse := Corpse.new()
+	corpse.chicken = kind == Kind.CHICKEN
+	corpse.face = _facing
+	corpse.vel = (velocity + kick).limit_length(600.0) + Vector2(0, -80.0)
+	corpse.position = global_position
+	get_parent().add_child.call_deferred(corpse)
 	get_tree().call_group(&"sfx", &"play_splat", global_position)
 	queue_free()
 
 
-func _start_ragdoll(vel: Vector2) -> void:
-	_stun_left = 1.3
-	_ragdoll = _make_ragdoll(velocity + vel)
-	_ragdoll.persist = true
-	hide()
-	_shape_node.set_deferred(&"disabled", true)
-	velocity = Vector2.ZERO
-
-
-func _end_ragdoll() -> void:
-	if _ragdoll != null and is_instance_valid(_ragdoll):
-		global_position = _ragdoll.torso_pos() + Vector2(0, -3)
-	_end_ragdoll_silently()
-	show()
-	_shape_node.set_deferred(&"disabled", false)
-	velocity = Vector2.ZERO
-
-
-func _end_ragdoll_silently() -> void:
-	if _ragdoll != null and is_instance_valid(_ragdoll):
-		_ragdoll.queue_free()
-	_ragdoll = null
-	_stun_left = 0.0
-
-
-func _make_ragdoll(impulse: Vector2) -> Ragdoll:
-	var rd := Ragdoll.new()
-	rd.part_scale = 0.55
-	rd.color = Color("f5f5f0") if kind == Kind.CHICKEN else Color("f4a7b9")
-	rd.impulse = impulse.limit_length(700.0)
-	rd.position = global_position
-	get_parent().add_child.call_deferred(rd)
-	return rd
-
-
 func _draw() -> void:
-	# One mirror transform for the whole body: art below is authored facing
-	# right, and this flips it when _facing is -1 (see player.gd's _limb()
-	# for the equivalent per-limb technique).
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(float(_facing), 1.0))
+	# One mirror (and pig-doubling) transform for the whole body: art below
+	# is authored facing right at chicken scale.
+	var s := 2.0 if kind == Kind.PIG else 1.0
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(_facing * s, s))
+	var lk := _flail if _stun_left > 0.0 else 0.0
 	if kind == Kind.CHICKEN:
-		_draw_chicken()
+		var wing := sin(_wing_phase) * 0.9 if _flutter_left > 0.0 else 0.15
+		if _stun_left > 0.0:
+			wing = sin(_flail * 2.0) * 1.1  # panicked flapping mid-tumble
+		Critter.draw_chicken_art(self, wing, lk)
 	else:
-		_draw_pig()
+		Critter.draw_pig_art(self, lk)
 
 
-func _draw_chicken() -> void:
-	draw_rect(Rect2(-6, -8, 12, 10), Color.BLACK)               # outline
-	draw_rect(Rect2(-5, -7, 10, 8), Color("f5f5f0"))            # body
-	draw_rect(Rect2(3.0, -9.5, 4.0, 2.5), Color("f5f5f0"))      # head bump
-	draw_rect(Rect2(6.0, -8.5, 2.5, 1.5), Color("ffb300"))      # beak
-	draw_rect(Rect2(3.5, -10.5, 2.0, 1.5), Color("e53935"))     # comb
-	draw_rect(Rect2(-2.5, 1.0, 1.4, 3.0), Color("ffb300"))      # legs
-	draw_rect(Rect2(1.1, 1.0, 1.4, 3.0), Color("ffb300"))
-	var wing_ang := sin(_wing_phase) * 0.9 if _flutter_left > 0.0 else 0.15
+## Chicken art (authored facing right, origin at body center). `leg_kick`
+## > 0 makes the legs flail (tumble/corpse); 0 stands them normally.
+static func draw_chicken_art(ci: CanvasItem, wing_ang: float, leg_kick: float) -> void:
+	ci.draw_rect(Rect2(-6, -8, 12, 10), Color.BLACK)               # outline
+	ci.draw_rect(Rect2(-5, -7, 10, 8), Color("f5f5f0"))            # body
+	ci.draw_rect(Rect2(3.0, -9.5, 4.0, 2.5), Color("f5f5f0"))      # head bump
+	ci.draw_rect(Rect2(6.0, -8.5, 2.5, 1.5), Color("ffb300"))      # beak
+	ci.draw_rect(Rect2(3.5, -10.5, 2.0, 1.5), Color("e53935"))     # comb
+	var k1 := sin(leg_kick) * 2.0 if leg_kick > 0.0 else 0.0
+	var k2 := cos(leg_kick * 1.3) * 2.0 if leg_kick > 0.0 else 0.0
+	ci.draw_rect(Rect2(-2.5 + k1, 1.0, 1.4, 3.0), Color("ffb300"))  # legs
+	ci.draw_rect(Rect2(1.1 + k2, 1.0, 1.4, 3.0), Color("ffb300"))
 	var tip := Vector2(-6.0, -2.0).rotated(wing_ang)
-	draw_line(Vector2(-2.0, -3.0), Vector2(-2.0, -3.0) + tip, Color("e0e0d8"), 2.5)
+	ci.draw_line(Vector2(-2.0, -3.0), Vector2(-2.0, -3.0) + tip, Color("e0e0d8"), 2.5)
 
 
-func _draw_pig() -> void:
-	draw_rect(Rect2(-9, -7, 18, 12), Color.BLACK)               # outline
-	draw_rect(Rect2(-8, -6, 16, 10), Color("f4a7b9"))           # body
-	draw_rect(Rect2(6.0, -5.0, 5.0, 6.0), Color("f4a7b9"))      # snout base
-	draw_rect(Rect2(8.5, -3.0, 2.5, 3.0), Color("d97b95"))      # snout tip
-	draw_rect(Rect2(4.0, -7.5, 3.0, 2.5), Color("e792a8"))      # ear
-	draw_rect(Rect2(-5.0, 4.0, 3.0, 3.0), Color("d97b95"))      # legs
-	draw_rect(Rect2(2.0, 4.0, 3.0, 3.0), Color("d97b95"))
-	draw_arc(Vector2(-9.0, -2.0), 2.0, 0.0, TAU * 0.75, 8, Color("d97b95"), 1.2)   # curly tail
-	draw_arc(Vector2(-10.0, -3.5), 1.4, 0.0, TAU * 0.75, 6, Color("d97b95"), 1.0)
+static func draw_pig_art(ci: CanvasItem, leg_kick: float) -> void:
+	ci.draw_rect(Rect2(-9, -7, 18, 12), Color.BLACK)               # outline
+	ci.draw_rect(Rect2(-8, -6, 16, 10), Color("f4a7b9"))           # body
+	ci.draw_rect(Rect2(6.0, -5.0, 5.0, 6.0), Color("f4a7b9"))      # snout base
+	ci.draw_rect(Rect2(8.5, -3.0, 2.5, 3.0), Color("d97b95"))      # snout tip
+	ci.draw_rect(Rect2(4.0, -7.5, 3.0, 2.5), Color("e792a8"))      # ear
+	var k1 := sin(leg_kick) * 2.5 if leg_kick > 0.0 else 0.0
+	var k2 := cos(leg_kick * 1.3) * 2.5 if leg_kick > 0.0 else 0.0
+	ci.draw_rect(Rect2(-5.0 + k1, 4.0, 3.0, 3.0), Color("d97b95"))  # legs
+	ci.draw_rect(Rect2(2.0 + k2, 4.0, 3.0, 3.0), Color("d97b95"))
+	ci.draw_arc(Vector2(-9.0, -2.0), 2.0, 0.0, TAU * 0.75, 8, Color("d97b95"), 1.2)   # curly tail
+	ci.draw_arc(Vector2(-10.0, -3.5), 1.4, 0.0, TAU * 0.75, 6, Color("d97b95"), 1.0)
+
+
+## A dead critter: the SAME body art, flung and tumbling (rocking, legs
+## flailing — never balled up into ragdoll parts), fading out. No collision;
+## purely cosmetic, so it isn't streamed (web plays fx kind 12 instead).
+class Corpse:
+	extends Node2D
+	var chicken := true
+	var face := 1
+	var vel := Vector2.ZERO
+	var _t := 0.0
+	var _flail := 0.0
+
+	func _ready() -> void:
+		z_index = 3
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_flail += delta * 15.0
+		vel.y += 900.0 * delta
+		position += vel * delta
+		rotation = sin(_flail * 0.7) * 0.6
+		modulate.a = clampf(1.0 - _t / 1.2, 0.0, 1.0)
+		if _t > 1.2:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		var s := 1.0 if chicken else 2.0
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(face * s, s))
+		if chicken:
+			Critter.draw_chicken_art(self, sin(_flail * 2.0) * 1.1, _flail)
+		else:
+			Critter.draw_pig_art(self, _flail)

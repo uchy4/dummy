@@ -194,7 +194,7 @@ func _process(delta: float) -> void:
 	for i in players.size():
 		var p := players[i]
 		if p.alive:
-			var suffix := "   ARMOR" if p.armor else ""
+			var suffix := "   HAT" if p.armor else ""
 			hud.set_player_status(i, "%s   deaths %d%s" % [p.display_name, p.deaths, suffix])
 		elif Settings.one_life:
 			hud.set_player_status(i, "%s   OUT" % p.display_name)

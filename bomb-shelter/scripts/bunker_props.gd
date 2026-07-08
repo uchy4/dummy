@@ -286,7 +286,7 @@ func _build_surface_pens() -> void:
 		var pig := Critter.new()
 		pig.kind = Critter.Kind.PIG
 		pig.position = Vector2(lerpf(pig_home.position.x + 8.0,
-			pig_home.end.x - 8.0, t), ground_y - 5.5)
+			pig_home.end.x - 8.0, t), ground_y - 10.5)
 		pig.home = pig_home
 		add_child(pig)
 
@@ -375,6 +375,8 @@ class CaveArt:
 		queue_free()
 
 	func _draw() -> void:
+		# Scaled up so the maw matches the taller walk-in entrance.
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.8, 1.8))
 		# One continuous lumpy rock mound: a single silhouette polygon with
 		# a black rim, broad shading facets (not separate boulders), a couple
 		# of cracks, and the dark maw arching down into the carved passage.

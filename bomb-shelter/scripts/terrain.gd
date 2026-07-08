@@ -534,7 +534,10 @@ func _carve_cave_mouth(target: Vector2i) -> void:
 	var guard := 0
 	while guard < 400:
 		guard += 1
-		for dy in 3:
+		# The walk-in mouth itself is tall (2-3 player heights); the passage
+		# behind it narrows to the normal 3-tall tunnel.
+		var tall := 5 if guard <= 6 else 3
+		for dy in tall:
 			_carve_open(x, y + dy)
 		var at_depth := y >= target.y - 1
 		if at_depth and absi(x - target.x) <= 2:
