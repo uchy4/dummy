@@ -169,6 +169,7 @@ func _rebuild_list() -> void:
 
 
 func _host() -> void:
+	Settings.in_lobby = true  # everyone gathers in the lounge first
 	NetHub.advertising = true
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 

@@ -7,6 +7,7 @@ signal restart_requested
 signal settings_pressed
 signal reset_players_pressed
 signal player_color_changed(index: int, color: Color)
+signal start_requested
 
 var _rows: Array[Label] = []
 var _rows_box: VBoxContainer
@@ -20,6 +21,9 @@ var _qr_overlay: Control
 var _qr_texture: TextureRect
 var _qr_url: Label
 var _touch := false
+var _lobby_box: VBoxContainer
+var _lobby_label: Label
+var _lobby_btn: Button
 var _upd_btn: Button
 
 
@@ -519,6 +523,42 @@ static func circle_tex(radius: int, color: Color) -> ImageTexture:
 			elif d <= radius:
 				img.set_pixel(x, y, Color(color.r, color.g, color.b, minf(color.a + 0.3, 1.0)))
 	return ImageTexture.create_from_image(img)
+
+
+## Lounge banner + the host's START button. Created lazily on first call;
+## after that each call just refreshes the count text and button state.
+func update_lobby(count: int, need: int) -> void:
+	if _lobby_box == null:
+		_lobby_box = VBoxContainer.new()
+		_lobby_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+		_lobby_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_lobby_box.position.y = 46.0
+		_lobby_box.add_theme_constant_override(&"separation", 8)
+		var title := Label.new()
+		title.text = "L O U N G E"
+		title.add_theme_font_size_override(&"font_size", 26)
+		title.add_theme_color_override(&"font_color", Color("ffca28"))
+		title.add_theme_color_override(&"font_outline_color", Color.BLACK)
+		title.add_theme_constant_override(&"outline_size", 6)
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lobby_box.add_child(title)
+		_lobby_label = Label.new()
+		_lobby_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lobby_label.add_theme_font_size_override(&"font_size", 15)
+		_lobby_label.add_theme_color_override(&"font_outline_color", Color.BLACK)
+		_lobby_label.add_theme_constant_override(&"outline_size", 4)
+		_lobby_box.add_child(_lobby_label)
+		_lobby_btn = Button.new()
+		_lobby_btn.text = "START GAME"
+		_lobby_btn.add_theme_font_size_override(&"font_size", 22)
+		_lobby_btn.focus_mode = Control.FOCUS_NONE
+		_lobby_btn.pressed.connect(func() -> void: start_requested.emit())
+		_lobby_box.add_child(_lobby_btn)
+		add_child(_lobby_box)
+	var ready_to_go := count >= need
+	_lobby_btn.disabled = not ready_to_go
+	_lobby_label.text = ("%d players in — tap START!" % count) if ready_to_go \
+		else "%d/%d players — friends join via the QR code" % [count, need]
 
 
 func _make_label(size: int, color: Color) -> Label:

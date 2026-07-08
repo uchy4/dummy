@@ -895,6 +895,9 @@ function render(){requestAnimationFrame(render);
   ctx.fillText(win.n.toUpperCase()+" WINS!",cw/2,60);
   ctx.fillStyle="#ddd";ctx.font="12px sans-serif";
   ctx.fillText("waiting for host rematch…",cw/2,84);}}
+ if(!win&&sc&&sc.lb){ctx.textAlign="center";ctx.fillStyle="#ffca28";
+  ctx.font="bold 13px sans-serif";
+  ctx.fillText("LOUNGE — waiting for the host to start",cw/2,64);}
 function y0(py){return py-20;}
 // World-space podium ceremony in the finish hall (q = the kind-5 room):
 // confetti + the win message's top three jumping on the drawn podium steps.
@@ -997,7 +1000,21 @@ function drawProp(k){
   ctx.moveTo(19.8,-23.4);ctx.lineTo(14.4,-9);ctx.stroke();
   ctx.fillStyle="#1c1310";
   fillPoly([[-13,6],[-12,-14],[-8,-23],[0,-27],[8,-23],[12,-14],[13,6]]);
-  ctx.fillRect(-13,4,26,30);}}
+  ctx.fillRect(-13,4,26,30);}
+ else if(k===17){// red pickup: a kick rolls it (rotation streams via rot)
+  ctx.fillStyle="#000";ctx.fillRect(-36,-8,72,20);ctx.fillRect(-7,-19,34,13);
+  ctx.fillStyle="#d32f2f";ctx.fillRect(-35,-7,70,18);ctx.fillRect(-6,-18,32,12);
+  ctx.fillStyle="#bfe3f2";ctx.fillRect(-2,-16,20,9);
+  ctx.fillStyle="#8e2420";ctx.fillRect(-35,7,70,4);
+  ctx.fillStyle="#ffd54f";ctx.fillRect(33,-4,3,4);
+  for(var w=-22;w<=22;w+=44){ctx.fillStyle="#111";
+   ctx.beginPath();ctx.arc(w,10,8,0,7);ctx.fill();
+   ctx.fillStyle="#666";ctx.beginPath();ctx.arc(w,10,3.5,0,7);ctx.fill();}}
+ else if(k===18){ctx.fillStyle="#000";ctx.fillRect(-26,-13,52,25);
+  ctx.fillStyle="#8e3b2f";ctx.fillRect(-25,-12,50,23);
+  ctx.fillStyle="#a34a3c";ctx.fillRect(-21,-11,40,6);
+  ctx.fillRect(-21,-4,19,8);ctx.fillRect(1,-4,19,8);
+  ctx.fillStyle="#5c2620";ctx.fillRect(-25,7,6,4);ctx.fillRect(19,7,6,4);}}
 function fillPoly(pts){ctx.beginPath();
  for(var i=0;i<pts.length;i++){if(i)ctx.lineTo(pts[i][0],pts[i][1]);
   else ctx.moveTo(pts[i][0],pts[i][1]);}

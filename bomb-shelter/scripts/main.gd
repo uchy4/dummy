@@ -46,6 +46,10 @@ func _enter_tree() -> void:
 	register_actions()
 
 
+## Lounge rule: a match needs at least this many participants (bots count).
+const MIN_START_PLAYERS := 4
+
+
 func _ready() -> void:
 	# Main + HUD keep processing while the tree is paused (win screen);
 	# everything inside World freezes.
@@ -83,15 +87,14 @@ func _ready() -> void:
 	if OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
 		Settings.bot_count = maxi(Settings.bot_count, 3)  # CI exercises bot AI
 	var bot_count := clampi(Settings.bot_count, 0, MAX_PLAYERS - num_players)
-	var spawns := terrain.surface_spawns(num_players + bot_count)
 	_bounds = terrain.world_rect().grow_individual(80, 900, 80, 300)
 	for i in num_players:
 		var p := Player.new()
 		p.name = "Player%d" % (i + 1)
 		p.setup(i, Settings.player_colors[i])
-		p.respawn_point = terrain.surface_spawn(i)
+		p.respawn_point = _spawn_pos(i)
 		p.world_bounds = _bounds
-		p.position = spawns[i]
+		p.position = p.respawn_point
 		world.add_child(p)
 		players.append(p)
 
@@ -103,9 +106,9 @@ func _ready() -> void:
 		var p := Player.new()
 		p.name = "Bot%d" % (i + 1)
 		p.setup_remote(idx, "Bot %d" % (i + 1), c1, c2)
-		p.respawn_point = terrain.surface_spawn(idx)
+		p.respawn_point = _spawn_pos(idx)
 		p.world_bounds = _bounds
-		p.position = spawns[idx]
+		p.position = p.respawn_point
 		world.add_child(p)
 		players.append(p)
 		var brain := BotController.new()
@@ -152,9 +155,15 @@ func _ready() -> void:
 	hud.settings_pressed.connect(_toggle_settings)
 	hud.reset_players_pressed.connect(_reset_players)
 	hud.player_color_changed.connect(_on_player_color_changed)
+	hud.start_requested.connect(_start_match)
+	if Settings.in_lobby and OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
+		# CI: dwell in the lounge a moment, then exercise the live match too.
+		get_tree().create_timer(2.0).timeout.connect(_start_match)
 
 
 func _process(delta: float) -> void:
+	if Settings.in_lobby:
+		hud.update_lobby(players.size(), MIN_START_PLAYERS)
 	if game_over:
 		if Input.is_action_just_pressed(&"ui_accept") or Input.is_action_just_pressed(&"restart"):
 			_restart()
@@ -257,7 +266,7 @@ func _build_finish() -> void:
 
 func _on_finish_entered(body: Node2D) -> void:
 	var p := body as Player
-	if game_over or p == null or not p.alive:
+	if game_over or Settings.in_lobby or p == null or not p.alive:
 		return
 	# Reaching the checkered chamber IS maximum depth: instant podium.
 	p.deepest_y += 100000.0
@@ -269,7 +278,7 @@ func _on_finish_entered(body: Node2D) -> void:
 ## then the podium ranks everyone by how deep they got. The all-dead path
 ## waits WIN_DELAY so the final ragdoll finishes flying.
 func _check_elimination() -> void:
-	if game_over:
+	if game_over or Settings.in_lobby:
 		return
 	if _win_timer >= 0.0:
 		_win_timer -= get_process_delta_time()
@@ -413,7 +422,8 @@ func _net_service() -> void:
 		es.append([int(node.global_position.x), int(node.global_position.y),
 			pk, int(node.rotation * 10.0)])
 	NetHub.broadcast({"t": "s", "p": ps, "b": bs, "c": cs, "e": es,
-		"z": Settings.zoom_scale, "st": Settings.step_climb})
+		"z": Settings.zoom_scale, "st": Settings.step_climb,
+		"lb": 1 if Settings.in_lobby else 0})
 
 
 func _pair_key(a: Color, b: Color) -> String:
@@ -478,7 +488,7 @@ func _sync_web_players() -> void:
 			var p := Player.new()
 			p.name = "WebPlayer%d" % id
 			p.setup_remote(players.size(), str(c.name), c.color, c.color2)
-			p.respawn_point = terrain.surface_spawn(players.size())  # surface, not the bunker
+			p.respawn_point = _spawn_pos(players.size())  # lounge first, surface once live
 			p.world_bounds = _bounds
 			p.position = p.respawn_point
 			world.add_child(p)
@@ -514,6 +524,25 @@ func _toggle_settings() -> void:
 	settings_open = not settings_open
 	hud.show_settings(settings_open)
 	get_tree().paused = settings_open
+
+
+## Where player i first appears: spread through the finish hall while it
+## serves as the pre-match lounge, the usual surface spawns once live.
+func _spawn_pos(i: int) -> Vector2:
+	if not Settings.in_lobby:
+		return terrain.surface_spawn(i)
+	var fr := terrain.finish_line_rect()
+	return Vector2(fr.position.x + fr.size.x * ((float(i % 8) + 0.5) / 8.0),
+		fr.end.y - 20.0)
+
+
+## Host taps START in the lounge: drop lobby mode and reload into a fresh
+## map — the lounge world was only ever a waiting room.
+func _start_match() -> void:
+	if not Settings.in_lobby or players.size() < MIN_START_PLAYERS:
+		return
+	Settings.in_lobby = false
+	_restart()
 
 
 func _restart() -> void:

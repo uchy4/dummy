@@ -18,6 +18,8 @@ var _next_spawn := GRACE
 
 
 func _physics_process(delta: float) -> void:
+	if Settings.in_lobby:
+		return  # the lounge is bomb-free; grace + ramp start with the match
 	_elapsed += delta
 	if _elapsed >= _next_spawn:
 		_spawn_wave()

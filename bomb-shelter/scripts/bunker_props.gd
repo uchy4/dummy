@@ -73,6 +73,8 @@ func _ready() -> void:
 		cave.position = Vector2((float(terrain.cave_mouth.x) + 0.5) * TILE,
 			float(terrain.cave_mouth.y) * TILE)
 		add_child(cave)
+	_build_truck()
+	_build_lounge_sofas()
 
 	queue_redraw()
 
@@ -416,6 +418,181 @@ class CaveArt:
 		for p: Vector2 in pts:
 			out.append(p * 1.8)
 		return out
+
+
+## The pickup truck parks on a clear stretch of grass away from the other
+## surface features (prop kind 17).
+func _build_truck() -> void:
+	var tx := -1
+	for attempt in 60:
+		var x := randi_range(10, Terrain.W - 10)
+		if absi(x - terrain.outhouse_cell.x) < 9 or absi(x - terrain.cave_mouth.x) < 10:
+			continue
+		if terrain.pond_rect.size.x > 0 and x >= terrain.pond_rect.position.x - 4 \
+				and x <= terrain.pond_rect.end.x + 4:
+			continue
+		var bad := false
+		for r: Rect2i in [terrain.surface_pens, terrain.corn_field]:
+			if r.size.x > 0 and x >= r.position.x - 5 and x <= r.end.x + 5:
+				bad = true
+		if bad:
+			continue
+		tx = x
+		break
+	if tx < 0:
+		return
+	var truck := TruckArt.new()
+	truck.position = Vector2((float(tx) + 0.5) * TILE,
+		float(Terrain.SURFACE_ROW) * TILE - 18.0)
+	add_child(truck)
+
+
+## Two sofas dress the finish hall — it doubles as the pre-match lounge.
+func _build_lounge_sofas() -> void:
+	var fr := terrain.finish_line_rect()
+	if fr.size.x <= 0.0:
+		return
+	for k in 2:
+		var sofa := SofaArt.new()
+		sofa.position = Vector2(fr.position.x + fr.size.x * (0.2 + 0.6 * float(k)),
+			fr.end.y - 12.0)
+		add_child(sofa)
+
+
+## The surface pickup truck (prop kind 17): player-plus sized, a kick sends
+## it rolling one full body rotation away from the kicker, and a blast in
+## range blows it into red panel debris.
+class TruckArt:
+	extends Node2D
+	var prop_kind := 17
+	var _dead := false
+	var _rolling := false
+
+	func _ready() -> void:
+		add_to_group(&"props")
+		add_to_group(&"fixtures")  # kicks in range call kicked()
+		add_to_group(&"chests")    # blasts in range call blast_destroy()
+		z_index = 2
+
+	func kicked() -> void:
+		if _rolling or _dead:
+			return
+		_rolling = true
+		# Roll away from the nearest player — they just kicked the bumper.
+		var s := 1.0
+		var best := 1e18
+		for n in get_tree().get_nodes_in_group(&"players"):
+			var p := n as Node2D
+			if p == null:
+				continue
+			var d := absf(p.global_position.x - global_position.x)
+			if d < best:
+				best = d
+				s = 1.0 if global_position.x >= p.global_position.x else -1.0
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(self, "rotation", rotation + TAU * s, 1.1) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(self, "position:x", position.x + 88.0 * s, 1.1) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.chain().tween_callback(_roll_done)
+		get_tree().call_group(&"sfx", &"play_land", global_position)
+
+	func _roll_done() -> void:
+		_rolling = false
+
+	func blast_destroy() -> void:
+		if _dead:
+			return
+		_dead = true
+		if NetHub.has_viewers():  # fx kind 11 = plank debris burst
+			NetHub.broadcast({"t": "fx", "k": 11,
+				"x": int(global_position.x), "y": int(global_position.y)})
+		for i in 8:
+			var panel := Plank.new()
+			panel.size = Vector2(randf_range(10.0, 18.0), 4.0)
+			panel.col = Color("d32f2f") if i % 4 != 0 else Color("454049")
+			panel.position = global_position \
+				+ Vector2(randf_range(-30.0, 30.0), randf_range(-16.0, 6.0))
+			panel.rotation = randf_range(-0.6, 0.6)
+			panel.linear_velocity = Vector2(randf_range(-200.0, 200.0),
+				randf_range(-320.0, -100.0))
+			panel.angular_velocity = randf_range(-8.0, 8.0)
+			get_parent().add_child(panel)
+		var puff := DustPuff.new()
+		puff.amount = 10
+		puff.color = Color(0.6, 0.25, 0.2, 0.85)
+		puff.position = global_position
+		get_parent().add_child(puff)
+		get_tree().call_group(&"sfx", &"play_land", global_position)
+		queue_free()
+
+	func _draw() -> void:
+		# Authored ~72x36 with the origin at the body centre so the kick's
+		# full rotation reads as the truck rolling over.
+		draw_rect(Rect2(-36, -8, 72, 20), Color.BLACK)
+		draw_rect(Rect2(-7, -19, 34, 13), Color.BLACK)
+		draw_rect(Rect2(-35, -7, 70, 18), Color("d32f2f"))
+		draw_rect(Rect2(-6, -18, 32, 12), Color("d32f2f"))
+		draw_rect(Rect2(-2, -16, 20, 9), Color("bfe3f2"))
+		draw_rect(Rect2(-35, 7, 70, 4), Color("8e2420"))
+		draw_rect(Rect2(33, -4, 3, 4), Color("ffd54f"))
+		for wx: float in [-22.0, 22.0]:
+			draw_circle(Vector2(wx, 10), 8.0, Color("111111"))
+			draw_circle(Vector2(wx, 10), 3.5, Color("666666"))
+
+
+## A lounge sofa (prop kind 18): kicks make it hop, blasts shred it.
+class SofaArt:
+	extends Node2D
+	var prop_kind := 18
+	var _dead := false
+	var _home_y := 0.0
+
+	func _ready() -> void:
+		add_to_group(&"props")
+		add_to_group(&"fixtures")
+		add_to_group(&"chests")
+		_home_y = position.y
+		z_index = 1
+
+	func kicked() -> void:
+		if _dead:
+			return
+		var tw := create_tween()
+		tw.tween_property(self, "position:y", _home_y - 7.0, 0.12) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(self, "position:y", _home_y, 0.2) \
+			.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+
+	func blast_destroy() -> void:
+		if _dead:
+			return
+		_dead = true
+		if NetHub.has_viewers():
+			NetHub.broadcast({"t": "fx", "k": 11,
+				"x": int(global_position.x), "y": int(global_position.y)})
+		for i in 6:
+			var cushion := Plank.new()
+			cushion.size = Vector2(randf_range(8.0, 13.0), 5.0)
+			cushion.col = Color("a34a3c") if i % 2 == 0 else Color("8e3b2f")
+			cushion.position = global_position \
+				+ Vector2(randf_range(-20.0, 20.0), randf_range(-10.0, 4.0))
+			cushion.linear_velocity = Vector2(randf_range(-160.0, 160.0),
+				randf_range(-280.0, -80.0))
+			cushion.angular_velocity = randf_range(-7.0, 7.0)
+			get_parent().add_child(cushion)
+		get_tree().call_group(&"sfx", &"play_land", global_position)
+		queue_free()
+
+	func _draw() -> void:
+		draw_rect(Rect2(-26, -13, 52, 25), Color.BLACK)
+		draw_rect(Rect2(-25, -12, 50, 23), Color("8e3b2f"))
+		draw_rect(Rect2(-21, -11, 40, 6), Color("a34a3c"))
+		draw_rect(Rect2(-21, -4, 19, 8), Color("a34a3c"))
+		draw_rect(Rect2(1, -4, 19, 8), Color("a34a3c"))
+		draw_rect(Rect2(-25, 7, 6, 4), Color("5c2620"))
+		draw_rect(Rect2(19, 7, 6, 4), Color("5c2620"))
 
 
 ## The outhouse hut: streamed to web (prop kind 9), and blown to plank

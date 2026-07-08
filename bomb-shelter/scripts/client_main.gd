@@ -24,6 +24,7 @@ var _hud: CanvasLayer
 var _decor: RoomDecor
 var _ceremony: Ceremony
 var _game_over := false
+var _in_lobby := false
 var _sent_a := 0.0
 var _snap_dt := 0.033
 var _last_snap_ms := 0
@@ -271,6 +272,7 @@ func _apply_snapshot(m: Dictionary) -> void:
 		_snap_dt = clampf(float(now_ms - _last_snap_ms) / 1000.0, 0.016, 0.12)
 	_last_snap_ms = now_ms
 	_ensure_local_player()
+	_in_lobby = int(m.get("lb", 0)) == 1
 	var ps: Array = m.get("p", [])
 	for i in mini(ps.size(), players.size()):
 		var arr: Array = ps[i]
@@ -303,7 +305,8 @@ func _apply_snapshot(m: Dictionary) -> void:
 				_status.text = "ELIMINATED — spectating" if int(arr[3]) < 0 \
 					else "respawn in %.1f" % (float(arr[3]) / 10.0)
 			else:
-				_status.text = ""
+				_status.text = "LOUNGE — waiting for the host to start" \
+					if _in_lobby else ""
 
 	var bs: Array = m.get("b", [])
 	while bombs.size() > bs.size():
@@ -418,7 +421,8 @@ func _reconcile_local(p: Player, arr: Array) -> void:
 		_status.text = "ELIMINATED — spectating" if int(arr[3]) < 0 \
 			else "respawn in %.1f" % (float(arr[3]) / 10.0)
 	else:
-		_status.text = ""
+		_status.text = "LOUNGE — waiting for the host to start" \
+			if _in_lobby else ""
 	if p.remote_hold:
 		return  # _animate_puppets lerps us along the host stream
 	if had_hold:

@@ -23,7 +23,9 @@ static var zoom_scale := 1.0
 static var camera_follow := false
 
 ## Hard AI opponents, spawned at match start (change applies on restart).
-static var bot_count := 0
+static var bot_count := 3
+## True from HOST GAME until the host taps START in the lounge.
+static var in_lobby := false
 
 ## Elimination mode: dying puts you out for the match (no respawns).
 ## Last player standing wins.
