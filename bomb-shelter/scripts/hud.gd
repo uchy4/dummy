@@ -156,6 +156,39 @@ func show_settings(open: bool) -> void:
 # The Quick Settings panel: live gameplay tuning while the game is paused.
 # Values write straight into Settings statics, so they apply the moment you
 # resume and survive rematches.
+## Tap-to-cycle color swatches (replaces ColorPickerButton, the one advanced
+## GUI class the game used, so the slim web engine can drop that whole set).
+const SWATCHES: Array[Color] = [
+	Color("e53935"), Color("fb8c00"), Color("fdd835"), Color("43a047"),
+	Color("00acc1"), Color("1e88e5"), Color("8e24aa"), Color("ec407a"),
+	Color("8d6e63"), Color("cfd8dc"),
+]
+
+
+func _paint_swatch(btn: Button, c: Color) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = c
+	sb.set_corner_radius_all(6)
+	for state in [&"normal", &"hover", &"pressed", &"focus"]:
+		btn.add_theme_stylebox_override(state, sb)
+
+
+func _cycle_color(i: int, btn: Button) -> void:
+	# Advance from the swatch nearest the player's current color.
+	var cur: Color = Settings.player_colors[i]
+	var nearest := 0
+	var best := 1e9
+	for k in SWATCHES.size():
+		var d := absf(cur.r - SWATCHES[k].r) + absf(cur.g - SWATCHES[k].g) \
+			+ absf(cur.b - SWATCHES[k].b)
+		if d < best:
+			best = d
+			nearest = k
+	var next_c := SWATCHES[(nearest + 1) % SWATCHES.size()]
+	_paint_swatch(btn, next_c)
+	player_color_changed.emit(i, next_c)
+
+
 func _build_settings_panel() -> void:
 	_settings = PanelContainer.new()
 	_settings.set_anchors_preset(Control.PRESET_CENTER)
@@ -267,11 +300,11 @@ func _build_settings_panel() -> void:
 		tag.text = "P%d" % (i + 1)
 		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(tag)
-		var picker := ColorPickerButton.new()
-		picker.color = Settings.player_colors[i]
+		var picker := Button.new()
 		picker.custom_minimum_size = Vector2(52, 34)
 		picker.focus_mode = Control.FOCUS_NONE
-		picker.color_changed.connect(func(c: Color) -> void: player_color_changed.emit(i, c))
+		_paint_swatch(picker, Settings.player_colors[i])
+		picker.pressed.connect(_cycle_color.bind(i, picker))
 		box.add_child(picker)
 		colors_row.add_child(box)
 
