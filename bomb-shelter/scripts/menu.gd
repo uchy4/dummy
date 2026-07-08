@@ -231,6 +231,7 @@ func _join_online() -> void:
 		_code_edit.placeholder_text = "relay not deployed"
 		return
 	Settings.join_url = "wss://%s/join/%s" % [NetHub.RELAY_HOST, code]
+	Settings.join_ip = "room " + code  # display only; join_url connects
 	Settings.join_name = _name_edit.text.strip_edges()
 	if Settings.join_name.is_empty():
 		Settings.join_name = "Guest"

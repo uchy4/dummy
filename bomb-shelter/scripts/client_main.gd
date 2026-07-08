@@ -29,6 +29,7 @@ var _sent_a := 0.0
 var _snap_dt := 0.033
 var _last_snap_ms := 0
 var _sent_j := false
+var _wait_t := 0.0
 var _sent_k := false
 
 
@@ -71,6 +72,10 @@ func _process(delta: float) -> void:
 				ws.send_text(JSON.stringify({
 					"t": "join", "n": Settings.join_name, "c": "#ff8f2e",
 				}))
+			if _last_snap_ms == 0:
+				_wait_t += delta
+				if _wait_t > 4.0:
+					_status.text = "room is empty — ask the host to HOST GAME (code stays the same)"
 			while ws.get_available_packet_count() > 0:
 				var msg: Variant = JSON.parse_string(ws.get_packet().get_string_from_utf8())
 				if msg is Dictionary:

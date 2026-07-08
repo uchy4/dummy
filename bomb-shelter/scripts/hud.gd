@@ -23,6 +23,7 @@ var _qr_url: Label
 var _touch := false
 var _lobby_box: VBoxContainer
 var _lobby_label: Label
+var _lobby_code: Label
 var _lobby_btn: Button
 var _upd_btn: Button
 
@@ -550,6 +551,13 @@ func update_lobby(count: int, need: int) -> void:
 		title.add_theme_constant_override(&"outline_size", 6)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_lobby_box.add_child(title)
+		_lobby_code = Label.new()
+		_lobby_code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lobby_code.add_theme_font_size_override(&"font_size", 19)
+		_lobby_code.add_theme_color_override(&"font_color", Color("9ccc65"))
+		_lobby_code.add_theme_color_override(&"font_outline_color", Color.BLACK)
+		_lobby_code.add_theme_constant_override(&"outline_size", 5)
+		_lobby_box.add_child(_lobby_code)
 		_lobby_label = Label.new()
 		_lobby_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_lobby_label.add_theme_font_size_override(&"font_size", 15)
@@ -591,6 +599,8 @@ func update_lobby(count: int, need: int) -> void:
 		_lobby_btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
 		_lobby_btn.position.y -= 148.0
 		add_child(_lobby_box)
+	_lobby_code.text = ("ONLINE ROOM CODE: %s" % NetHub.relay_code) \
+		if not NetHub.relay_code.is_empty() else ""
 	var ready_to_go := count >= need
 	_lobby_btn.disabled = not ready_to_go
 	_lobby_label.text = ("%d players in — tap START!" % count) if ready_to_go \

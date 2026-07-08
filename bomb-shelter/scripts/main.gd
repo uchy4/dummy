@@ -55,6 +55,8 @@ func _ready() -> void:
 	# everything inside World freezes.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	NetHub.advertising = true  # hosting: discoverable on the local network
+	if OS.get_environment("BOMB_SHELTER_SMOKE") != "1":
+		NetHub.start_relay()  # open the internet room right away (idempotent)
 	# CI smoke forces the touch path so gesture/button code errors surface
 	# headless — a real touchscreen isn't available on the runner.
 	touch = DisplayServer.is_touchscreen_available() \
