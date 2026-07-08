@@ -182,7 +182,8 @@ function fxPlay(m){var k=m.k,x=m.x,y=m.y;
  else if(k===2){crunch(0.28,0.6);puffAt(x,y+10,"#a1866a",5,100);}
  else if(k===3)crunch(0.09,1.1);
  else if(k===4)tone(1250,0,0.05,0.13);
- else if(k===5){tone(330,0,0.22,0.28);tone(215,0.07,0.3,0.26);}
+ else if(k===5){tone(330,0,0.22,0.28);tone(215,0.07,0.3,0.26);
+  puffAt(x,y-14,"#f5c518",5,170);}
  else if(k===6){tone(540,0,0.09,0.2);tone(810,0.09,0.12,0.2);}
  else if(k===8){var n=m.a||10;for(var i=0;i<n;i++)sparks.push({x:x,y:y,c:"#7fd4ff",
   vx:(m.dx||0)*170+(Math.random()-0.5)*90,vy:(m.dy||-1)*170+(Math.random()-0.5)*70,
@@ -466,12 +467,13 @@ function burst(x,y,col){for(var i=0;i<10;i++)sparks.push({x:x,y:y,c:col,
 // the native Ragdoll rig.
 var rags=[];
 function spawnRag(x,y,col,vx,vy){
- var defs=[[0,-2,12,10,col],[0,-11,10,9,shade(col,1.45)],
-  [-7,0,4,10,shade(col,0.85)],[7,0,4,10,shade(col,0.85)],
-  [-3,9,4,12,shade(col,0.65)],[3,9,4,12,shade(col,0.65)]];
+ // Parts mirror the live figure: body-color dome head, capsule limbs.
+ var defs=[[0,-2,12,10,col,0],[0,-11,11.8,9,col,1],
+  [-7,0,4,10,shade(col,0.85),2],[7,0,4,10,shade(col,0.85),2],
+  [-3,9,4,12,shade(col,0.65),2],[3,9,4,12,shade(col,0.65),2]];
  var p=[];
  for(var j=0;j<defs.length;j++){var d=defs[j];
-  p.push({x:x+d[0],y:y+d[1],w:d[2],h:d[3],c:d[4],
+  p.push({x:x+d[0],y:y+d[1],w:d[2],h:d[3],c:d[4],k:d[5],
    vx:vx*(0.7+Math.random()*0.6)+(Math.random()-0.5)*150,
    vy:vy*(0.7+Math.random()*0.6)-Math.random()*150,
    ang:0,av:(Math.random()-0.5)*22});}
@@ -489,8 +491,21 @@ function drawRags(){for(var i=0;i<rags.length;i++){var g=rags[i];
  ctx.globalAlpha=g.age>3.2?Math.max(0,1-(g.age-3.2)/1.3):1;
  for(var j=0;j<g.p.length;j++){var q=g.p[j];
   ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.ang);
-  ctx.fillStyle="#000";ctx.fillRect(-q.w/2-1,-q.h/2-1,q.w+2,q.h+2);
-  ctx.fillStyle=q.c;ctx.fillRect(-q.w/2,-q.h/2,q.w,q.h);ctx.restore();}
+  if(q.k===1){// head: round top, flat bottom, body color
+   var dome=function(r,dr){ctx.beginPath();ctx.arc(0,0,r,Math.PI,0);
+    ctx.lineTo(r,dr);ctx.lineTo(-r,dr);ctx.closePath();ctx.fill();};
+   ctx.fillStyle="#000";dome(q.w/2+1,q.h/2+1);
+   ctx.fillStyle=q.c;dome(q.w/2,q.h/2);}
+  else if(q.k===2){// limb: capsule with rounded caps
+   ctx.fillStyle="#000";ctx.fillRect(-q.w/2-1,-q.h/2,q.w+2,q.h);
+   ctx.beginPath();ctx.arc(0,-q.h/2,q.w/2+1,0,7);ctx.fill();
+   ctx.beginPath();ctx.arc(0,q.h/2,q.w/2+1,0,7);ctx.fill();
+   ctx.fillStyle=q.c;ctx.fillRect(-q.w/2,-q.h/2,q.w,q.h);
+   ctx.beginPath();ctx.arc(0,-q.h/2,q.w/2,0,7);ctx.fill();
+   ctx.beginPath();ctx.arc(0,q.h/2,q.w/2,0,7);ctx.fill();}
+  else{ctx.fillStyle="#000";ctx.fillRect(-q.w/2-1,-q.h/2-1,q.w+2,q.h+2);
+   ctx.fillStyle=q.c;ctx.fillRect(-q.w/2,-q.h/2,q.w,q.h);}
+  ctx.restore();}
  ctx.globalAlpha=1;}}
 function shade(hex,f){hex=hex.replace("#","");
  var r=parseInt(hex.substr(0,2),16),g=parseInt(hex.substr(2,2),16),b=parseInt(hex.substr(4,2),16);
@@ -886,7 +901,7 @@ function drawCeremony(q,now){if(!win.podium)return;
  for(var i=0;i<Math.min(3,win.podium.length);i++){var e=win.podium[i];
   var jump=Math.abs(Math.sin(t*4+i*0.9))*(i===0?8:5);
   var gx=SPOT[i][0],gy=pb-SPOT[i][1]-14-jump;
-  drawGuy(gx,gy,"#"+e[1],"#"+e[1],false,Math.sin(t*9+i*1.7)*0.4,1,true,false,0);
+  drawGuy(gx,gy,"#"+e[1],"#"+e[1],true,Math.sin(t*9+i*1.7)*0.4,1,true,false,0);
   ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="bold 8px sans-serif";
   ctx.fillText(e[0],gx,gy-22);
   ctx.fillStyle="rgba(0,0,0,.7)";ctx.font="7px sans-serif";
