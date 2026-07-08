@@ -710,16 +710,14 @@ func _fill_mask(x: int, y: int) -> int:
 	var dn := not _side_open(x, y + 1)
 	var lf := not _side_open(x - 1, y)
 	var rt := not _side_open(x + 1, y)
-	# The wedge only fills when the DIAGONAL cell is solid too (a real ramp
-	# step) — corner-kissing dirt with open space around it stays square.
 	var m := 0
-	if up and lf and not _side_open(x - 1, y - 1):
+	if up and lf:
 		m |= 1
-	if up and rt and not _side_open(x + 1, y - 1):
+	if up and rt:
 		m |= 2
-	if dn and rt and not _side_open(x + 1, y + 1):
+	if dn and rt:
 		m |= 4
-	if dn and lf and not _side_open(x - 1, y + 1):
+	if dn and lf:
 		m |= 8
 	return m
 

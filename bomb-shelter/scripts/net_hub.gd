@@ -400,13 +400,13 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
   var tri=function(a,b,c3){octx.beginPath();octx.moveTo(a[0],a[1]);
    octx.lineTo(b[0],b[1]);octx.lineTo(c3[0],c3[1]);octx.closePath();octx.fill();};
   var fb=3,fx3=c*PXC,fy3=r*PXC,fs=PXC;
-  if(fu&&fl&&!openC(r-1,c-1)){octx.fillStyle=colFor(r-1,c);
+  if(fu&&fl){octx.fillStyle=colFor(r-1,c);
    tri([fx3,fy3],[fx3+fb,fy3],[fx3,fy3+fb]);}
-  if(fu&&fr2&&!openC(r-1,c+1)){octx.fillStyle=colFor(r-1,c);
+  if(fu&&fr2){octx.fillStyle=colFor(r-1,c);
    tri([fx3+fs,fy3],[fx3+fs,fy3+fb],[fx3+fs-fb,fy3]);}
-  if(fd2&&fr2&&!openC(r+1,c+1)){octx.fillStyle=colFor(r+1,c);
+  if(fd2&&fr2){octx.fillStyle=colFor(r+1,c);
    tri([fx3+fs,fy3+fs],[fx3+fs-fb,fy3+fs],[fx3+fs,fy3+fs-fb]);}
-  if(fd2&&fl&&!openC(r+1,c-1)){octx.fillStyle=colFor(r+1,c);
+  if(fd2&&fl){octx.fillStyle=colFor(r+1,c);
    tri([fx3,fy3+fs],[fx3,fy3+fs-fb],[fx3+fb,fy3+fs]);}
   return;}
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
