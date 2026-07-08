@@ -29,7 +29,7 @@ func _ready() -> void:
 	if not color2.is_equal_approx(color):
 		var band := _rect_poly(Vector2(12, 3) * s, color2)
 		torso.add_child(band)
-	var head := _part(Vector2(0, -11) * s, Vector2(10, 9) * s, color.lightened(0.35))
+	var head := _part_dome(Vector2(0, -11) * s, Vector2(10, 9) * s, color)
 	_decorate_head(head)
 	var arm_l := _part(Vector2(-7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
 	var arm_r := _part(Vector2(7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
@@ -111,13 +111,48 @@ func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
 
 
 func _decorate_head(head: RigidBody2D) -> void:
-	var hat := _rect_poly(Vector2(12, 3.5), color.lightened(0.15))
-	hat.position = Vector2(0, -5.5)
-	head.add_child(hat)
 	for x in [-2.5, 2.5]:
 		var eye := _rect_poly(Vector2(2, 2.5), Color.WHITE)
 		eye.position = Vector2(x, -0.5)
 		head.add_child(eye)
+
+
+## A head-shaped part: round top, flat bottom, body-colored — matches the
+## living player's fused dome head.
+func _part_dome(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
+	var b := RigidBody2D.new()
+	b.position = pos
+	b.mass = 0.5
+	b.collision_layer = 0
+	b.collision_mask = 1
+	var pm := PhysicsMaterial.new()
+	pm.bounce = 0.3
+	pm.friction = 0.6
+	b.physics_material_override = pm
+	b.add_to_group(&"ragdoll_parts")
+	var cs := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = size
+	cs.shape = rs
+	b.add_child(cs)
+	b.add_child(_dome_poly(size.x / 2.0 + 1.0, size.y / 2.0 + 1.0, Color.BLACK))
+	b.add_child(_dome_poly(size.x / 2.0, size.y / 2.0, col))
+	add_child(b)
+	_parts.append(b)
+	return b
+
+
+func _dome_poly(r: float, drop: float, col: Color) -> Polygon2D:
+	var pts := PackedVector2Array()
+	pts.append(Vector2(r, drop))
+	for i in 9:
+		var t := PI * i / 8.0
+		pts.append(Vector2(cos(t) * r, -sin(t) * r))
+	pts.append(Vector2(-r, drop))
+	var p := Polygon2D.new()
+	p.polygon = pts
+	p.color = col
+	return p
 
 
 func _pin(a: RigidBody2D, b: RigidBody2D, anchor: Vector2) -> void:

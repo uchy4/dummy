@@ -190,10 +190,9 @@ func die(kick: Vector2) -> void:
 
 
 func _draw() -> void:
-	# One mirror (and pig-doubling) transform for the whole body: art below
-	# is authored facing right at chicken scale.
-	var s := 2.0 if kind == Kind.PIG else 1.0
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2(_facing * s, s))
+	# One mirror transform for the whole body: each animal's art is
+	# authored facing right at its true size (no scaling — outlines stay thin).
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(float(_facing), 1.0))
 	var lk := _flail if _stun_left > 0.0 else 0.0
 	if kind == Kind.CHICKEN:
 		var wing := sin(_wing_phase) * 0.9 if _flutter_left > 0.0 else 0.15
@@ -220,18 +219,20 @@ static func draw_chicken_art(ci: CanvasItem, wing_ang: float, leg_kick: float) -
 	ci.draw_line(Vector2(-2.0, -3.0), Vector2(-2.0, -3.0) + tip, Color("e0e0d8"), 2.5)
 
 
+## Pig art authored at its real (double) size with a thin 1px outline —
+## not a scaled-up small sprite with a fat border.
 static func draw_pig_art(ci: CanvasItem, leg_kick: float) -> void:
-	ci.draw_rect(Rect2(-9, -7, 18, 12), Color.BLACK)               # outline
-	ci.draw_rect(Rect2(-8, -6, 16, 10), Color("f4a7b9"))           # body
-	ci.draw_rect(Rect2(6.0, -5.0, 5.0, 6.0), Color("f4a7b9"))      # snout base
-	ci.draw_rect(Rect2(8.5, -3.0, 2.5, 3.0), Color("d97b95"))      # snout tip
-	ci.draw_rect(Rect2(4.0, -7.5, 3.0, 2.5), Color("e792a8"))      # ear
-	var k1 := sin(leg_kick) * 2.5 if leg_kick > 0.0 else 0.0
-	var k2 := cos(leg_kick * 1.3) * 2.5 if leg_kick > 0.0 else 0.0
-	ci.draw_rect(Rect2(-5.0 + k1, 4.0, 3.0, 3.0), Color("d97b95"))  # legs
-	ci.draw_rect(Rect2(2.0 + k2, 4.0, 3.0, 3.0), Color("d97b95"))
-	ci.draw_arc(Vector2(-9.0, -2.0), 2.0, 0.0, TAU * 0.75, 8, Color("d97b95"), 1.2)   # curly tail
-	ci.draw_arc(Vector2(-10.0, -3.5), 1.4, 0.0, TAU * 0.75, 6, Color("d97b95"), 1.0)
+	ci.draw_rect(Rect2(-17, -13, 34, 23), Color.BLACK)             # outline
+	ci.draw_rect(Rect2(-16, -12, 32, 21), Color("f4a7b9"))         # body
+	ci.draw_rect(Rect2(12.0, -10.0, 10.0, 12.0), Color("f4a7b9"))  # snout base
+	ci.draw_rect(Rect2(17.0, -6.0, 5.0, 6.0), Color("d97b95"))     # snout tip
+	ci.draw_rect(Rect2(8.0, -15.0, 6.0, 5.0), Color("e792a8"))     # ear
+	var k1 := sin(leg_kick) * 5.0 if leg_kick > 0.0 else 0.0
+	var k2 := cos(leg_kick * 1.3) * 5.0 if leg_kick > 0.0 else 0.0
+	ci.draw_rect(Rect2(-10.0 + k1, 8.0, 6.0, 6.0), Color("d97b95"))  # legs
+	ci.draw_rect(Rect2(4.0 + k2, 8.0, 6.0, 6.0), Color("d97b95"))
+	ci.draw_arc(Vector2(-18.0, -4.0), 4.0, 0.0, TAU * 0.75, 10, Color("d97b95"), 1.6)  # curly tail
+	ci.draw_arc(Vector2(-20.0, -7.0), 2.8, 0.0, TAU * 0.75, 8, Color("d97b95"), 1.3)
 
 
 ## A dead critter: the SAME body art, flung and tumbling (rocking, legs
@@ -260,8 +261,7 @@ class Corpse:
 		queue_redraw()
 
 	func _draw() -> void:
-		var s := 1.0 if chicken else 2.0
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(face * s, s))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(float(face), 1.0))
 		if chicken:
 			Critter.draw_chicken_art(self, sin(_flail * 2.0) * 1.1, _flail)
 		else:

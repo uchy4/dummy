@@ -613,17 +613,20 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  limbW(x,y,5,-6,ra,10,mul(c,0.68),face);         // back arm
  limbW(x,y,lx,2,rl,12,mul(c,0.52),face);         // back leg
  if(!kick)limbW(x,y,-lx,2,ll,llen,legc,face);    // front leg
- ctx.fillStyle="#000";                            // torso + round head silhouette
+ // Torso with a fused round-top head (flat bottom, BODY color) — the
+ // figure reads like a bullet in its casing.
+ ctx.fillStyle="#000";
+ ctx.beginPath();ctx.arc(x,y-8,6.9,0,7);ctx.fill();
  ctx.fillRect(x-7,y-8,14,12);
- ctx.beginPath();ctx.arc(x,y-11,6.8,0,7);ctx.fill();
- ctx.fillStyle=col;ctx.fillRect(x-6,y-7,12,10);
+ ctx.fillStyle=col;
+ ctx.beginPath();ctx.arc(x,y-8,5.9,0,7);ctx.fill();
+ ctx.fillRect(x-6,y-7,12,10);
  if(col2&&col2!==col){ctx.fillStyle=col2;ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
- ctx.fillStyle=lw(c,0.35);ctx.beginPath();ctx.arc(x,y-11,5.8,0,7);ctx.fill();  // round head
  if(armor){// the safety-yellow hard hat: a blast knocks it off
-  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-14.4,5.4,0,7);ctx.fill();
-  ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-14.2,4.8,0,7);ctx.fill();
-  ctx.fillStyle="#000";ctx.fillRect(x-7,y-14.2,14,2.2);
-  ctx.fillStyle="#e3b214";ctx.fillRect(x-6.5,y-14,13,1.8);}
+  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-13.2,5.2,0,7);ctx.fill();
+  ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-13,4.6,0,7);ctx.fill();
+  ctx.fillStyle="#000";ctx.fillRect(x-7,y-13.2,14,2.2);
+  ctx.fillStyle="#e3b214";ctx.fillRect(x-6.5,y-13,13,1.8);}
  var fx=face;
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);
  ctx.fillStyle="#000";ctx.fillRect(x-2.5+fx,y-11,1,1.5);ctx.fillRect(x+1.5+fx,y-11,1,1.5);
@@ -914,11 +917,12 @@ function drawProp(k){
   ctx.fillStyle="#e53935";ctx.fillRect(-1,-7,3,3);
   ctx.fillStyle="#fbc02d";ctx.fillRect(4,-2,4,2);
   ctx.fillStyle="#c98d29";ctx.fillRect(-2,5,2,3);ctx.fillRect(1,5,2,3);}
- else if(k===7){ctx.scale(2,2);// pigs are twice the size
-  ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,9.5,6.5,0,0,7);ctx.fill();
-  ctx.fillStyle="#f2a3b3";ctx.beginPath();ctx.ellipse(0,0,8.5,5.5,0,0,7);ctx.fill();
-  ctx.fillStyle="#d98795";ctx.fillRect(6,-2,4,4);
-  ctx.fillStyle="#c9868f";ctx.fillRect(-6,4,2,3);ctx.fillRect(4,4,2,3);}
+ else if(k===7){// pig authored at its true (double) size, thin outline
+  ctx.fillStyle="#000";ctx.beginPath();ctx.ellipse(0,0,18.5,12.5,0,0,7);ctx.fill();
+  ctx.fillStyle="#f2a3b3";ctx.beginPath();ctx.ellipse(0,0,17.2,11.2,0,0,7);ctx.fill();
+  ctx.fillStyle="#e792a8";ctx.fillRect(7,-14,6,5);
+  ctx.fillStyle="#d98795";ctx.fillRect(13,-4,8,8);
+  ctx.fillStyle="#c9868f";ctx.fillRect(-12,8,5,6);ctx.fillRect(8,8,5,6);}
  else if(k===8){ctx.fillStyle="#000";ctx.fillRect(-3,-12,6,24);
   ctx.fillStyle="#8a6238";ctx.fillRect(-2,-11,4,22);
   ctx.fillStyle="#000";ctx.fillRect(-11,-6.5,22,6);ctx.fillRect(-11,1.5,22,6);

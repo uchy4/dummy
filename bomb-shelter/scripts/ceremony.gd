@@ -67,8 +67,8 @@ func _guy(at: Vector2, c1v: Variant, c2v: Variant, i: int) -> void:
 	if not c1.is_equal_approx(c2):
 		draw_rect(Rect2(at.x - 6, at.y - 4.5, 12, 2.5), c2)
 		draw_rect(Rect2(at.x - 6, at.y, 12, 2.5), c2)
-	draw_circle(at + Vector2(0, -13), 5.5, c1.lightened(0.35))
-	draw_circle(at + Vector2(0, -16), 4.4, Color("f5c518"))
-	draw_rect(Rect2(at.x - 6, at.y - 16.2, 12, 1.6), Color("e3b214"))
+	draw_circle(at + Vector2(0, -9), 5.7, c1)
+	draw_circle(at + Vector2(0, -13.6), 4.4, Color("f5c518"))
+	draw_rect(Rect2(at.x - 6, at.y - 13.8, 12, 1.6), Color("e3b214"))
 	draw_rect(Rect2(at.x - 3, at.y - 14, 2, 3), Color.WHITE)
 	draw_rect(Rect2(at.x + 1, at.y - 14, 2, 3), Color.WHITE)

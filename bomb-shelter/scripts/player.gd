@@ -634,23 +634,25 @@ func _draw() -> void:
 	_limb(Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
 	if not kick_pose:
 		_limb(Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
-	# Torso and ROUND head in body space, black silhouette first.
+	# Torso with a fused round-top head, black silhouette first. The head
+	# is the BODY color with a flat bottom melting into the torso — the
+	# figure reads like a bullet in its casing.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_circle(Vector2(0, -8), 6.9, Color.BLACK)
 	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
-	draw_circle(Vector2(0, -11), 6.8, Color.BLACK)
+	draw_circle(Vector2(0, -8), 5.9, player_color)
 	draw_rect(Rect2(-6, -7, 12, 10), player_color)
 	if is_striped():
 		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
 		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
-	draw_circle(Vector2(0, -11), 5.8, player_color.lightened(0.35))
 	if armor:
 		# The safety-yellow hard hat: dome over the head plus a brim. A
 		# lethal blast knocks it off (take_blast sends it flying).
 		var hat := Color("f5c518")
-		draw_circle(Vector2(0, -14.4), 5.4, Color.BLACK)
-		draw_circle(Vector2(0, -14.2), 4.8, hat)
-		draw_rect(Rect2(-7, -14.2, 14, 2.2), Color.BLACK)
-		draw_rect(Rect2(-6.5, -14.0, 13, 1.8), hat.darkened(0.12))
+		draw_circle(Vector2(0, -13.2), 5.2, Color.BLACK)
+		draw_circle(Vector2(0, -13.0), 4.6, hat)
+		draw_rect(Rect2(-7, -13.2, 14, 2.2), Color.BLACK)
+		draw_rect(Rect2(-6.5, -13.0, 13, 1.8), hat.darkened(0.12))
 	var fx := f * 1.0
 	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
 	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)
