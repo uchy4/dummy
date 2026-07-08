@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  GODOT_VERSION: "4.4.1"
+  GODOT_VERSION: "4.7"
 
 jobs:
   android:
@@ -87,11 +87,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release download bomb-shelter-webtpl -p "*.zip" -D /tmp/webtpl; then
-            echo "No slim web template published yet (run the 'Build slim web template' workflow once) — skipping."
+          if ! gh release download bomb-shelter-webtpl -p "webtpl-${GODOT_VERSION}.zip" -D /tmp/webtpl; then
+            echo "No slim web template for Godot ${GODOT_VERSION} published yet (run the 'Build slim web template' workflow once) — skipping."
             exit 0
           fi
-          ls /tmp/webtpl
+          # The WebSlim preset expects the standard template filename.
+          mv "/tmp/webtpl/webtpl-${GODOT_VERSION}.zip" /tmp/webtpl/godot.web.template_release.wasm32.nothreads.zip
           mkdir -p build/web-slim
           set +e
           godot --headless --path bomb-shelter --export-release "WebSlim" \
@@ -117,7 +118,7 @@ jobs:
             -destkeystore "$HOME/debug.keystore" -deststoretype JKS \
             -deststorepass android -destkeypass android -noprompt
           mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.7.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
 
           [resource]
@@ -127,7 +128,7 @@ jobs:
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          cp "$HOME/.config/godot/editor_settings-4.4.tres" "$HOME/.config/godot/editor_settings-4.tres"
+          cp "$HOME/.config/godot/editor_settings-4.7.tres" "$HOME/.config/godot/editor_settings-4.tres"
           # Also set the keystore directly in the preset - the most reliable
           # thing headless export reads.
           python3 - <<'PYEOF'

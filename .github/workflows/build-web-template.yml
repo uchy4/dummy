@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 env:
-  GODOT_VERSION: "4.4.1"
+  GODOT_VERSION: "4.7"
 
 jobs:
   template:
@@ -34,7 +34,7 @@ jobs:
 
       - uses: mymindstorm/setup-emsdk@v14
         with:
-          version: "3.1.64"
+          version: "4.0.4"
 
       - name: Install SCons
         run: pip3 install scons
@@ -43,7 +43,7 @@ jobs:
         run: |
           cd /tmp/godot
           scons platform=web target=template_release threads=no \
-            production=yes optimize=size disable_3d=yes \
+            production=yes optimize=size disable_3d=yes deprecated=no \
             module_text_server_adv_enabled=no module_text_server_fb_enabled=yes \
             module_gltf_enabled=no module_csg_enabled=no module_gridmap_enabled=no \
             module_openxr_enabled=no module_webxr_enabled=no module_mobile_vr_enabled=no \
@@ -59,4 +59,5 @@ jobs:
             --title "Slim web export template (Godot ${GODOT_VERSION})" \
             --notes "Size-optimized single-threaded 2D-only web export template. Consumed by the WebSlim preset in the main build." \
             || true
-          gh release upload bomb-shelter-webtpl /tmp/godot/bin/godot.web.template_release.wasm32.nothreads.zip --clobber
+          cp /tmp/godot/bin/godot.web.template_release.wasm32.nothreads.zip "webtpl-${GODOT_VERSION}.zip"
+          gh release upload bomb-shelter-webtpl "webtpl-${GODOT_VERSION}.zip" --clobber
