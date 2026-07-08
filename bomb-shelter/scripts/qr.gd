@@ -19,7 +19,7 @@ static func make_image(text: String) -> Image:
 	var size := m.size()
 	var quiet := 4
 	var dim := size + quiet * 2
-	var img := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(dim, dim, false, Image.FORMAT_RGBA8)
 	img.fill(Color.WHITE)
 	for r in size:
 		for c in size:

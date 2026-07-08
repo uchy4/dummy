@@ -477,7 +477,7 @@ func _on_gesture_kick(dir: Vector2, power: float) -> void:
 
 static func circle_tex(radius: int, color: Color) -> ImageTexture:
 	var s := radius * 2
-	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(s, s, false, Image.FORMAT_RGBA8)
 	for y in s:
 		for x in s:
 			var d := Vector2(x - radius + 0.5, y - radius + 0.5).length()

@@ -144,7 +144,7 @@ func _build_tileset() -> void:
 	# and rows 48-63 are those fills scorched. Land cuts are 45-degree
 	# chamfers; water cuts are ROUNDED quarter-circles. Water gets only the
 	# mask rows and never scorches, fills, or collides.
-	var img := Image.create(TILE * 12, TILE * 64, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(TILE * 12, TILE * 64, false, Image.FORMAT_RGBA8)
 	_fill_tile(img, Tile.DIRT, Color("7a5230"), Color("5e3d22"), 0.16)
 	_fill_tile(img, Tile.DIRT_DARK, Color("5c3d22"), Color("452c17"), 0.2)
 	_fill_tile(img, Tile.BEDROCK, Color("4b4b55"), Color("35353d"), 0.22)

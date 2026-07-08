@@ -1088,7 +1088,7 @@ func _route_http(raw_path: String) -> PackedByteArray:
 ## A 256x256 bomb icon PNG for the home-screen app.
 func _make_icon_png() -> PackedByteArray:
 	var s := 256
-	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var img := Image.create_empty(s, s, false, Image.FORMAT_RGBA8)
 	img.fill(Color("8ecae6"))
 	var ground := int(s * 0.72)
 	for y in range(ground, s):
