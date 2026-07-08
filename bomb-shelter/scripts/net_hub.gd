@@ -8,6 +8,9 @@ const HTTP_PORT_BASE := 8910
 const WS_PORT_BASE := 8920
 const MAX_CLIENTS := 6
 const HTTP_TIMEOUT := 6.0
+## Bytes of a queued HTTP response streamed per connection per frame,
+## so serving the ~12 MB engine web build never stalls the game loop.
+const HTTP_CHUNK := 262144
 
 ## Selectable player colors (hex, no #). Joiners get the first free one by
 ## default and can't take one already in use.
@@ -55,6 +58,8 @@ var _beacon_t := 0.0
 
 var _http := TCPServer.new()
 var _wss := TCPServer.new()
+## True when CI bundled the gzipped Godot web export (res://web_pack).
+var _has_wasm := false
 var _pending: Array[Dictionary] = []
 var _next_id := 1
 
@@ -101,6 +106,7 @@ display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff
 <div id="swatches"></div>
 <button onclick="doJoin()">JOIN GAME</button>
 <button id="joinfs" onclick="goFS()">&#x26F6; Fullscreen</button>
+<button id="wasmjoin" style="display:__WASM__;background:#2a2118;color:#9ccc65;border:1px solid #5a4a2e;font-size:15px" onclick="goEngine()">&#9654; FULL GAME in browser (engine beta)</button>
 <div id="status">connecting…</div>
 <div id="a2hs" style="display:none;font-size:13px;color:#9aa;text-align:center;padding:4px">
 Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></div>
@@ -210,6 +216,10 @@ if(window.visualViewport)window.visualViewport.addEventListener("resize",fit);
 // LAN serving fills this with ws://HOSTNAME:port; the internet relay fills
 // it with its own wss://... room URL. HOSTNAME resolves at load time.
 var WSURL="__WSURL__".replace("HOSTNAME",location.hostname);
+// Alternate join: the real Godot engine build served at /g/ — takes
+// the typed name along so it drops straight into the match.
+function goEngine(){var n=(document.getElementById("name").value||"").trim()||"Guest";
+ location.href="/g/?ws="+WSURL.split(":").pop()+"&n="+encodeURIComponent(n);}
 function connect(){
  ws=new WebSocket(WSURL);
  ws.onopen=function(){document.getElementById("status").textContent="ready — pick a name and join";
@@ -1003,6 +1013,10 @@ fit();connect();render();
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if OS.has_feature("web"):  # the browser build only ever JOINS a host
+		set_process(false)
+		return
+	_has_wasm = FileAccess.file_exists("res://web_pack/index.html.gz")
 	for p in range(HTTP_PORT_BASE, HTTP_PORT_BASE + 5):
 		if _http.listen(p) == OK:
 			http_port = p
@@ -1015,13 +1029,60 @@ func _ready() -> void:
 	_icon_png = _make_icon_png()
 
 
-## Write a small HTTP/1.1 response with the given content type and body.
-func _send_http(tcp: StreamPeerTCP, content_type: String, body: PackedByteArray) -> void:
-	var head := ("HTTP/1.1 200 OK\r\nContent-Type: %s\r\n" +
+## Build a full HTTP/1.1 response (headers + body) to stream out in chunks.
+func _http_bytes(content_type: String, body: PackedByteArray, extra := "") -> PackedByteArray:
+	var head := ("HTTP/1.1 200 OK\r\nContent-Type: %s\r\n%s" +
 		"Content-Length: %d\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n") \
-		% [content_type, body.size()]
-	tcp.put_data(head.to_utf8_buffer())
-	tcp.put_data(body)
+		% [content_type, extra, body.size()]
+	var out := head.to_utf8_buffer()
+	out.append_array(body)
+	return out
+
+
+func _mime(fname: String) -> String:
+	if fname.ends_with(".html"):
+		return "text/html; charset=utf-8"
+	if fname.ends_with(".js"):
+		return "text/javascript"
+	if fname.ends_with(".wasm"):
+		return "application/wasm"
+	if fname.ends_with(".png"):
+		return "image/png"
+	return "application/octet-stream"
+
+
+## Route one request: home-screen icons, the web manifest, /g/ = the bundled
+## Godot engine web build (pre-gzipped by CI into res://web_pack, served with
+## Content-Encoding: gzip), or the canvas controller page.
+func _route_http(raw_path: String) -> PackedByteArray:
+	var path := raw_path.get_slice("?", 0)
+	if path.contains("icon") or path.contains("favicon") or path.contains("apple-touch"):
+		return _http_bytes("image/png", _icon_png)
+	if path.contains("manifest"):
+		return _http_bytes("application/manifest+json", MANIFEST.to_utf8_buffer())
+	if path == "/g":  # the engine shell fetches assets relative to /g/
+		return ("HTTP/1.1 302 Found\r\nLocation: /g/\r\nContent-Length: 0\r\n"
+			+ "Connection: close\r\n\r\n").to_utf8_buffer()
+	if path.begins_with("/g/"):
+		var fname := path.substr(3).get_file()  # get_file() blocks traversal
+		if fname.is_empty():
+			fname = "index.html"
+		var res := "res://web_pack/%s.gz" % fname
+		if FileAccess.file_exists(res):
+			return _http_bytes(_mime(fname), FileAccess.get_file_as_bytes(res),
+				"Content-Encoding: gzip\r\n")
+		if fname == "index.html":
+			return _http_bytes("text/html; charset=utf-8",
+				("<html><body style='background:#17100a;color:#eee;" +
+				"font-family:sans-serif;text-align:center;padding-top:40vh'>" +
+				"This build doesn't bundle the engine web client — use JOIN GAME " +
+				"on <a href='/' style='color:#ffca28'>the main page</a>." +
+				"</body></html>").to_utf8_buffer())
+		return ("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n"
+			+ "Connection: close\r\n\r\n").to_utf8_buffer()
+	return _http_bytes("text/html; charset=utf-8",
+		PAGE.replace("__WSURL__", "ws://HOSTNAME:%d" % ws_port)
+		.replace("__WASM__", "block" if _has_wasm else "none").to_utf8_buffer())
 
 
 ## A 256x256 bomb icon PNG for the home-screen app.
@@ -1139,7 +1200,8 @@ func _poll_relay(delta: float) -> void:
 			relay_code = str(env.get("code", ""))
 			# Ship the game page so the relay can serve it to guests.
 			var html := PAGE.replace("__WSURL__",
-				"wss://%s/join/%s" % [RELAY_HOST, relay_code])
+				"wss://%s/join/%s" % [RELAY_HOST, relay_code]).replace(
+				"__WASM__", "none")  # /g/ is only reachable on the LAN host
 			_relay_send({"t": "page", "html": html})
 			relay_ready.emit(relay_code)
 			continue
@@ -1180,9 +1242,10 @@ func _process(delta: float) -> void:
 				"g": "bombshelter", "n": label, "ws": ws_port, "http": http_port,
 			}).to_utf8_buffer())
 
-	# --- plain HTTP: serve the controller page ---
+	# --- plain HTTP: the controller page + the engine web build at /g/ ---
 	while _http.is_connection_available():
-		_pending.append({"tcp": _http.take_connection(), "buf": "", "age": 0.0, "sent": false})
+		_pending.append({"tcp": _http.take_connection(), "buf": "", "age": 0.0,
+			"out": PackedByteArray(), "off": -1})
 	var keep: Array[Dictionary] = []
 	for p in _pending:
 		var tcp: StreamPeerTCP = p.tcp
@@ -1190,8 +1253,22 @@ func _process(delta: float) -> void:
 		p.age += delta
 		if tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			continue
-		if p.sent:
-			if p.age > 1.0:
+		var off := int(p.off)
+		if off >= 0:
+			# Response queued: stream it out a chunk per frame so multi-MB
+			# engine files never block the game loop, then linger 1s so the
+			# client finishes reading before we hang up.
+			var out: PackedByteArray = p.out
+			if off < out.size():
+				var r: Array = tcp.put_partial_data(
+					out.slice(off, mini(off + HTTP_CHUNK, out.size())))
+				if int(r[0]) != OK:
+					tcp.disconnect_from_host()
+					continue
+				p.off = off + int(r[1])
+				p.age = 0.0
+				keep.append(p)
+			elif p.age > 1.0:
 				tcp.disconnect_from_host()
 			else:
 				keep.append(p)
@@ -1200,22 +1277,13 @@ func _process(delta: float) -> void:
 		if n > 0:
 			p.buf += tcp.get_utf8_string(n)
 		if p.buf.contains("\r\n\r\n"):
-			# Route by request path: the home-screen icon (iOS auto-fetches
-			# /apple-touch-icon*.png), the web manifest (Android install), or
-			# the page itself.
 			var path := "/"
 			var line: String = p.buf.split("\r\n")[0]
 			var parts := line.split(" ")
 			if parts.size() >= 2:
 				path = parts[1]
-			if path.contains("icon") or path.contains("favicon") or path.contains("apple-touch"):
-				_send_http(tcp, "image/png", _icon_png)
-			elif path.contains("manifest"):
-				_send_http(tcp, "application/manifest+json", MANIFEST.to_utf8_buffer())
-			else:
-				_send_http(tcp, "text/html; charset=utf-8",
-					PAGE.replace("__WSURL__", "ws://HOSTNAME:%d" % ws_port).to_utf8_buffer())
-			p.sent = true
+			p.out = _route_http(path)
+			p.off = 0
 			p.age = 0.0
 			keep.append(p)
 		elif p.age < HTTP_TIMEOUT:

@@ -59,6 +59,28 @@ jobs:
             echo "Smoke test passed for mode_3d=$MODE."
           done
 
+      - name: Export Web build (engine client, served by hosts at /g/)
+        run: |
+          mkdir -p build/web
+          set +e
+          godot --headless --path bomb-shelter --export-release "Web" \
+            "$GITHUB_WORKSPACE/build/web/index.html" 2>&1 | tee /tmp/export_web.log | tail -20
+          set -e
+          if [ ! -f build/web/index.wasm ]; then
+            echo "===== web export failed — diagnostics ====="
+            grep -iE "error|invalid|missing|template" /tmp/export_web.log | head -60 || true
+            exit 1
+          fi
+          # Pre-gzipped copies ride inside the APKs (include_filter web_pack/*);
+          # NetHub serves them with Content-Encoding: gzip so joining from a
+          # browser downloads ~12 MB instead of ~40 MB.
+          mkdir -p bomb-shelter/web_pack
+          for f in build/web/*; do
+            gzip -9 -c "$f" > "bomb-shelter/web_pack/$(basename "$f").gz"
+          done
+          (cd build/web && zip -qr ../bomb-shelter-web.zip .)
+          ls -la bomb-shelter/web_pack
+
       - name: Configure Android export (keystore + editor settings)
         run: |
           # ONE stable signing key (committed to the repo): every build signs
@@ -125,16 +147,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bomb-shelter-apks
-          path: build/*.apk
+          path: |
+            build/*.apk
+            build/bomb-shelter-web.zip
 
       - name: Publish release with both APKs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="bomb-shelter-build-${{ github.run_number }}"
-          gh release create "$TAG" build/bomb-shelter-2d.apk build/bomb-shelter-3d.apk \
+          gh release create "$TAG" build/bomb-shelter-2d.apk build/bomb-shelter-3d.apk build/bomb-shelter-web.zip \
             --target "${{ github.sha }}" \
             --title "Bomb Shelter Android build #${{ github.run_number }}" \
             --notes "Debug APKs built from \`${{ github.ref_name }}\` @ ${{ github.sha }}.
 
-          Two flavors that install side by side: \`bomb-shelter-2d.apk\` (classic flat look) and \`bomb-shelter-3d.apk\` (KayKit 2.5D). Both can host a match over local Wi-Fi and join one another's games from the menu; phones without the app join from a browser via the QR code."
+          Two flavors that install side by side: \`bomb-shelter-2d.apk\` (classic flat look) and \`bomb-shelter-3d.apk\` (KayKit 2.5D). Both can host a match over local Wi-Fi and join one another's games from the menu; phones without the app join from a browser via the QR code — the lightweight touch client, or the FULL GAME engine build the host serves at \`/g/\` (also attached as \`bomb-shelter-web.zip\`)."

@@ -17,6 +17,11 @@ var _upd_btn: Button
 
 
 func _ready() -> void:
+	if OS.has_feature("web"):
+		# The browser (engine) build is only ever loaded from a host's /g/
+		# page: skip the menu entirely and join that host directly.
+		_web_autojoin()
+		return
 	NetHub.advertising = false
 	Main.register_actions()
 	_build_ui()
@@ -166,6 +171,28 @@ func _rebuild_list() -> void:
 func _host() -> void:
 	NetHub.advertising = true
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
+## Browser build boot: the host's address comes from the page URL itself
+## and the ws port + player name ride in the query string (/g/?ws=N&n=NAME).
+func _web_autojoin() -> void:
+	set_process(false)
+	Main.register_actions()
+	var host := str(JavaScriptBridge.eval("location.hostname", true))
+	var qs := str(JavaScriptBridge.eval("location.search", true))
+	var wsp := NetHub.WS_PORT_BASE
+	var join_name := "Guest"
+	for kv in qs.trim_prefix("?").split("&"):
+		if kv.begins_with("ws="):
+			wsp = maxi(1, int(kv.substr(3)))
+		elif kv.begins_with("n="):
+			join_name = kv.substr(2).uri_decode()
+	Settings.join_ip = host
+	Settings.join_ws_port = wsp
+	Settings.join_name = join_name.strip_edges().substr(0, 10)
+	if Settings.join_name.is_empty():
+		Settings.join_name = "Guest"
+	get_tree().change_scene_to_file.call_deferred("res://scenes/client.tscn")
 
 
 func _join(ip: String, ws_port: int) -> void:
