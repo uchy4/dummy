@@ -13,9 +13,6 @@ static var type_enabled: Array[bool] = [
 	true, true, true, true, true, true, true, true,
 ]
 
-## 2.5D rendering: the 2D sim runs unchanged, drawn with KayKit 3D assets.
-## Applies on restart. Untick for the classic flat look.
-static var mode_3d := true
 
 ## Camera zoom multiplier — higher zooms in toward the character. Applies
 ## live to the local camera and streams to web viewers.

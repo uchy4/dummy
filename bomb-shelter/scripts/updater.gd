@@ -78,8 +78,7 @@ func _on_response(result: int, code: int, _headers: PackedStringArray,
 		check_done.emit()
 		return
 	var found := int(m.get_string(1))
-	# Each flavor updates itself: the 3D APK fetches the 3D asset.
-	var want := "bomb-shelter-3d.apk" if OS.has_feature("mode3d") else "bomb-shelter-2d.apk"
+	var want := "bomb-shelter-2d.apk"
 	var assets: Array = rel.get("assets", [])
 	for a: Variant in assets:
 		if a is Dictionary:

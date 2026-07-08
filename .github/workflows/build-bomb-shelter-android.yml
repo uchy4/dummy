@@ -45,19 +45,17 @@ jobs:
       - name: Import project
         run: godot --headless --path bomb-shelter --import || true
 
-      - name: Headless smoke test (boot the game in 2D and 2.5D, fail on script errors)
+      - name: Headless smoke test (boot the game, fail on script errors)
         env:
           BOMB_SHELTER_SMOKE: "1"
         run: |
-          for MODE in 0 1; do
-            BOMB_SHELTER_SMOKE_3D=$MODE timeout 15 godot --headless --path bomb-shelter 2>&1 | tee "/tmp/smoke_$MODE.log" || true
-            if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" "/tmp/smoke_$MODE.log"; then
-              echo "===== SMOKE TEST FAILED (mode_3d=$MODE) — script errors at runtime ====="
-              grep -nE "SCRIPT ERROR|Parse Error|Compile Error|ERROR|   at:" "/tmp/smoke_$MODE.log" | head -80
-              exit 1
-            fi
-            echo "Smoke test passed for mode_3d=$MODE."
-          done
+          timeout 15 godot --headless --path bomb-shelter 2>&1 | tee /tmp/smoke.log || true
+          if grep -qE "SCRIPT ERROR|Parse Error|Compile Error|Failed to instantiate|Invalid call|Nonexistent function" /tmp/smoke.log; then
+            echo "===== SMOKE TEST FAILED — script errors at runtime ====="
+            grep -nE "SCRIPT ERROR|Parse Error|Compile Error|ERROR|   at:" /tmp/smoke.log | head -80
+            exit 1
+          fi
+          echo "Smoke test passed."
 
       - name: Export Web build (engine client, served by hosts at /g/)
         run: |
@@ -71,32 +69,9 @@ jobs:
             grep -iE "error|invalid|missing|template" /tmp/export_web.log | head -60 || true
             exit 1
           fi
-          # Phones load this over plain http from the host, which is not a
-          # browser "secure context": Godot's shell refuses to start and the
-          # AudioWorklet APIs are absent there. This single-threaded build
-          # needs neither — drop the shell check and guard the two worklet
-          # touches (samples still play through regular WebAudio nodes; only
-          # playback-position reporting is lost).
-          python3 - <<'PYEOF'
-          html = "build/web/index.html"
-          s = open(html).read()
-          old = "const missing = Engine.getMissingFeatures({\n\t\tthreads: GODOT_THREADS_ENABLED,\n\t});"
-          assert s.count(old) == 1, "shell changed: update secure-context patch"
-          s = s.replace(old, old[:-1] + ".filter(function (m) { return m.indexOf('Secure Context') === -1; });")
-          open(html, "w").write(s)
-          js = "build/web/index.js"
-          s = open(js).read()
-          old = "GodotAudio.audioPositionWorkletPromise=ctx.audioWorklet.addModule(path);"
-          assert s.count(old) == 1, "engine js changed: update audio-init patch"
-          s = s.replace(old, "GodotAudio.audioPositionWorkletPromise=ctx.audioWorklet?ctx.audioWorklet.addModule(path):Promise.resolve();")
-          open(js, "w").write(s)
-          old2 = "async connectPositionWorklet(start){await GodotAudio.audioPositionWorkletPromise;"
-          s = open(js).read()
-          assert s.count(old2) == 1, "engine js changed: update sample-start patch"
-          s = s.replace(old2, "async connectPositionWorklet(start){if(!GodotAudio.ctx.audioWorklet){if(start){this.start()}return}await GodotAudio.audioPositionWorkletPromise;")
-          open(js, "w").write(s)
-          print("insecure-context patches applied")
-          PYEOF
+          # Patch the export to run outside a browser "secure context"
+          # (plain-http LAN serving) — see bomb-shelter/ci/patch_web_shell.py.
+          python3 bomb-shelter/ci/patch_web_shell.py build/web
           # Pre-gzipped copies ride inside the APKs (include_filter web_pack/*);
           # NetHub serves them with Content-Encoding: gzip so joining from a
           # browser downloads ~12 MB instead of ~40 MB.
@@ -106,6 +81,29 @@ jobs:
           done
           (cd build/web && zip -qr ../bomb-shelter-web.zip .)
           ls -la bomb-shelter/web_pack
+
+      - name: Export slim Web build (size-optimized custom template, when published)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release download bomb-shelter-webtpl -p "*.zip" -D /tmp/webtpl; then
+            echo "No slim web template published yet (run the 'Build slim web template' workflow once) — skipping."
+            exit 0
+          fi
+          ls /tmp/webtpl
+          mkdir -p build/web-slim
+          set +e
+          godot --headless --path bomb-shelter --export-release "WebSlim" \
+            "$GITHUB_WORKSPACE/build/web-slim/index.html" 2>&1 | tail -20
+          set -e
+          if [ ! -f build/web-slim/index.wasm ]; then
+            echo "slim export failed — release keeps the standard web build only"
+            exit 0
+          fi
+          python3 bomb-shelter/ci/patch_web_shell.py build/web-slim || { echo "patch failed on slim build — skipping"; rm -rf build/web-slim; exit 0; }
+          (cd build/web-slim && zip -qr ../bomb-shelter-web-slim.zip .)
+          ls -la build/bomb-shelter-web-slim.zip
 
       - name: Configure Android export (keystore + editor settings)
         run: |
@@ -130,7 +128,7 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
           cp "$HOME/.config/godot/editor_settings-4.4.tres" "$HOME/.config/godot/editor_settings-4.tres"
-          # Also set the keystore directly in BOTH presets - the most reliable
+          # Also set the keystore directly in the preset - the most reliable
           # thing headless export reads.
           python3 - <<'PYEOF'
           import os, re
@@ -144,30 +142,24 @@ jobs:
           # APK as an upgrade (installs over the old one, never a downgrade).
           block += ('version/code=%s\nversion/name="build %s"\n' % (run, run))
           s = re.sub(r'^version/(code|name)=.*\n', '', s, flags=re.M)
-          for sect in ('[preset.0.options]', '[preset.1.options]'):
+          for sect in ('[preset.0.options]',):
               s = s.replace(sect, sect + block)
           open(p, 'w').write(s)
-          print('keystore + version %s injected into both presets' % run)
+          print('keystore + version %s injected' % run)
           PYEOF
 
-      - name: Export debug APKs (2D and 3D flavors)
+      - name: Export debug APK
         run: |
           mkdir -p build
-          for PRESET in Android Android3D; do
-            case "$PRESET" in
-              Android) OUT="bomb-shelter-2d.apk" ;;
-              *) OUT="bomb-shelter-3d.apk" ;;
-            esac
-            set +e
-            godot --headless --path bomb-shelter --export-debug "$PRESET" \
-              "$GITHUB_WORKSPACE/build/$OUT" 2>&1 | tee /tmp/export.log | tail -20
-            set -e
-            if [ ! -f "build/$OUT" ]; then
-              echo "===== export failed for $PRESET — diagnostics ====="
-              grep -iE "error|invalid|missing|keystore|template|sdk|java" /tmp/export.log | head -60 || true
-              exit 1
-            fi
-          done
+          set +e
+          godot --headless --path bomb-shelter --export-debug "Android" \
+            "$GITHUB_WORKSPACE/build/bomb-shelter-2d.apk" 2>&1 | tee /tmp/export.log | tail -20
+          set -e
+          if [ ! -f build/bomb-shelter-2d.apk ]; then
+            echo "===== export failed — diagnostics ====="
+            grep -iE "error|invalid|missing|keystore|template|sdk|java" /tmp/export.log | head -60 || true
+            exit 1
+          fi
           ls -la build
 
       - uses: actions/upload-artifact@v4
@@ -175,16 +167,18 @@ jobs:
           name: bomb-shelter-apks
           path: |
             build/*.apk
-            build/bomb-shelter-web.zip
+            build/bomb-shelter-web*.zip
 
-      - name: Publish release with both APKs
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="bomb-shelter-build-${{ github.run_number }}"
-          gh release create "$TAG" build/bomb-shelter-2d.apk build/bomb-shelter-3d.apk build/bomb-shelter-web.zip \
+          ASSETS="build/bomb-shelter-2d.apk build/bomb-shelter-web.zip"
+          if [ -f build/bomb-shelter-web-slim.zip ]; then ASSETS="$ASSETS build/bomb-shelter-web-slim.zip"; fi
+          gh release create "$TAG" $ASSETS \
             --target "${{ github.sha }}" \
             --title "Bomb Shelter Android build #${{ github.run_number }}" \
-            --notes "Debug APKs built from \`${{ github.ref_name }}\` @ ${{ github.sha }}.
+            --notes "Debug APK built from \`${{ github.ref_name }}\` @ ${{ github.sha }}.
 
-          Two flavors that install side by side: \`bomb-shelter-2d.apk\` (classic flat look) and \`bomb-shelter-3d.apk\` (KayKit 2.5D). Both can host a match over local Wi-Fi and join one another's games from the menu; phones without the app join from a browser via the QR code — the lightweight touch client, or the FULL GAME engine build the host serves at \`/g/\` (also attached as \`bomb-shelter-web.zip\`)."
+          \`bomb-shelter-2d.apk\` hosts a match over local Wi-Fi and joins other hosts from the menu; phones without the app join from a browser via the QR code — the lightweight touch client, or the FULL GAME engine build the host serves at \`/g/\` (attached as \`bomb-shelter-web.zip\`, plus \`bomb-shelter-web-slim.zip\` when the size-optimized engine template is published)."

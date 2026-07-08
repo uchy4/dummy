@@ -198,15 +198,6 @@ func _build_settings_panel() -> void:
 	duds.toggled.connect(func(on: bool) -> void: Settings.duds_enabled = on)
 	vbox.add_child(duds)
 
-	if not (OS.has_feature("mode2d") or OS.has_feature("mode3d")):
-		# Flavor APKs are locked to their renderer; only dev builds can switch.
-		var mode3d := CheckBox.new()
-		mode3d.text = "2.5D graphics (applies on restart, R)"
-		mode3d.button_pressed = Settings.mode_3d
-		mode3d.focus_mode = Control.FOCUS_NONE
-		mode3d.toggled.connect(func(on: bool) -> void: Settings.mode_3d = on)
-		vbox.add_child(mode3d)
-
 	_add_slider(vbox, "Bots — hard AI (applies on restart, R)", 0.0, 4.0, 1.0,
 		float(Settings.bot_count),
 		func(v: float) -> void: Settings.bot_count = int(v))

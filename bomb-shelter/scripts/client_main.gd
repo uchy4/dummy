@@ -2,8 +2,7 @@ class_name ClientMain
 extends Node2D
 ## Native LAN-join client. Connects to a host's WebSocket (same protocol the
 ## web page uses) and mirrors the match with puppet Players/Bombs/Chests on a
-## client-mode Terrain — so both the 2D renderer and the KayKit 2.5D layer
-## work unchanged. Sends this player's input back to the host.
+## client-mode Terrain. Sends this player's input back to the host.
 
 var world: Node2D
 var terrain: Terrain
@@ -33,11 +32,6 @@ var _sent_k := false
 
 
 func _ready() -> void:
-	if OS.has_feature("mode3d"):
-		Settings.mode_3d = true
-	elif OS.has_feature("mode2d"):
-		Settings.mode_3d = false
-
 	world = Node2D.new()
 	world.name = "World"
 	add_child(world)
@@ -58,11 +52,6 @@ func _ready() -> void:
 
 	_build_hud()
 
-	if Settings.mode_3d:
-		world.visible = false
-		var v3 := Visual3D.new()
-		v3.terrain = terrain
-		add_child(v3)
 
 	var err := ws.connect_to_url("ws://%s:%d" % [Settings.join_ip, Settings.join_ws_port])
 	if err != OK:
@@ -182,11 +171,10 @@ func _handle(m: Dictionary) -> void:
 			terrain.carve_circle(pos, r)
 			get_tree().call_group(&"sfx", &"play_explosion", pos, r / 66.0, 0)
 			get_tree().call_group(&"camera", &"add_trauma", 0.3)
-			if not Settings.mode_3d:
-				var fx := ExplosionFx.new()
-				fx.radius = r
-				fx.position = pos
-				world.add_child(fx)
+			var fx := ExplosionFx.new()
+			fx.radius = r
+			fx.position = pos
+			world.add_child(fx)
 		"fx":
 			# Only the water-surface ripple (17) is replayed here — other fx
 			# kinds are re-derived locally from the snapshot stream.
