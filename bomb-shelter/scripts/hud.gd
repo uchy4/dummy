@@ -91,13 +91,21 @@ func setup(colors: Array[Color], touch := false) -> void:
 	vbox.add_child(_win_sub)
 
 	var gear := Button.new()
-	gear.text = "⚙ settings"
+	gear.text = "⚙"
+	gear.add_theme_font_size_override(&"font_size", 26)
 	gear.focus_mode = Control.FOCUS_NONE
 	gear.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	gear.offset_left = -180
+	# Sit below the phone's status bar / notch: base margin plus the real
+	# safe-area inset scaled into canvas coordinates.
+	var safe_top := 0.0
+	var win_h := float(DisplayServer.window_get_size().y)
+	if win_h > 0.0:
+		safe_top = float(DisplayServer.get_display_safe_area().position.y) \
+			* get_viewport().get_visible_rect().size.y / win_h
+	gear.offset_left = -62
 	gear.offset_right = -14
-	gear.offset_top = 44
-	gear.offset_bottom = 76
+	gear.offset_top = 58.0 + safe_top
+	gear.offset_bottom = gear.offset_top + 46.0
 	gear.pressed.connect(func() -> void: settings_pressed.emit())
 	add_child(gear)
 	_build_settings_panel()
@@ -575,7 +583,13 @@ func update_lobby(count: int, need: int) -> void:
 		_lobby_btn.add_theme_stylebox_override(&"disabled", sbd)
 		_lobby_btn.focus_mode = Control.FOCUS_NONE
 		_lobby_btn.pressed.connect(func() -> void: start_requested.emit())
-		_lobby_box.add_child(_lobby_btn)
+		# Bottom-center thumb country, clear of the corner touch pads and
+		# the system nav bar; the banner stays up top.
+		add_child(_lobby_btn)
+		_lobby_btn.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		_lobby_btn.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_lobby_btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_lobby_btn.position.y -= 148.0
 		add_child(_lobby_box)
 	var ready_to_go := count >= need
 	_lobby_btn.disabled = not ready_to_go
