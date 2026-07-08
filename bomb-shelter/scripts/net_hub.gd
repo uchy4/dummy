@@ -689,50 +689,6 @@ function render(){requestAnimationFrame(render);
   if(grid[idx]!==3)continue;var gx=(idx%W)*TS,gy=((idx/W)|0)*TS;
   ctx.fillStyle="#4caf50";ctx.fillRect(gx,gy,TS,4);
   ctx.fillStyle="#3f9143";ctx.fillRect(gx,gy+4,TS,1.5);}
- // Water: one flat translucent color, drawn live; surface cells start 5px
- // down so pools show a waterline.
- if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
-  // Surface ripples (fx 17) age out over 1.2s.
-  var nw3=performance.now();
-  for(var ri2=RIPPLES.length-1;ri2>=0;ri2--)
-   if(nw3-RIPPLES[ri2].t>1200)RIPPLES.splice(ri2,1);
-  // The liquid body: every settled water cell as a rounded quad grown by
-  // a third of a tile toward NON-water sides only (water-water edges abut
-  // flush), all in ONE path so nothing double-darkens. Outer corners
-  // round; the body slops over the land and air around it.
-  var WG=TS/3;
-  ctx.beginPath();
-  for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
-   if(WTRANS[wi])continue;// in flight: rendered as splash sparks
-   var wc=wi%W,wr=(wi/W)|0;
-   var iu=grid[wi-W]===4,idn=wi+W<grid.length&&grid[wi+W]===4,
-    il=wc>0&&grid[wi-1]===4,ir=wc<W-1&&grid[wi+1]===4;
-   // an open surface dips below its row (waterline); buried tops overlap up
-   var upAir=!iu&&grid[wi-W]===0;
-   var x0=wc*TS-(il?0:WG),y0=wr*TS+(upAir?4:(iu?0:-WG)),
-    x1=wc*TS+TS+(ir?0:WG),y1=wr*TS+TS+(idn?0:WG);
-   var rr5=[(iu||il)?0:5,(iu||ir)?0:5,(idn||ir)?0:5,(idn||il)?0:5];
-   if(ctx.roundRect)ctx.roundRect(x0,y0,x1-x0,y1-y0,rr5);
-   else ctx.rect(x0,y0,x1-x0,y1-y0);}
-  // Rolling waterlines join the same fill: wave humps above the raised
-  // surface near each active ripple.
-  for(var ri3=0;ri3<RIPPLES.length;ri3++){var rp2=RIPPLES[ri3];
-   var age2=(nw3-rp2.t)/1000,env2=(1-age2/1.2)*rp2.p*4;
-   if(env2<=0)continue;
-   var oc2=Math.floor(rp2.x/TS),or2=Math.floor(rp2.y/TS);
-   for(var dc2=-4;dc2<=4;dc2++){var cx2=oc2+dc2;
-    if(cx2<0||cx2>=W)continue;
-    var sy2=-1;
-    for(var dy2=-3;dy2<=3;dy2++){var cy2=or2+dy2;
-     if(cy2<1||cy2>=H)continue;
-     if(grid[cy2*W+cx2]===4&&grid[(cy2-1)*W+cx2]!==4){sy2=cy2;break;}}
-    if(sy2<0)continue;
-    var wl2=sy2*TS+4;
-    for(var sb=0;sb<4;sb++){var pxb=cx2*TS+sb*4+2,dxp2=pxb-rp2.x;
-     var a2=env2*Math.exp(-Math.abs(dxp2)*0.03)
-      *(0.5+0.5*Math.cos(Math.abs(dxp2)*0.26-age2*9));
-     if(a2>0.6)ctx.rect(pxb-2,wl2-a2,4,a2);}}}
-  ctx.fill();}
  var now=performance.now();
  if(sc&&sc.c)for(var i=0;i<sc.c.length;i++){var q=sc.c[i];
   ctx.fillStyle="#000";ctx.fillRect(q[0]-10,q[1]-8,20,16);
@@ -795,6 +751,50 @@ function render(){requestAnimationFrame(render);
   drawGuy(pos.x,pos.y,col,col2,p[5]===1,a.swing,a.face,air,stn,stAng,kck);
   if(i===you){ctx.fillStyle="#fff";ctx.beginPath();
    ctx.moveTo(pos.x,pos.y-26);ctx.lineTo(pos.x-5,y0(pos.y));ctx.lineTo(pos.x+5,y0(pos.y));ctx.fill();}}
+ // Water draws over players, props and bombs (everything but fx/UI):
+ // submerged things read as being IN the liquid.
+ if(grid){ctx.fillStyle="rgba(61,128,224,0.55)";
+  // Surface ripples (fx 17) age out over 1.2s.
+  var nw3=performance.now();
+  for(var ri2=RIPPLES.length-1;ri2>=0;ri2--)
+   if(nw3-RIPPLES[ri2].t>1200)RIPPLES.splice(ri2,1);
+  // The liquid body: every settled water cell as a rounded quad grown by
+  // a third of a tile toward NON-water sides only (water-water edges abut
+  // flush), all in ONE path so nothing double-darkens. Outer corners
+  // round; the body slops over the land and air around it.
+  var WG=TS/3;
+  ctx.beginPath();
+  for(var wi=W;wi<grid.length;wi++){if(grid[wi]!==4)continue;
+   if(WTRANS[wi])continue;// in flight: rendered as splash sparks
+   var wc=wi%W,wr=(wi/W)|0;
+   var iu=grid[wi-W]===4,idn=wi+W<grid.length&&grid[wi+W]===4,
+    il=wc>0&&grid[wi-1]===4,ir=wc<W-1&&grid[wi+1]===4;
+   // an open surface dips below its row (waterline); buried tops overlap up
+   var upAir=!iu&&grid[wi-W]===0;
+   var x0=wc*TS-(il?0:WG),y0=wr*TS+(upAir?4:(iu?0:-WG)),
+    x1=wc*TS+TS+(ir?0:WG),y1=wr*TS+TS+(idn?0:WG);
+   var rr5=[(iu||il)?0:5,(iu||ir)?0:5,(idn||ir)?0:5,(idn||il)?0:5];
+   if(ctx.roundRect)ctx.roundRect(x0,y0,x1-x0,y1-y0,rr5);
+   else ctx.rect(x0,y0,x1-x0,y1-y0);}
+  // Rolling waterlines join the same fill: wave humps above the raised
+  // surface near each active ripple.
+  for(var ri3=0;ri3<RIPPLES.length;ri3++){var rp2=RIPPLES[ri3];
+   var age2=(nw3-rp2.t)/1000,env2=(1-age2/1.2)*rp2.p*4;
+   if(env2<=0)continue;
+   var oc2=Math.floor(rp2.x/TS),or2=Math.floor(rp2.y/TS);
+   for(var dc2=-4;dc2<=4;dc2++){var cx2=oc2+dc2;
+    if(cx2<0||cx2>=W)continue;
+    var sy2=-1;
+    for(var dy2=-3;dy2<=3;dy2++){var cy2=or2+dy2;
+     if(cy2<1||cy2>=H)continue;
+     if(grid[cy2*W+cx2]===4&&grid[(cy2-1)*W+cx2]!==4){sy2=cy2;break;}}
+    if(sy2<0)continue;
+    var wl2=sy2*TS+4;
+    for(var sb=0;sb<4;sb++){var pxb=cx2*TS+sb*4+2,dxp2=pxb-rp2.x;
+     var a2=env2*Math.exp(-Math.abs(dxp2)*0.03)
+      *(0.5+0.5*Math.cos(Math.abs(dxp2)*0.26-age2*9));
+     if(a2>0.6)ctx.rect(pxb-2,wl2-a2,4,a2);}}}
+  ctx.fill();}
  for(var i=flashes.length-1;i>=0;i--){var f=flashes[i];var a=(now-f.t)/400;
   if(a>=1){flashes.splice(i,1);continue;}
   ctx.fillStyle="rgba(255,220,120,"+(0.7*(1-a))+")";

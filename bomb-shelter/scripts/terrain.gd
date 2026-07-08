@@ -832,7 +832,8 @@ func _process(delta: float) -> void:
 				d.v += Vector2(0, 500.0 * delta)
 				d.p += (d.v as Vector2) * delta
 			i -= 1
-		queue_redraw()
+		if _wb != null:
+			_wb.queue_redraw()
 	if client_mode:
 		return
 	_water_acc += delta
@@ -1086,17 +1087,6 @@ func apply_water_moves(moves: Array, eq: Array = []) -> void:
 	queue_redraw()
 
 
-## Traveling water renders as falling splash droplets — the same spray look
-## as the well squirt (WaterSpray). The liquid body itself is drawn by the
-## WaterBody canvas.
-func _draw() -> void:
-	for d: Dictionary in _drops:
-		var fade := 1.0 - float(d.t) / DROP_LIFE
-		var c := DROP_COLOR
-		c.a = DROP_COLOR.a * fade
-		draw_circle(d.p, 1.4 + 1.2 * fade, c)
-
-
 ## Repaint a moved drop and its vertical neighbors: covered water uses the
 ## full tile, surface water the partial one (visible waterline).
 func _repaint_water_around(from_idx: int, to_idx: int) -> void:
@@ -1250,7 +1240,7 @@ class WaterBody:
 	var _sb := StyleBoxFlat.new()
 
 	func _ready() -> void:
-		z_index = 1  # over terrain tiles, under props and players
+		z_index = 8  # in front of players, props and bombs — only fx/UI above
 		_sb.bg_color = Terrain.WATER_COLOR
 
 	func _draw() -> void:
@@ -1311,3 +1301,9 @@ class WaterBody:
 					if a > 0.6:
 						draw_rect(Rect2(px - 2.0, wl - a, 4.0, a),
 							Terrain.WATER_COLOR)
+		# Traveling water: falling splash droplets, same layer as the body.
+		for d: Dictionary in t._drops:
+			var fade := 1.0 - float(d.t) / Terrain.DROP_LIFE
+			var dc := Terrain.DROP_COLOR
+			dc.a = Terrain.DROP_COLOR.a * fade
+			draw_circle(d.p, 1.4 + 1.2 * fade, dc)
