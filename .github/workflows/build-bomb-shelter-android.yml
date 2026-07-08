@@ -71,6 +71,32 @@ jobs:
             grep -iE "error|invalid|missing|template" /tmp/export_web.log | head -60 || true
             exit 1
           fi
+          # Phones load this over plain http from the host, which is not a
+          # browser "secure context": Godot's shell refuses to start and the
+          # AudioWorklet APIs are absent there. This single-threaded build
+          # needs neither — drop the shell check and guard the two worklet
+          # touches (samples still play through regular WebAudio nodes; only
+          # playback-position reporting is lost).
+          python3 - <<'PYEOF'
+          html = "build/web/index.html"
+          s = open(html).read()
+          old = "const missing = Engine.getMissingFeatures({\n\t\tthreads: GODOT_THREADS_ENABLED,\n\t});"
+          assert s.count(old) == 1, "shell changed: update secure-context patch"
+          s = s.replace(old, old[:-1] + ".filter(function (m) { return m.indexOf('Secure Context') === -1; });")
+          open(html, "w").write(s)
+          js = "build/web/index.js"
+          s = open(js).read()
+          old = "GodotAudio.audioPositionWorkletPromise=ctx.audioWorklet.addModule(path);"
+          assert s.count(old) == 1, "engine js changed: update audio-init patch"
+          s = s.replace(old, "GodotAudio.audioPositionWorkletPromise=ctx.audioWorklet?ctx.audioWorklet.addModule(path):Promise.resolve();")
+          open(js, "w").write(s)
+          old2 = "async connectPositionWorklet(start){await GodotAudio.audioPositionWorkletPromise;"
+          s = open(js).read()
+          assert s.count(old2) == 1, "engine js changed: update sample-start patch"
+          s = s.replace(old2, "async connectPositionWorklet(start){if(!GodotAudio.ctx.audioWorklet){if(start){this.start()}return}await GodotAudio.audioPositionWorkletPromise;")
+          open(js, "w").write(s)
+          print("insecure-context patches applied")
+          PYEOF
           # Pre-gzipped copies ride inside the APKs (include_filter web_pack/*);
           # NetHub serves them with Content-Encoding: gzip so joining from a
           # browser downloads ~12 MB instead of ~40 MB.
