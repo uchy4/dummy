@@ -8,6 +8,14 @@ name: Deploy relay (Cloudflare Worker)
 
 on:
   workflow_dispatch:
+  # workflow_dispatch only registers on the default branch, so also fire on
+  # pushes touching this file — edit the touch counter below to redeploy.
+  push:
+    branches: ["claude/bomb-shelter-game-4rwbvd", "main"]
+    paths:
+      - ".github/workflows/deploy-relay.yml"
+
+# deploy touch counter: 1
 
 jobs:
   deploy:
