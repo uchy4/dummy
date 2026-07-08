@@ -27,23 +27,28 @@ func _ready() -> void:
 	if color2 == Color.TRANSPARENT:
 		color2 = color
 	var s := part_scale
+	# Dimensions mirror the living player's art exactly: 12x10 torso with
+	# the same two stripe bands, an 11.8-wide fused dome head, and 4-wide
+	# capsule limbs (rounded at both ends) at the player's lengths.
 	var torso := _part(Vector2(0, -2) * s, Vector2(12, 10) * s, color)
 	if not color2.is_equal_approx(color):
-		var band := _rect_poly(Vector2(12, 3) * s, color2)
-		torso.add_child(band)
-	var head := _part_dome(Vector2(0, -11) * s, Vector2(10, 9) * s, color)
+		for by: float in [-1.75, 2.75]:
+			var band := _rect_poly(Vector2(12, 2.5) * s, color2)
+			band.position = Vector2(0, by) * s
+			torso.add_child(band)
+	var head := _part_dome(Vector2(0, -11) * s, Vector2(11.8, 9) * s, color)
 	_decorate_head(head)
 	if hat:
-		var hb := _dome_poly(5.6 * s, 0.0, Color.BLACK)
-		hb.position = Vector2(0, -3.6) * s
+		var hb := _dome_poly(5.4 * s, 0.0, Color.BLACK)
+		hb.position = Vector2(0, -4.4) * s
 		head.add_child(hb)
-		var hy := _dome_poly(5.0 * s, 0.0, Color("f5c518"))
-		hy.position = Vector2(0, -3.5) * s
+		var hy := _dome_poly(4.8 * s, 0.0, Color("f5c518"))
+		hy.position = Vector2(0, -4.2) * s
 		head.add_child(hy)
-	var arm_l := _part(Vector2(-7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
-	var arm_r := _part(Vector2(7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15))
-	var leg_l := _part(Vector2(-3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35))
-	var leg_r := _part(Vector2(3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35))
+	var arm_l := _part(Vector2(-7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15), true)
+	var arm_r := _part(Vector2(7, 0) * s, Vector2(4, 10) * s, color.darkened(0.15), true)
+	var leg_l := _part(Vector2(-3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35), true)
+	var leg_r := _part(Vector2(3, 9) * s, Vector2(4, 12) * s, color.darkened(0.35), true)
 
 	_pin(head, torso, Vector2(0, -7) * s)
 	_pin(arm_l, torso, Vector2(-6, -5) * s)
@@ -94,7 +99,7 @@ func torso_grounded() -> bool:
 	return not space.intersect_ray(q).is_empty()
 
 
-func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
+func _part(pos: Vector2, size: Vector2, col: Color, capsule := false) -> RigidBody2D:
 	var b := RigidBody2D.new()
 	b.position = pos
 	b.mass = 0.5
@@ -111,12 +116,34 @@ func _part(pos: Vector2, size: Vector2, col: Color) -> RigidBody2D:
 	rs.size = size
 	cs.shape = rs
 	b.add_child(cs)
-	b.add_child(_rect_poly(size + Vector2(2, 2), Color.BLACK))  # outline
-	b.add_child(_rect_poly(size, col))
+	if capsule:
+		# Rounded caps at both ends, matching the player's _limb art.
+		var hy := size.y / 2.0
+		var ro := size.x / 2.0 + 1.0
+		b.add_child(_rect_poly(size + Vector2(2, 0), Color.BLACK))
+		b.add_child(_circle_poly(ro, Color.BLACK, Vector2(0, -hy)))
+		b.add_child(_circle_poly(ro, Color.BLACK, Vector2(0, hy)))
+		b.add_child(_rect_poly(size, col))
+		b.add_child(_circle_poly(size.x / 2.0, col, Vector2(0, -hy)))
+		b.add_child(_circle_poly(size.x / 2.0, col, Vector2(0, hy)))
+	else:
+		b.add_child(_rect_poly(size + Vector2(2, 2), Color.BLACK))  # outline
+		b.add_child(_rect_poly(size, col))
 
 	add_child(b)
 	_parts.append(b)
 	return b
+
+
+func _circle_poly(r: float, col: Color, pos: Vector2) -> Polygon2D:
+	var pts := PackedVector2Array()
+	for i in 12:
+		var t := TAU * i / 12.0
+		pts.append(pos + Vector2(cos(t), sin(t)) * r)
+	var p := Polygon2D.new()
+	p.polygon = pts
+	p.color = col
+	return p
 
 
 func _decorate_head(head: RigidBody2D) -> void:
