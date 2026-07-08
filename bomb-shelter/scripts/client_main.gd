@@ -273,6 +273,8 @@ func _apply_snapshot(m: Dictionary) -> void:
 	_last_snap_ms = now_ms
 	_ensure_local_player()
 	_in_lobby = int(m.get("lb", 0)) == 1
+	camera.hold_rect = (terrain.finish_line_rect().grow_individual(24, 44, 24, 12)
+		if _in_lobby else Rect2())
 	var ps: Array = m.get("p", [])
 	for i in mini(ps.size(), players.size()):
 		var arr: Array = ps[i]

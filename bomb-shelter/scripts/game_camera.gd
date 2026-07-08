@@ -12,6 +12,9 @@ var trauma := 0.0
 ## In follow mode (Settings.camera_follow) the camera tracks this one player
 ## instead of framing the whole group. Falls back to the first living player.
 var focus_target: Player = null
+## While non-empty the camera ignores players and holds this rect fitted to
+## the screen — the pre-match lounge frames the whole finish hall with it.
+var hold_rect := Rect2()
 
 
 func _ready() -> void:
@@ -24,6 +27,15 @@ func add_trauma(amount: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if hold_rect.size.x > 0.0:
+		var hvp := get_viewport_rect().size
+		var hfit := minf(hvp.x / hold_rect.size.x, hvp.y / hold_rect.size.y)
+		zoom = zoom.lerp(Vector2.ONE * hfit, 1.0 - exp(-6.0 * delta))
+		global_position = global_position.lerp(hold_rect.get_center(),
+			1.0 - exp(-6.0 * delta))
+		trauma = maxf(trauma - 2.0 * delta, 0.0)
+		offset = Vector2.ZERO
+		return
 	var living: Array[Player] = []
 	for p in get_tree().get_nodes_in_group(&"players"):
 		var pl := p as Player

@@ -459,9 +459,9 @@ func _build_lounge_sofas() -> void:
 		add_child(sofa)
 
 
-## The surface pickup truck (prop kind 17): player-plus sized, a kick sends
-## it rolling one full body rotation away from the kicker, and a blast in
-## range blows it into red panel debris.
+## The surface pickup truck (prop kind 17): player-plus sized, a kick
+## shoves it one truck-length away from the kicker with a suspension
+## wobble, and a blast in range blows it into red panel debris.
 class TruckArt:
 	extends Node2D
 	var prop_kind := 17
@@ -478,7 +478,7 @@ class TruckArt:
 		if _rolling or _dead:
 			return
 		_rolling = true
-		# Roll away from the nearest player — they just kicked the bumper.
+		# Shoved away from the nearest player — they just kicked the bumper.
 		var s := 1.0
 		var best := 1e18
 		for n in get_tree().get_nodes_in_group(&"players"):
@@ -489,13 +489,15 @@ class TruckArt:
 			if d < best:
 				best = d
 				s = 1.0 if global_position.x >= p.global_position.x else -1.0
+		# One truck-length slide, no roll — just a suspension wobble.
 		var tw := create_tween()
-		tw.set_parallel(true)
-		tw.tween_property(self, "rotation", rotation + TAU * s, 1.1) \
+		tw.tween_property(self, "position:x", position.x + 72.0 * s, 0.5) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.tween_property(self, "position:x", position.x + 88.0 * s, 1.1) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.chain().tween_callback(_roll_done)
+		tw.tween_callback(_roll_done)
+		var wob := create_tween()
+		wob.tween_property(self, "rotation", 0.09 * s, 0.1)
+		wob.tween_property(self, "rotation", -0.05 * s, 0.14)
+		wob.tween_property(self, "rotation", 0.0, 0.18)
 		get_tree().call_group(&"sfx", &"play_land", global_position)
 
 	func _roll_done() -> void:

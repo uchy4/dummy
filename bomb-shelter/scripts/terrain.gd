@@ -566,7 +566,7 @@ func _carve_open(x: int, y: int) -> void:
 ## it IS winning the depth race.
 func _build_finish_room() -> void:
 	var cx := W / 2
-	finish_room = Rect2i(cx - 5, FINISH_TOP, 10, 10)
+	finish_room = Rect2i(cx - 10, FINISH_TOP, 20, 10)  # double-wide: lounge + party hall
 	for y in range(finish_room.position.y, finish_room.end.y):
 		for x in range(finish_room.position.x, finish_room.end.x):
 			if _gget(x, y) != Cell.BEDROCK:

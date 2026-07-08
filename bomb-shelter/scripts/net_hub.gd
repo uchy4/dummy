@@ -1001,7 +1001,7 @@ function drawProp(k){
   ctx.fillStyle="#1c1310";
   fillPoly([[-13,6],[-12,-14],[-8,-23],[0,-27],[8,-23],[12,-14],[13,6]]);
   ctx.fillRect(-13,4,26,30);}
- else if(k===17){// red pickup: a kick rolls it (rotation streams via rot)
+ else if(k===17){// red pickup: kicks shove it (wobble streams via rot)
   ctx.fillStyle="#000";ctx.fillRect(-36,-8,72,20);ctx.fillRect(-7,-19,34,13);
   ctx.fillStyle="#d32f2f";ctx.fillRect(-35,-7,70,18);ctx.fillRect(-6,-18,32,12);
   ctx.fillStyle="#bfe3f2";ctx.fillRect(-2,-16,20,9);

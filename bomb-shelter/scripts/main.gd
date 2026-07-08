@@ -124,6 +124,9 @@ func _ready() -> void:
 	camera.zoom = Vector2(0.8, 0.8)
 	if not players.is_empty():
 		camera.focus_target = players[0]  # follow-mode tracks player 1
+	if Settings.in_lobby:
+		# The lounge fills the screen: hold the camera on the finish hall.
+		camera.hold_rect = terrain.finish_line_rect().grow_individual(24, 44, 24, 12)
 	world.add_child(camera)
 
 	var spawner := BombSpawner.new()
