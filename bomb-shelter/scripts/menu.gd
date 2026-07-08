@@ -11,6 +11,7 @@ var _scan_ok := false
 var _name_edit: LineEdit
 var _list: VBoxContainer
 var _scan_label: Label
+var _code_edit: LineEdit
 var _refresh := 0.0
 var _ver_label: Label
 var _upd_btn: Button
@@ -113,6 +114,28 @@ func _build_ui() -> void:
 	host.pressed.connect(_host)
 	box.add_child(host)
 
+	# Internet rooms: the host's Quick Settings shows a short room code;
+	# type it here to join from anywhere through the relay.
+	var online_title := Label.new()
+	online_title.text = "Join an online room:"
+	online_title.add_theme_font_size_override(&"font_size", 18)
+	box.add_child(online_title)
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override(&"separation", 10)
+	box.add_child(code_row)
+	_code_edit = LineEdit.new()
+	_code_edit.placeholder_text = "ROOM CODE"
+	_code_edit.max_length = 8
+	_code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_code_edit.add_theme_font_size_override(&"font_size", 20)
+	code_row.add_child(_code_edit)
+	var online_btn := Button.new()
+	online_btn.text = "JOIN ONLINE"
+	online_btn.add_theme_font_size_override(&"font_size", 20)
+	online_btn.focus_mode = Control.FOCUS_NONE
+	online_btn.pressed.connect(_join_online)
+	code_row.add_child(online_btn)
+
 	var join_title := Label.new()
 	join_title.text = "Join over local Wi-Fi:"
 	join_title.add_theme_font_size_override(&"font_size", 18)
@@ -179,6 +202,7 @@ func _host() -> void:
 func _web_autojoin() -> void:
 	set_process(false)
 	Main.register_actions()
+	Settings.join_url = ""  # host-served page: plain ws to the host
 	var host := str(JavaScriptBridge.eval("location.hostname", true))
 	var qs := str(JavaScriptBridge.eval("location.search", true))
 	var wsp := NetHub.WS_PORT_BASE
@@ -196,7 +220,25 @@ func _web_autojoin() -> void:
 	get_tree().change_scene_to_file.call_deferred("res://scenes/client.tscn")
 
 
+## Join an internet room through the relay by its short code.
+func _join_online() -> void:
+	var code := _code_edit.text.strip_edges().to_upper()
+	if code.is_empty():
+		_code_edit.placeholder_text = "enter the host's room code"
+		return
+	if NetHub.RELAY_HOST.is_empty():
+		_code_edit.text = ""
+		_code_edit.placeholder_text = "relay not deployed"
+		return
+	Settings.join_url = "wss://%s/join/%s" % [NetHub.RELAY_HOST, code]
+	Settings.join_name = _name_edit.text.strip_edges()
+	if Settings.join_name.is_empty():
+		Settings.join_name = "Guest"
+	get_tree().change_scene_to_file("res://scenes/client.tscn")
+
+
 func _join(ip: String, ws_port: int) -> void:
+	Settings.join_url = ""  # LAN join: plain ws to the host's address
 	Settings.join_ip = ip
 	Settings.join_ws_port = ws_port
 	Settings.join_name = _name_edit.text.strip_edges()

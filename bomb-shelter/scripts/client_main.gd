@@ -54,7 +54,10 @@ func _ready() -> void:
 	_build_hud()
 
 
-	var err := ws.connect_to_url("ws://%s:%d" % [Settings.join_ip, Settings.join_ws_port])
+	var url := Settings.join_url
+	if url.is_empty():
+		url = "ws://%s:%d" % [Settings.join_ip, Settings.join_ws_port]
+	var err := ws.connect_to_url(url)
 	if err != OK:
 		_leave("Could not connect")
 

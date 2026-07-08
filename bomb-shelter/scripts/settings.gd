@@ -58,4 +58,7 @@ static var player_colors: Array[Color] = []
 ## LAN join handoff from the menu to the client scene.
 static var join_ip := ""
 static var join_ws_port := 0
+## When non-empty the client connects here instead of building
+## ws://join_ip:port — used by JOIN ONLINE ROOM (wss to the relay).
+static var join_url := ""
 static var join_name := "Guest"
