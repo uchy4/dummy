@@ -127,8 +127,12 @@ func _ready() -> void:
 	if not players.is_empty():
 		camera.focus_target = players[0]  # follow-mode tracks player 1
 	if Settings.in_lobby:
-		# The lounge fills the screen: hold the camera on the finish hall.
+		# The lounge fills the screen: hold the camera on the finish hall,
+		# and paint the online room code onto its back wall.
 		camera.hold_rect = terrain.finish_line_rect().grow_individual(24, 44, 24, 12)
+		var wc := WallCode.new()
+		wc.room = terrain.finish_line_rect()
+		world.add_child(wc)
 	world.add_child(camera)
 
 	var spawner := BombSpawner.new()
@@ -548,6 +552,39 @@ func _start_match() -> void:
 		return
 	Settings.in_lobby = false
 	_restart()
+
+
+## The online room code painted on the lounge's back wall, big enough to
+## read from the couch. Redraws when the relay hands the code over (it can
+## arrive a moment after the room is built).
+class WallCode:
+	extends Node2D
+	var room := Rect2()
+
+	func _ready() -> void:
+		z_index = -4  # on the wall: over the room paint, behind everyone
+		NetHub.relay_ready.connect(_on_code)
+
+	func _exit_tree() -> void:
+		if NetHub.relay_ready.is_connected(_on_code):
+			NetHub.relay_ready.disconnect(_on_code)
+
+	func _on_code(_code: String) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var font := ThemeDB.fallback_font
+		if font == null or NetHub.relay_code.is_empty():
+			return
+		draw_string(font, Vector2(room.position.x, room.position.y + 36.0),
+			"ONLINE ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, room.size.x, 13,
+			Color(1, 1, 1, 0.5))
+		draw_string_outline(font, Vector2(room.position.x, room.position.y + 72.0),
+			NetHub.relay_code, HORIZONTAL_ALIGNMENT_CENTER, room.size.x, 34, 6,
+			Color.BLACK)
+		draw_string(font, Vector2(room.position.x, room.position.y + 72.0),
+			NetHub.relay_code, HORIZONTAL_ALIGNMENT_CENTER, room.size.x, 34,
+			Color("ffca28"))
 
 
 func _restart() -> void:
