@@ -688,14 +688,16 @@ func _tile_mask(x: int, y: int) -> int:
 	var dn := _side_open(x, y + 1)
 	var lf := _side_open(x - 1, y)
 	var rt := _side_open(x + 1, y)
+	# A corner only cuts when its DIAGONAL cell is open too: two dirt blocks
+	# kissing at a corner keep square edges instead of beveling a gap.
 	var m := 0
-	if up and lf:
+	if up and lf and _side_open(x - 1, y - 1):
 		m |= 1
-	if up and rt:
+	if up and rt and _side_open(x + 1, y - 1):
 		m |= 2
-	if dn and rt:
+	if dn and rt and _side_open(x + 1, y + 1):
 		m |= 4
-	if dn and lf:
+	if dn and lf and _side_open(x - 1, y + 1):
 		m |= 8
 	return m
 
@@ -708,14 +710,16 @@ func _fill_mask(x: int, y: int) -> int:
 	var dn := not _side_open(x, y + 1)
 	var lf := not _side_open(x - 1, y)
 	var rt := not _side_open(x + 1, y)
+	# The wedge only fills when the DIAGONAL cell is solid too (a real ramp
+	# step) — corner-kissing dirt with open space around it stays square.
 	var m := 0
-	if up and lf:
+	if up and lf and not _side_open(x - 1, y - 1):
 		m |= 1
-	if up and rt:
+	if up and rt and not _side_open(x + 1, y - 1):
 		m |= 2
-	if dn and rt:
+	if dn and rt and not _side_open(x + 1, y + 1):
 		m |= 4
-	if dn and lf:
+	if dn and lf and not _side_open(x - 1, y + 1):
 		m |= 8
 	return m
 

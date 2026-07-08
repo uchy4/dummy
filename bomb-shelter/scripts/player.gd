@@ -580,30 +580,72 @@ func _puff(amount: int) -> void:
 	get_parent().add_child.call_deferred(d)
 
 
-## Draw one limb. f (=_facing) mirrors the whole pose horizontally so the
-## character flips correctly when it turns around.
-func _limb(anchor: Vector2, angle: float, length: float, col: Color, f: float) -> void:
-	draw_set_transform(Vector2(anchor.x * f, anchor.y), angle * f, Vector2.ONE)
-	draw_rect(Rect2(-3, -1, 6, length + 2), Color.BLACK)  # outline
-	draw_circle(Vector2(0, 0), 3.0, Color.BLACK)          # rounded caps
-	draw_circle(Vector2(0, length + 1), 3.0, Color.BLACK)
-	draw_rect(Rect2(-2, 0, 4, length), col)
-	draw_circle(Vector2(0, 0.5), 2.0, col)
-	draw_circle(Vector2(0, length + 0.5), 2.0, col)
+## Draws one capsule limb of the shared figure onto `ci` at origin `o`.
+## f (=facing) mirrors the whole pose horizontally when the figure turns.
+static func _fig_limb(ci: CanvasItem, o: Vector2, anchor: Vector2, angle: float,
+		length: float, col: Color, f: float) -> void:
+	ci.draw_set_transform(o + Vector2(anchor.x * f, anchor.y), angle * f, Vector2.ONE)
+	ci.draw_rect(Rect2(-3, -1, 6, length + 2), Color.BLACK)  # outline
+	ci.draw_circle(Vector2(0, 0), 3.0, Color.BLACK)          # rounded caps
+	ci.draw_circle(Vector2(0, length + 1), 3.0, Color.BLACK)
+	ci.draw_rect(Rect2(-2, 0, 4, length), col)
+	ci.draw_circle(Vector2(0, 0.5), 2.0, col)
+	ci.draw_circle(Vector2(0, length + 0.5), 2.0, col)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## A flat-bottomed dome (round top, straight chord across the bottom).
-func _draw_dome(c: Vector2, r: float, col: Color) -> void:
+static func _fig_dome(ci: CanvasItem, c: Vector2, r: float, col: Color) -> void:
 	var pts := PackedVector2Array()
 	for i in 9:
 		var t := PI * i / 8.0
 		pts.append(c + Vector2(cos(t) * r, -sin(t) * r))
-	draw_colored_polygon(pts, col)
+	ci.draw_colored_polygon(pts, col)
+
+
+## The ONE source of truth for the player figure: limbs, fused dome head,
+## torso, stripes, hard hat and eyes. Player._draw and the podium ceremony
+## both render through this, so celebration dolls can never drift from the
+## live in-game model again.
+static func draw_figure(ci: CanvasItem, o: Vector2, c1: Color, c2: Color,
+		striped: bool, hat: bool, f: float, r_arm: float, l_arm: float,
+		r_leg: float, l_leg: float, leg_x: float, l_leg_len: float,
+		kick_top: bool) -> void:
+	var arm_c := c1.darkened(0.15)
+	var leg_c := c1.darkened(0.35)
+	# Back arm and both legs, behind the torso.
+	_fig_limb(ci, o, Vector2(5, -6), r_arm, 10, arm_c.darkened(0.2), f)
+	_fig_limb(ci, o, Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
+	if not kick_top:
+		_fig_limb(ci, o, Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
+	# Torso with a fused round-top head, black silhouette first. The head
+	# is the BODY color with a flat bottom melting into the torso — the
+	# figure reads like a bullet in its casing.
+	ci.draw_circle(o + Vector2(0, -8), 6.9, Color.BLACK)
+	ci.draw_rect(Rect2(o.x - 7, o.y - 8, 14, 12), Color.BLACK)
+	ci.draw_circle(o + Vector2(0, -8), 5.9, c1)
+	ci.draw_rect(Rect2(o.x - 6, o.y - 7, 12, 10), c1)
+	if striped:
+		ci.draw_rect(Rect2(o.x - 6, o.y - 5, 12, 2.5), c2)
+		ci.draw_rect(Rect2(o.x - 6, o.y - 0.5, 12, 2.5), c2)
+	if hat:
+		# The safety-yellow hard hat: a flat-bottomed dome capping the head
+		# (no brim — nothing covers the eyes). A lethal blast knocks it off.
+		_fig_dome(ci, o + Vector2(0, -12.4), 5.4, Color.BLACK)
+		_fig_dome(ci, o + Vector2(0, -12.2), 4.8, Color("f5c518"))
+	var fx := f * 1.0
+	ci.draw_rect(Rect2(o.x - 3 + fx, o.y - 12, 2, 3), Color.WHITE)
+	ci.draw_rect(Rect2(o.x + 1 + fx, o.y - 12, 2, 3), Color.WHITE)
+	ci.draw_rect(Rect2(o.x - 2.5 + fx, o.y - 11, 1, 1.5), Color.BLACK)
+	ci.draw_rect(Rect2(o.x + 1.5 + fx, o.y - 11, 1, 1.5), Color.BLACK)
+	# Front arm drawn over the torso.
+	_fig_limb(ci, o, Vector2(-5, -6), l_arm, 10, arm_c, f)
+	if kick_top:  # the kicking leg tops the whole stack
+		_fig_limb(ci, o, Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
+
 
 
 func _draw() -> void:
-	var arm_c := player_color.darkened(0.15)
-	var leg_c := player_color.darkened(0.35)
 	var f := float(_facing)
 	# Poses defined facing-right; _limb mirrors them by f when facing left.
 	var r_arm: float
@@ -645,36 +687,8 @@ func _draw() -> void:
 		l_arm = -_swing
 		r_leg = -_swing
 		l_leg = _swing
-	# Back arm and both legs (behind the torso).
-	_limb(Vector2(5, -6), r_arm, 10, arm_c.darkened(0.2), f)
-	_limb(Vector2(leg_x, 2), r_leg, 12, leg_c.darkened(0.2), f)
-	if not kick_pose:
-		_limb(Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
-	# Torso with a fused round-top head, black silhouette first. The head
-	# is the BODY color with a flat bottom melting into the torso — the
-	# figure reads like a bullet in its casing.
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_circle(Vector2(0, -8), 6.9, Color.BLACK)
-	draw_rect(Rect2(-7, -8, 14, 12), Color.BLACK)
-	draw_circle(Vector2(0, -8), 5.9, player_color)
-	draw_rect(Rect2(-6, -7, 12, 10), player_color)
-	if is_striped():
-		draw_rect(Rect2(-6, -5, 12, 2.5), color2)
-		draw_rect(Rect2(-6, -0.5, 12, 2.5), color2)
-	if armor:
-		# The safety-yellow hard hat: a flat-bottomed dome capping the head
-		# (no brim — nothing covers the eyes). A lethal blast knocks it off.
-		_draw_dome(Vector2(0, -12.4), 5.4, Color.BLACK)
-		_draw_dome(Vector2(0, -12.2), 4.8, Color("f5c518"))
-	var fx := f * 1.0
-	draw_rect(Rect2(-3 + fx, -12, 2, 3), Color.WHITE)
-	draw_rect(Rect2(1 + fx, -12, 2, 3), Color.WHITE)
-	draw_rect(Rect2(-2.5 + fx, -11, 1, 1.5), Color.BLACK)
-	draw_rect(Rect2(1.5 + fx, -11, 1, 1.5), Color.BLACK)
-	# Front arm drawn over the torso.
-	_limb(Vector2(-5, -6), l_arm, 10, arm_c, f)
-	if kick_pose:  # the kicking leg tops the whole stack
-		_limb(Vector2(-leg_x, 2), l_leg, l_leg_len, leg_c, f)
+	draw_figure(self, Vector2.ZERO, player_color, color2, is_striped(), armor,
+		f, r_arm, l_arm, r_leg, l_leg, leg_x, l_leg_len, kick_pose)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if stunned:
 		# Dizzy stars orbiting above the head.

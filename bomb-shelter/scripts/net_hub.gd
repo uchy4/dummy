@@ -400,20 +400,20 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
   var tri=function(a,b,c3){octx.beginPath();octx.moveTo(a[0],a[1]);
    octx.lineTo(b[0],b[1]);octx.lineTo(c3[0],c3[1]);octx.closePath();octx.fill();};
   var fb=3,fx3=c*PXC,fy3=r*PXC,fs=PXC;
-  if(fu&&fl){octx.fillStyle=colFor(r-1,c);
+  if(fu&&fl&&!openC(r-1,c-1)){octx.fillStyle=colFor(r-1,c);
    tri([fx3,fy3],[fx3+fb,fy3],[fx3,fy3+fb]);}
-  if(fu&&fr2){octx.fillStyle=colFor(r-1,c);
+  if(fu&&fr2&&!openC(r-1,c+1)){octx.fillStyle=colFor(r-1,c);
    tri([fx3+fs,fy3],[fx3+fs,fy3+fb],[fx3+fs-fb,fy3]);}
-  if(fd2&&fr2){octx.fillStyle=colFor(r+1,c);
+  if(fd2&&fr2&&!openC(r+1,c+1)){octx.fillStyle=colFor(r+1,c);
    tri([fx3+fs,fy3+fs],[fx3+fs-fb,fy3+fs],[fx3+fs,fy3+fs-fb]);}
-  if(fd2&&fl){octx.fillStyle=colFor(r+1,c);
+  if(fd2&&fl&&!openC(r+1,c-1)){octx.fillStyle=colFor(r+1,c);
    tri([fx3,fy3+fs],[fx3,fy3+fs-fb],[fx3+fb,fy3+fs]);}
   return;}
  var dv=(v===3)?1:v,hh=(i*2654435761)>>>0;
  var col=(hh%100<30)?CELL2[dv]:CELL[dv];
  octx.fillStyle=TSCORCH[i]?shade(col,0.75):col;
  var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
- var bd=3,bnw=up&&lf?bd:0,bne=up&&rt?bd:0,bse=dn&&rt?bd:0,bsw=dn&&lf?bd:0;
+ var bd=3,bnw=up&&lf&&openC(r-1,c-1)?bd:0,bne=up&&rt&&openC(r-1,c+1)?bd:0,bse=dn&&rt&&openC(r+1,c+1)?bd:0,bsw=dn&&lf&&openC(r+1,c-1)?bd:0;
  var bx=c*PXC,by=r*PXC,s=PXC;
  octx.beginPath();
  octx.moveTo(bx+bnw,by);octx.lineTo(bx+s-bne,by);
@@ -969,22 +969,25 @@ function drawProp(k){
   ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
  else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
   ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}
- else if(k===16){ctx.scale(1.8,1.8);// scaled to the taller walk-in entrance
-  // one continuous lumpy rock mound with a dark maw (matches native art)
-  var MD=[[-24,2],[-23,-6],[-18,-12],[-14,-12],[-9,-18],[-3,-22],[4,-21],
-   [9,-17],[14,-15],[18,-10],[22,-7],[24,2]];
+ else if(k===16){// authored full-size (pre-scaled coords, no ctx.scale)
+  // so the rim stays thin — one lumpy rock mound with a snug dark maw
+  var S18=function(a){return a.map(function(p){return [p[0]*1.8,p[1]*1.8];});};
+  var MD=S18([[-24,2],[-23,-6],[-18,-12],[-14,-12],[-9,-18],[-3,-22],[4,-21],
+   [9,-17],[14,-15],[18,-10],[22,-7],[24,2]]);
   ctx.fillStyle="#000";
-  fillPoly(MD.map(function(p){return [p[0]*1.1,(p[1]+8)*1.1-8];}));
+  fillPoly(MD.map(function(p){var dx=p[0],dy=p[1]+14.4,
+   d=Math.max(Math.sqrt(dx*dx+dy*dy),1),g=1+2/d;return [dx*g,dy*g-14.4];}));
   ctx.fillStyle="#6e7681";fillPoly(MD);
   ctx.fillStyle="#59616b";
-  fillPoly([[4,-21],[9,-17],[14,-15],[18,-10],[22,-7],[24,2],[10,2],[6,-12]]);
+  fillPoly(S18([[4,-21],[9,-17],[14,-15],[18,-10],[22,-7],[24,2],[10,2],[6,-12]]));
   ctx.fillStyle="#777d86";
-  fillPoly([[-23,-6],[-18,-12],[-14,-12],[-16,-2],[-24,2]]);
-  ctx.strokeStyle="#4d545c";ctx.lineWidth=1.2;ctx.beginPath();
-  ctx.moveTo(-6,-17);ctx.lineTo(-9,-8);ctx.moveTo(11,-13);ctx.lineTo(8,-5);ctx.stroke();
+  fillPoly(S18([[-23,-6],[-18,-12],[-14,-12],[-16,-2],[-24,2]]));
+  ctx.strokeStyle="#4d545c";ctx.lineWidth=1.5;ctx.beginPath();
+  ctx.moveTo(-10.8,-30.6);ctx.lineTo(-16.2,-14.4);
+  ctx.moveTo(19.8,-23.4);ctx.lineTo(14.4,-9);ctx.stroke();
   ctx.fillStyle="#1c1310";
-  fillPoly([[-11,4],[-10,-6],[-6,-12],[0,-14],[6,-12],[10,-6],[11,4]]);
-  ctx.fillRect(-11,2,22,16);}}
+  fillPoly([[-13,6],[-12,-14],[-8,-23],[0,-27],[8,-23],[12,-14],[13,6]]);
+  ctx.fillRect(-13,4,26,30);}}
 function fillPoly(pts){ctx.beginPath();
  for(var i=0;i<pts.length;i++){if(i)ctx.lineTo(pts[i][0],pts[i][1]);
   else ctx.moveTo(pts[i][0],pts[i][1]);}

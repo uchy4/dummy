@@ -375,38 +375,47 @@ class CaveArt:
 		queue_free()
 
 	func _draw() -> void:
-		# Scaled up so the maw matches the taller walk-in entrance.
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.8, 1.8))
-		# One continuous lumpy rock mound: a single silhouette polygon with
-		# a black rim, broad shading facets (not separate boulders), a couple
-		# of cracks, and the dark maw arching down into the carved passage.
-		var mound := PackedVector2Array([
+		# Authored at full walk-in size (coordinates pre-scaled, no canvas
+		# transform) so the rim stays a thin outline instead of a fattened
+		# scaled-up stroke — same fix as the pigs.
+		var mound := _x18([
 			Vector2(-24, 2), Vector2(-23, -6), Vector2(-18, -12), Vector2(-14, -12),
 			Vector2(-9, -18), Vector2(-3, -22), Vector2(4, -21), Vector2(9, -17),
 			Vector2(14, -15), Vector2(18, -10), Vector2(22, -7), Vector2(24, 2),
 		])
+		# Constant ~2px black rim around the silhouette, whatever the size.
+		var cen := Vector2(0, -14.4)
 		var rim := PackedVector2Array()
 		for p in mound:
-			rim.append(Vector2(0, -8) + (p - Vector2(0, -8)) * 1.1)
+			var d := p - cen
+			rim.append(cen + d * (1.0 + 2.0 / maxf(d.length(), 1.0)))
 		draw_colored_polygon(rim, Color.BLACK)
 		draw_colored_polygon(mound, Color("6e7681"))
 		# Shadow facet down the right flank, subtle light facet on the left.
-		draw_colored_polygon(PackedVector2Array([
+		draw_colored_polygon(_x18([
 			Vector2(4, -21), Vector2(9, -17), Vector2(14, -15), Vector2(18, -10),
 			Vector2(22, -7), Vector2(24, 2), Vector2(10, 2), Vector2(6, -12),
 		]), Color("59616b"))
-		draw_colored_polygon(PackedVector2Array([
+		draw_colored_polygon(_x18([
 			Vector2(-23, -6), Vector2(-18, -12), Vector2(-14, -12),
 			Vector2(-16, -2), Vector2(-24, 2),
 		]), Color("777d86"))
-		draw_line(Vector2(-6, -17), Vector2(-9, -8), Color("4d545c"), 1.2)
-		draw_line(Vector2(11, -13), Vector2(8, -5), Color("4d545c"), 1.2)
+		draw_line(Vector2(-10.8, -30.6), Vector2(-16.2, -14.4), Color("4d545c"), 1.5)
+		draw_line(Vector2(19.8, -23.4), Vector2(14.4, -9.0), Color("4d545c"), 1.5)
+		# The maw hugs the actual carved opening (~1.5 cells wide) instead
+		# of spilling a wide black doorway over solid ground beside it.
 		var maw := Color("1c1310")
 		draw_colored_polygon(PackedVector2Array([
-			Vector2(-11, 4), Vector2(-10, -6), Vector2(-6, -12), Vector2(0, -14),
-			Vector2(6, -12), Vector2(10, -6), Vector2(11, 4),
+			Vector2(-13, 6), Vector2(-12, -14), Vector2(-8, -23), Vector2(0, -27),
+			Vector2(8, -23), Vector2(12, -14), Vector2(13, 6),
 		]), maw)
-		draw_rect(Rect2(-11, 2, 22, 16), maw)
+		draw_rect(Rect2(-13, 4, 26, 30), maw)
+
+	static func _x18(pts: Array) -> PackedVector2Array:
+		var out := PackedVector2Array()
+		for p: Vector2 in pts:
+			out.append(p * 1.8)
+		return out
 
 
 ## The outhouse hut: streamed to web (prop kind 9), and blown to plank

@@ -49,26 +49,12 @@ func _draw() -> void:
 				Color(0, 0, 0, 0.7))
 
 
-## A mini player doll with arms thrown up, waving — same proportions as the
-## live Player art so the winners are recognizable.
+## A podium doll with arms thrown up, waving — rendered through the SAME
+## Player.draw_figure as the live in-game model (jump pose, hard hat on),
+## so the winners always look exactly like their characters.
 func _guy(at: Vector2, c1v: Variant, c2v: Variant, i: int) -> void:
 	var c1: Color = c1v
 	var c2: Color = c2v
 	var wave := sin(_t * 9.0 + i * 1.7) * 0.45
-	for s: float in [-1.0, 1.0]:
-		draw_set_transform(at + Vector2(6.0 * s, -6.0), (-2.35 + wave) * s, Vector2.ONE)
-		draw_rect(Rect2(-2, -1, 4, 13), Color.BLACK)
-		draw_rect(Rect2(-1.5, 0, 3, 11), c1.darkened(0.18))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_rect(Rect2(at.x - 5, at.y + 3, 4, 12), c1.darkened(0.4))
-	draw_rect(Rect2(at.x + 1, at.y + 3, 4, 12), c1.darkened(0.4))
-	draw_rect(Rect2(at.x - 7, at.y - 8, 14, 13), Color.BLACK)
-	draw_rect(Rect2(at.x - 6, at.y - 7, 12, 11), c1)
-	if not c1.is_equal_approx(c2):
-		draw_rect(Rect2(at.x - 6, at.y - 4.5, 12, 2.5), c2)
-		draw_rect(Rect2(at.x - 6, at.y, 12, 2.5), c2)
-	draw_circle(at + Vector2(0, -9), 5.7, c1)
-	draw_circle(at + Vector2(0, -13.6), 4.4, Color("f5c518"))
-	draw_rect(Rect2(at.x - 6, at.y - 13.8, 12, 1.6), Color("e3b214"))
-	draw_rect(Rect2(at.x - 3, at.y - 14, 2, 3), Color.WHITE)
-	draw_rect(Rect2(at.x + 1, at.y - 14, 2, 3), Color.WHITE)
+	Player.draw_figure(self, at, c1, c2, not c1.is_equal_approx(c2), true, 1.0,
+		-2.5 + wave, 2.5 - wave, 0.0, 0.0, 1.5, 12.0, false)
