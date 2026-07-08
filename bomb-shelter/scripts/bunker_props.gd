@@ -459,25 +459,40 @@ func _build_lounge_sofas() -> void:
 		add_child(sofa)
 
 
-## The surface pickup truck (prop kind 17): player-plus sized, a kick
-## shoves it one truck-length away from the kicker with a suspension
+## The surface pickup truck (prop kind 17): player-plus sized and now a
+## real body — it falls into carved holes like the pig. A kick shoves it
+## one truck-length away (friction bleeds the slide off) with a suspension
 ## wobble, and a blast in range blows it into red panel debris.
 class TruckArt:
-	extends Node2D
+	extends CharacterBody2D
 	var prop_kind := 17
 	var _dead := false
-	var _rolling := false
 
 	func _ready() -> void:
 		add_to_group(&"props")
 		add_to_group(&"fixtures")  # kicks in range call kicked()
 		add_to_group(&"chests")    # blasts in range call blast_destroy()
 		z_index = 2
+		collision_layer = 4  # critter plane: players bump into (and ride) it
+		collision_mask = 1   # it drives on terrain and drops into carved holes
+		var cs := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = Vector2(64, 30)
+		cs.shape = rs
+		cs.position = Vector2(0, 3)
+		add_child(cs)
+
+	func _physics_process(delta: float) -> void:
+		if not is_on_floor():
+			velocity.y += 700.0 * delta
+		elif velocity.y > 0.0:
+			velocity.y = 0.0
+		velocity.x = move_toward(velocity.x, 0.0, 300.0 * delta)
+		move_and_slide()
 
 	func kicked() -> void:
-		if _rolling or _dead:
+		if _dead or absf(velocity.x) > 20.0:
 			return
-		_rolling = true
 		# Shoved away from the nearest player — they just kicked the bumper.
 		var s := 1.0
 		var best := 1e18
@@ -489,19 +504,12 @@ class TruckArt:
 			if d < best:
 				best = d
 				s = 1.0 if global_position.x >= p.global_position.x else -1.0
-		# One truck-length slide, no roll — just a suspension wobble.
-		var tw := create_tween()
-		tw.tween_property(self, "position:x", position.x + 72.0 * s, 0.5) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.tween_callback(_roll_done)
+		velocity.x = 210.0 * s  # ~one truck-length before friction stops it
 		var wob := create_tween()
 		wob.tween_property(self, "rotation", 0.09 * s, 0.1)
 		wob.tween_property(self, "rotation", -0.05 * s, 0.14)
 		wob.tween_property(self, "rotation", 0.0, 0.18)
 		get_tree().call_group(&"sfx", &"play_land", global_position)
-
-	func _roll_done() -> void:
-		_rolling = false
 
 	func blast_destroy() -> void:
 		if _dead:
@@ -530,8 +538,7 @@ class TruckArt:
 		queue_free()
 
 	func _draw() -> void:
-		# Authored ~72x36 with the origin at the body centre so the kick's
-		# full rotation reads as the truck rolling over.
+		# Authored ~72x36 with the origin at the body centre.
 		draw_rect(Rect2(-36, -8, 72, 20), Color.BLACK)
 		draw_rect(Rect2(-7, -19, 34, 13), Color.BLACK)
 		draw_rect(Rect2(-35, -7, 70, 18), Color("d32f2f"))
