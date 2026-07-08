@@ -30,7 +30,7 @@ const MANIFEST := """{"name":"Bomb Shelter","short_name":"Bomb Shelter",
 
 ## Internet relay (Cloudflare Worker, see bomb-shelter/relay/). Empty until
 ## deployed: paste the workers.dev hostname here to enable online rooms.
-const RELAY_HOST := ""
+const RELAY_HOST := "bombshelter-relay.uchy.workers.dev"
 
 ## Relay client ids live far above LAN ids so the two can share `clients`.
 const RELAY_ID_BASE := 100000
