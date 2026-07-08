@@ -548,9 +548,31 @@ func update_lobby(count: int, need: int) -> void:
 		_lobby_label.add_theme_color_override(&"font_outline_color", Color.BLACK)
 		_lobby_label.add_theme_constant_override(&"outline_size", 4)
 		_lobby_box.add_child(_lobby_label)
+		# The START button is THE lounge action: big, safety-yellow, centered.
 		_lobby_btn = Button.new()
 		_lobby_btn.text = "START GAME"
-		_lobby_btn.add_theme_font_size_override(&"font_size", 22)
+		_lobby_btn.custom_minimum_size = Vector2(300, 68)
+		_lobby_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		_lobby_btn.add_theme_font_size_override(&"font_size", 32)
+		_lobby_btn.add_theme_color_override(&"font_color", Color.BLACK)
+		_lobby_btn.add_theme_color_override(&"font_hover_color", Color.BLACK)
+		_lobby_btn.add_theme_color_override(&"font_pressed_color", Color.BLACK)
+		_lobby_btn.add_theme_color_override(&"font_disabled_color", Color(0, 0, 0, 0.45))
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color("ffca28")
+		sb.set_corner_radius_all(14)
+		sb.content_margin_left = 28.0
+		sb.content_margin_right = 28.0
+		sb.content_margin_top = 12.0
+		sb.content_margin_bottom = 12.0
+		for st: StringName in [&"normal", &"hover"]:
+			_lobby_btn.add_theme_stylebox_override(st, sb)
+		var sbp := sb.duplicate() as StyleBoxFlat
+		sbp.bg_color = Color("e3b214")
+		_lobby_btn.add_theme_stylebox_override(&"pressed", sbp)
+		var sbd := sb.duplicate() as StyleBoxFlat
+		sbd.bg_color = Color(0.35, 0.33, 0.28, 0.9)
+		_lobby_btn.add_theme_stylebox_override(&"disabled", sbd)
 		_lobby_btn.focus_mode = Control.FOCUS_NONE
 		_lobby_btn.pressed.connect(func() -> void: start_requested.emit())
 		_lobby_box.add_child(_lobby_btn)
