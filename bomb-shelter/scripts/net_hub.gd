@@ -981,6 +981,11 @@ function drawProp(k){
   ctx.fillStyle="#2e2e34";ctx.fillRect(10,-2,10,4);
   ctx.fillStyle="#6d4c2f";ctx.fillRect(-2,-2.5,12,5);
   ctx.fillStyle="#2e2e34";ctx.fillRect(3,2,2,3);}
+ else if(k===19){ctx.fillStyle="#000";ctx.fillRect(-8,-4.5,8,9);ctx.fillRect(-3,-3.5,15,7);ctx.fillRect(-2,1,6,8);
+  ctx.fillStyle="#454049";ctx.fillRect(-7,-3.5,6,7);
+  ctx.fillStyle="#2e2e34";ctx.fillRect(-2,-2.5,11,5);
+  ctx.fillStyle="#14141a";ctx.fillRect(9,-1.5,3,3);
+  ctx.fillStyle="#6d4c2f";ctx.fillRect(-1,2,4,5);}
  else if(k===15){ctx.fillStyle="#ffd54f";ctx.fillRect(-3,-1,6,2);
   ctx.fillStyle="#fff";ctx.fillRect(-1,-0.5,2,1);}
  else if(k===16){// authored full-size (pre-scaled coords, no ctx.scale)

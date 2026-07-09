@@ -316,11 +316,12 @@ func _build_arsenal(rect: Rect2i) -> void:
 	var right := float(rect.end.x) * TILE
 	var wall_y := float(rect.position.y) * TILE + float(rect.size.y) * TILE * 0.45
 
-	var gun_count := 3 if rect.size.x < 8 else 4
+	var gun_count := 4  # two rifles, then two pistols
 	var margin := 12.0
 	for i in gun_count:
 		var t := 0.5 if gun_count <= 1 else float(i) / float(gun_count - 1)
 		var gun := WallGun.new()
+		gun.is_pistol = i >= 2  # first two rifles, last two pistols
 		gun.position = Vector2(lerpf(left + margin, right - margin, t), wall_y)
 		add_child(gun)
 

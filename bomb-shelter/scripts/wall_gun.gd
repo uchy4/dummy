@@ -10,13 +10,18 @@ extends Node2D
 ## (-x side).
 ##   var g := WallGun.new(); g.position = Vector2(wx, wy); add_child(g)
 
-## Streamed to web viewers as [x, y, kind, rotation].
+## Streamed to web viewers as [x, y, kind, rotation]. Rifles stream as
+## kind 14, pistols as 19.
 var prop_kind := 14
+## Set before add_child: a pistol instead of a rifle.
+var is_pistol := false
 
 const FIRE_WINDOW := 0.4  ## seconds over which a misfire's rounds go off
 
 
 func _ready() -> void:
+	if is_pistol:
+		prop_kind = 19
 	add_to_group(&"props")
 	add_to_group(&"chests")  # blast loop calls blast_destroy() on this group
 	z_index = 3
@@ -26,6 +31,7 @@ func _ready() -> void:
 ## The mount gives way: the rifle flies off, firing wildly.
 func blast_destroy() -> void:
 	var g := FallenGun.new()
+	g.is_pistol = is_pistol
 	g.position = global_position
 	g.rotation = randf_range(-0.4, 0.4)
 	g.linear_velocity = Vector2(randf_range(-150.0, 150.0), randf_range(-230.0, -90.0))
@@ -36,7 +42,10 @@ func blast_destroy() -> void:
 
 
 func _draw() -> void:
-	WallGun.draw_rifle(self)
+	if is_pistol:
+		WallGun.draw_pistol(self)
+	else:
+		WallGun.draw_rifle(self)
 
 
 ## Shared rifle art (mount bracket + barrel + stock), used by both the
@@ -50,14 +59,26 @@ static func draw_rifle(on: CanvasItem) -> void:
 	on.draw_rect(Rect2(3.0, 2.0, 2.0, 3.0), Color("2e2e34"))             # trigger guard nub
 
 
+## Shared pistol art — shorter body with a downward grip, drawn along +x.
+static func draw_pistol(on: CanvasItem) -> void:
+	on.draw_rect(Rect2(-7.0, -3.5, 6.0, 7.0).grow(1.0), Color.BLACK)     # mount bracket
+	on.draw_rect(Rect2(-7.0, -3.5, 6.0, 7.0), Color("454049"))
+	on.draw_rect(Rect2(-2.0, -2.5, 13.0, 5.0).grow(1.0), Color.BLACK)    # slide outline
+	on.draw_rect(Rect2(-2.0, -2.5, 11.0, 5.0), Color("2e2e34"))          # slide
+	on.draw_rect(Rect2(9.0, -1.5, 3.0, 3.0), Color("14141a"))            # muzzle
+	on.draw_rect(Rect2(-1.0, 2.0, 4.0, 6.0).grow(1.0), Color.BLACK)      # grip outline
+	on.draw_rect(Rect2(-1.0, 2.0, 4.0, 5.0), Color("6d4c2f"))            # wooden grip
+
+
 ## A rifle knocked off its mount: a physical prop that tumbles off terrain,
 ## gets tossed by later blasts (ragdoll_parts) and misfires again every time
 ## one reaches it (chests). Bullets leave along wherever the barrel points.
 class FallenGun:
 	extends RigidBody2D
 
-	## Streamed to web viewers as [x, y, kind, rotation] — same rifle.
+	## Streamed to web viewers as [x, y, kind, rotation] — 14 rifle, 19 pistol.
 	var prop_kind := 14
+	var is_pistol := false
 
 	var _rounds_left := 0
 	var _fire_accum := 0.0
@@ -67,6 +88,8 @@ class FallenGun:
 		add_to_group(&"props")
 		add_to_group(&"chests")         # blasts re-trigger misfires
 		add_to_group(&"ragdoll_parts")  # ...and toss it around
+		if is_pistol:
+			prop_kind = 19
 		z_index = 3
 		mass = 0.9
 		collision_layer = 4
@@ -77,9 +100,9 @@ class FallenGun:
 		physics_material_override = pm
 		var cs := CollisionShape2D.new()
 		var rs := RectangleShape2D.new()
-		rs.size = Vector2(22, 6)
+		rs.size = Vector2(12, 6) if is_pistol else Vector2(22, 6)
 		cs.shape = rs
-		cs.position = Vector2(7, 0)
+		cs.position = Vector2(4, 0) if is_pistol else Vector2(7, 0)
 		add_child(cs)
 
 	func _process(delta: float) -> void:
@@ -113,4 +136,7 @@ class FallenGun:
 		apply_central_impulse(-dir * 40.0)  # a little recoil kick
 
 	func _draw() -> void:
-		WallGun.draw_rifle(self)
+		if is_pistol:
+			WallGun.draw_pistol(self)
+		else:
+			WallGun.draw_rifle(self)
