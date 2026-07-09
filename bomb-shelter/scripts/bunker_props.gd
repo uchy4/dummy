@@ -410,8 +410,7 @@ class CaveArt:
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(-13, 6), Vector2(-12, -14), Vector2(-8, -23), Vector2(0, -27),
 			Vector2(8, -23), Vector2(12, -14), Vector2(13, 6),
-		]), maw)
-		draw_rect(Rect2(-13, 4, 26, 30), maw)
+		]), maw)  # the arch ends at the grass line — no skirt below ground
 
 	static func _x18(pts: Array) -> PackedVector2Array:
 		var out := PackedVector2Array()
@@ -546,16 +545,16 @@ class TruckArt:
 		# Cab sits back over the rear axle with a slanted windshield, so the
 		# stretch ahead of it reads as the engine hood.
 		draw_colored_polygon(PackedVector2Array([
-			Vector2(-15, -20), Vector2(3, -20), Vector2(11.5, -7), Vector2(-15, -7),
+			Vector2(3, -20), Vector2(21, -20), Vector2(29.5, -7), Vector2(3, -7),
 		]), Color.BLACK)
 		draw_rect(Rect2(-35, -7, 70, 18), Color("d32f2f"))
 		draw_colored_polygon(PackedVector2Array([
-			Vector2(-14, -19), Vector2(2, -19), Vector2(10, -7), Vector2(-14, -7),
+			Vector2(4, -19), Vector2(20, -19), Vector2(28, -7), Vector2(4, -7),
 		]), Color("d32f2f"))
 		draw_colored_polygon(PackedVector2Array([
-			Vector2(-11, -16), Vector2(-1, -16), Vector2(5, -8), Vector2(-11, -8),
+			Vector2(7, -16), Vector2(17, -16), Vector2(23, -8), Vector2(7, -8),
 		]), Color("bfe3f2"))
-		draw_rect(Rect2(11, -6, 23, 3), Color("8e2420"))  # hood shading
+		draw_rect(Rect2(-34, -6, 36, 2), Color("8e2420"))  # long open bed
 		draw_rect(Rect2(-35, 7, 70, 4), Color("8e2420"))
 		draw_rect(Rect2(33, -4, 3, 4), Color("ffd54f"))
 		for wx: float in [-22.0, 22.0]:

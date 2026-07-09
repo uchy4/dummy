@@ -1000,15 +1000,14 @@ function drawProp(k){
   ctx.moveTo(-10.8,-30.6);ctx.lineTo(-16.2,-14.4);
   ctx.moveTo(19.8,-23.4);ctx.lineTo(14.4,-9);ctx.stroke();
   ctx.fillStyle="#1c1310";
-  fillPoly([[-13,6],[-12,-14],[-8,-23],[0,-27],[8,-23],[12,-14],[13,6]]);
-  ctx.fillRect(-13,4,26,30);}
+  fillPoly([[-13,6],[-12,-14],[-8,-23],[0,-27],[8,-23],[12,-14],[13,6]]);}
  else if(k===17){// red pickup: kicks shove it (wobble streams via rot)
   ctx.fillStyle="#000";ctx.fillRect(-36,-8,72,20);
-  fillPoly([[-15,-20],[3,-20],[11.5,-7],[-15,-7]]);
+  fillPoly([[3,-20],[21,-20],[29.5,-7],[3,-7]]);
   ctx.fillStyle="#d32f2f";ctx.fillRect(-35,-7,70,18);
-  fillPoly([[-14,-19],[2,-19],[10,-7],[-14,-7]]);
-  ctx.fillStyle="#bfe3f2";fillPoly([[-11,-16],[-1,-16],[5,-8],[-11,-8]]);
-  ctx.fillStyle="#8e2420";ctx.fillRect(11,-6,23,3);
+  fillPoly([[4,-19],[20,-19],[28,-7],[4,-7]]);
+  ctx.fillStyle="#bfe3f2";fillPoly([[7,-16],[17,-16],[23,-8],[7,-8]]);
+  ctx.fillStyle="#8e2420";ctx.fillRect(-34,-6,36,2);
   ctx.fillStyle="#8e2420";ctx.fillRect(-35,7,70,4);
   ctx.fillStyle="#ffd54f";ctx.fillRect(33,-4,3,4);
   for(var w=-22;w<=22;w+=44){ctx.fillStyle="#111";

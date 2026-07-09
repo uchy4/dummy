@@ -406,6 +406,7 @@ func _do_kick_dir(dir: Vector2, power: float) -> void:
 				and center.distance_to(other.global_position) <= KICK_RANGE + 8.0:
 			other.velocity += dir * Settings.kick_player_power * power
 			other._coyote = 0.0
+			other.apply_stun(Settings.stun_time)  # kicks ragdoll players too
 			hit = true
 	# Furniture flies, critters get punted, fixtures (toilet/shower) react.
 	for n in get_tree().get_nodes_in_group(&"props"):

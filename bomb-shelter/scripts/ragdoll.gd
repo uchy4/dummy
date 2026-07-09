@@ -197,10 +197,6 @@ func _pin(a: RigidBody2D, b: RigidBody2D, anchor: Vector2) -> void:
 	add_child(j)
 	j.node_a = j.get_path_to(a)
 	j.node_b = j.get_path_to(b)
-	# Limbs swing but never fold across the torso.
-	j.angular_limit_enabled = true
-	j.angular_limit_lower = -1.1
-	j.angular_limit_upper = 1.1
 
 
 func _rect_poly(size: Vector2, col: Color) -> Polygon2D:
