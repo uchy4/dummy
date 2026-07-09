@@ -30,6 +30,7 @@ const PIG_SPEED := 30.0
 
 var alive := true
 var _stun_left := 0.0
+var _kick_hits := 0  # kicks survived; the third one is lethal
 var _flail := 0.0  # tumble phase: body rock + leg flailing
 var _shape_node: CollisionShape2D
 
@@ -152,7 +153,15 @@ func shove(vel: Vector2) -> void:
 	if not alive:
 		return
 	if vel.length() > 140.0:
-		die(vel)  # a real kick ragdolls them: tossed, tumbling, fading
+		# Tough hide: a real kick sends them tumbling but they get back up.
+		# Only the third kick is lethal (a bomb blast still one-shots them).
+		_kick_hits += 1
+		if _kick_hits >= 3:
+			die(vel)
+			return
+		velocity += vel.limit_length(480.0)
+		_stun_left = 1.1
+		_flail = 0.0
 	else:
 		velocity += vel
 
