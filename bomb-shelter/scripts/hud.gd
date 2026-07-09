@@ -16,6 +16,7 @@ var _overlay: ColorRect
 var _win_title: Label
 var _win_sub: Label
 var _settings: PanelContainer
+var _modal_layer: CanvasLayer
 var _qr_overlay: Control
 var _qr_texture: TextureRect
 var _qr_url: Label
@@ -162,7 +163,7 @@ func _on_overlay_input(ev: InputEvent) -> void:
 
 
 func show_settings(open: bool) -> void:
-	_settings.visible = open
+	_modal_layer.visible = open
 
 
 # The Quick Settings panel: live gameplay tuning while the game is paused.
@@ -202,12 +203,25 @@ func _cycle_color(i: int, btn: Button) -> void:
 
 
 func _build_settings_panel() -> void:
+	# Its own CanvasLayer ABOVE the HUD layer, so the modal always covers
+	# the touch pads, the START button and everything else.
+	_modal_layer = CanvasLayer.new()
+	_modal_layer.layer = 50
+	_modal_layer.visible = false
+	add_child(_modal_layer)
+	# Full-screen scrim: dims the game and eats touches meant for the
+	# buttons hiding behind the panel.
+	var scrim := ColorRect.new()
+	scrim.color = Color(0, 0, 0, 0.55)
+	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_modal_layer.add_child(scrim)
+
 	_settings = PanelContainer.new()
 	_settings.set_anchors_preset(Control.PRESET_CENTER)
 	_settings.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_settings.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_settings.visible = false
-	add_child(_settings)
+	_modal_layer.add_child(_settings)
 
 	var margin := MarginContainer.new()
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:

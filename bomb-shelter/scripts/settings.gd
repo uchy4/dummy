@@ -16,11 +16,11 @@ static var type_enabled: Array[bool] = [
 
 ## Camera zoom multiplier — higher zooms in toward the character. Applies
 ## live to the local camera and streams to web viewers.
-static var zoom_scale := 1.0
+static var zoom_scale := 2.2
 
 ## Camera framing: false frames the whole group (default), true follows a
 ## single player (parity with the web view).
-static var camera_follow := false
+static var camera_follow := true
 
 ## Hard AI opponents, spawned at match start (change applies on restart).
 static var bot_count := 3
