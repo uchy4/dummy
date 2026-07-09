@@ -543,10 +543,19 @@ class TruckArt:
 	func _draw() -> void:
 		# Authored ~72x36 with the origin at the body centre.
 		draw_rect(Rect2(-36, -8, 72, 20), Color.BLACK)
-		draw_rect(Rect2(-7, -19, 34, 13), Color.BLACK)
+		# Cab sits back over the rear axle with a slanted windshield, so the
+		# stretch ahead of it reads as the engine hood.
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-15, -20), Vector2(3, -20), Vector2(11.5, -7), Vector2(-15, -7),
+		]), Color.BLACK)
 		draw_rect(Rect2(-35, -7, 70, 18), Color("d32f2f"))
-		draw_rect(Rect2(-6, -18, 32, 12), Color("d32f2f"))
-		draw_rect(Rect2(-2, -16, 20, 9), Color("bfe3f2"))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-14, -19), Vector2(2, -19), Vector2(10, -7), Vector2(-14, -7),
+		]), Color("d32f2f"))
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-11, -16), Vector2(-1, -16), Vector2(5, -8), Vector2(-11, -8),
+		]), Color("bfe3f2"))
+		draw_rect(Rect2(11, -6, 23, 3), Color("8e2420"))  # hood shading
 		draw_rect(Rect2(-35, 7, 70, 4), Color("8e2420"))
 		draw_rect(Rect2(33, -4, 3, 4), Color("ffd54f"))
 		for wx: float in [-22.0, 22.0]:
