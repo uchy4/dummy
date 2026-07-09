@@ -654,7 +654,7 @@ function drawGuy(x,y,col,col2,armor,swing,face,air,stun,stAng,kick){
  ctx.fillRect(x-6,y-7,12,10);
  if(col2&&col2!==col){ctx.fillStyle=col2;ctx.fillRect(x-6,y-5,12,2.5);ctx.fillRect(x-6,y-0.5,12,2.5);}
  if(armor){// hard hat: flat-bottomed dome, no brim over the eyes
-  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-12.4,5.4,Math.PI,0);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#000";ctx.beginPath();ctx.arc(x,y-12.2,5.9,Math.PI,0);ctx.closePath();ctx.fill();
   ctx.fillStyle="#f5c518";ctx.beginPath();ctx.arc(x,y-12.2,4.8,Math.PI,0);ctx.closePath();ctx.fill();}
  var fx=face;
  ctx.fillStyle="#fff";ctx.fillRect(x-3+fx,y-12,2,3);ctx.fillRect(x+1+fx,y-12,2,3);

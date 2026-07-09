@@ -107,13 +107,17 @@ func blast_destroy() -> void:
 
 
 func _build_table(size: Vector2) -> void:
-	add_child(_rect_poly(size + Vector2(2, 2), Color.BLACK))
-	add_child(_rect_poly(Vector2(size.x, size.y * 0.4), Color("8a6238"),
-		Vector2(0, -size.y * 0.3)))  # tabletop slab
+	# No full-size black backing — the gap under the top stays see-through
+	# so it reads as a table, not a black slab. Each piece outlines itself.
+	var top_size := Vector2(size.x, size.y * 0.4)
+	var top_off := Vector2(0, -size.y * 0.3)
 	var leg_h := size.y * 0.55
 	for side in [-1.0, 1.0]:
-		add_child(_rect_poly(Vector2(4, leg_h), Color("5e3d22"),
-			Vector2(side * (size.x / 2.0 - 3.0), size.y / 2.0 - leg_h / 2.0)))
+		var leg_off := Vector2(side * (size.x / 2.0 - 3.0), size.y / 2.0 - leg_h / 2.0)
+		add_child(_rect_poly(Vector2(4, leg_h) + Vector2(2, 2), Color.BLACK, leg_off))
+		add_child(_rect_poly(Vector2(4, leg_h), Color("5e3d22"), leg_off))
+	add_child(_rect_poly(top_size + Vector2(2, 2), Color.BLACK, top_off))  # top outline
+	add_child(_rect_poly(top_size, Color("8a6238"), top_off))  # tabletop slab
 
 
 func _build_chair(size: Vector2) -> void:

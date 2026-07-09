@@ -39,8 +39,8 @@ func _ready() -> void:
 	var head := _part_dome(Vector2(0, -11) * s, Vector2(11.8, 9) * s, color)
 	_decorate_head(head)
 	if hat:
-		var hb := _dome_poly(5.4 * s, 0.0, Color.BLACK)
-		hb.position = Vector2(0, -4.4) * s
+		var hb := _dome_poly(5.9 * s, 0.0, Color.BLACK)
+		hb.position = Vector2(0, -4.2) * s
 		head.add_child(hb)
 		var hy := _dome_poly(4.8 * s, 0.0, Color("f5c518"))
 		hy.position = Vector2(0, -4.2) * s

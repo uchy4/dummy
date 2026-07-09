@@ -632,7 +632,7 @@ static func draw_figure(ci: CanvasItem, o: Vector2, c1: Color, c2: Color,
 	if hat:
 		# The safety-yellow hard hat: a flat-bottomed dome capping the head
 		# (no brim — nothing covers the eyes). A lethal blast knocks it off.
-		_fig_dome(ci, o + Vector2(0, -12.4), 5.4, Color.BLACK)
+		_fig_dome(ci, o + Vector2(0, -12.2), 5.9, Color.BLACK)
 		_fig_dome(ci, o + Vector2(0, -12.2), 4.8, Color("f5c518"))
 	var fx := f * 1.0
 	ci.draw_rect(Rect2(o.x - 3 + fx, o.y - 12, 2, 3), Color.WHITE)
