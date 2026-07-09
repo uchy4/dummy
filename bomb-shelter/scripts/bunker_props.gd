@@ -490,20 +490,23 @@ class TruckArt:
 		velocity.x = move_toward(velocity.x, 0.0, 300.0 * delta)
 		move_and_slide()
 
-	func kicked() -> void:
+	func kicked(dir := Vector2.ZERO) -> void:
 		if _dead or absf(velocity.x) > 20.0:
 			return
-		# Shoved away from the nearest player — they just kicked the bumper.
-		var s := 1.0
-		var best := 1e18
-		for n in get_tree().get_nodes_in_group(&"players"):
-			var p := n as Node2D
-			if p == null:
-				continue
-			var d := absf(p.global_position.x - global_position.x)
-			if d < best:
-				best = d
-				s = 1.0 if global_position.x >= p.global_position.x else -1.0
+		# The truck goes wherever the kick points; if the kick is dead
+		# vertical, fall back to away-from-the-kicker.
+		var s := signf(dir.x)
+		if s == 0.0:
+			s = 1.0
+			var best := 1e18
+			for n in get_tree().get_nodes_in_group(&"players"):
+				var p := n as Node2D
+				if p == null:
+					continue
+				var d := absf(p.global_position.x - global_position.x)
+				if d < best:
+					best = d
+					s = 1.0 if global_position.x >= p.global_position.x else -1.0
 		velocity.x = 210.0 * s  # ~one truck-length before friction stops it
 		var wob := create_tween()
 		wob.tween_property(self, "rotation", 0.09 * s, 0.1)
@@ -565,7 +568,7 @@ class SofaArt:
 		_home_y = position.y
 		z_index = 1
 
-	func kicked() -> void:
+	func kicked(_dir := Vector2.ZERO) -> void:
 		if _dead:
 			return
 		var tw := create_tween()

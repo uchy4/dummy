@@ -300,9 +300,6 @@ func _generate() -> void:
 			_gset(x, y, Cell.BEDROCK)
 
 	var cx := W / 2
-	# The shelter is buried under the crust — bombs must excavate the way in.
-	_carve_rect(Rect2i(cx - SHELTER_HALF_W, SHELTER_TOP, SHELTER_HALF_W * 2, SHELTER_H))
-
 	_build_bunker()
 	_build_surface()
 
@@ -684,6 +681,8 @@ func _side_open(x: int, y: int) -> bool:
 ## Corner-chamfer mask for a solid cell: a corner cuts when BOTH of its
 ## adjacent sides are open. Bits: 1 NW, 2 NE, 4 SE, 8 SW.
 func _tile_mask(x: int, y: int) -> int:
+	if y < SURFACE_ROW:
+		return 0  # nothing above the grass bevels (bedrock rim, sky walls)
 	var up := _side_open(x, y - 1)
 	var dn := _side_open(x, y + 1)
 	var lf := _side_open(x - 1, y)
@@ -706,6 +705,8 @@ func _tile_mask(x: int, y: int) -> int:
 ## adjacent sides are solid, so the neighbors' chamfers join into one
 ## continuous slant (a 1-in-1 staircase reads as a straight 45° ramp).
 func _fill_mask(x: int, y: int) -> int:
+	if y < SURFACE_ROW:
+		return 0  # no anti-bevel wedges in the sky either
 	var up := not _side_open(x, y - 1)
 	var dn := not _side_open(x, y + 1)
 	var lf := not _side_open(x - 1, y)

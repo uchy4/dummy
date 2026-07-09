@@ -151,10 +151,8 @@ func _update_hop(delta: float) -> void:
 func shove(vel: Vector2) -> void:
 	if not alive:
 		return
-	if vel.length() > 140.0 and _stun_left <= 0.0:
-		_stun_left = 1.3
-		_flail = 0.0
-		velocity += vel.limit_length(500.0)
+	if vel.length() > 140.0:
+		die(vel)  # a real kick ragdolls them: tossed, tumbling, fading
 	else:
 		velocity += vel
 

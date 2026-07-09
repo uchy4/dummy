@@ -397,6 +397,7 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
  octx.clearRect(c*PXC,r*PXC,PXC,PXC);
  if(v===4)return;// water renders live each frame (merged liquid body)
  if(!v){
+  if(r<SURF)return;// nothing above the grass bevels
   // Anti-bevel: where two solid sides meet at a corner, fill the wedge so
   // the neighbors' chamfers join into one continuous slant. Chips inside
   // blast range char to 50% like the blocks around them.
@@ -423,7 +424,7 @@ function paintCell(r,c){var i=r*W+c,v=grid[i];
  var col=(hh%100<30)?CELL2[dv]:CELL[dv];
  octx.fillStyle=TSCORCH[i]?shade(col,0.75):col;
  var up=openC(r-1,c),dn=openC(r+1,c),lf=openC(r,c-1),rt=openC(r,c+1);
- var bd=3,bnw=up&&lf&&openC(r-1,c-1)?bd:0,bne=up&&rt&&openC(r-1,c+1)?bd:0,bse=dn&&rt&&openC(r+1,c+1)?bd:0,bsw=dn&&lf&&openC(r+1,c-1)?bd:0;
+ var bd=(r<SURF)?0:3,bnw=up&&lf&&openC(r-1,c-1)?bd:0,bne=up&&rt&&openC(r-1,c+1)?bd:0,bse=dn&&rt&&openC(r+1,c+1)?bd:0,bsw=dn&&lf&&openC(r+1,c-1)?bd:0;
  var bx=c*PXC,by=r*PXC,s=PXC;
  octx.beginPath();
  octx.moveTo(bx+bnw,by);octx.lineTo(bx+s-bne,by);

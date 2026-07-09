@@ -424,7 +424,7 @@ func _do_kick_dir(dir: Vector2, power: float) -> void:
 		var fx := f as Node2D
 		if fx and fx.has_method(&"kicked") \
 				and center.distance_to(fx.global_position) <= KICK_RANGE + 12.0:
-			fx.call(&"kicked")
+			fx.call(&"kicked", dir)
 			hit = true
 	get_tree().call_group(&"sfx", &"play_kick", global_position)
 	if hit:

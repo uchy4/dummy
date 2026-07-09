@@ -5,7 +5,6 @@ extends CanvasLayer
 
 signal restart_requested
 signal settings_pressed
-signal reset_players_pressed
 signal player_color_changed(index: int, color: Color)
 signal start_requested
 
@@ -338,12 +337,6 @@ func _build_settings_panel() -> void:
 		var ver := _make_label(12, Color(1, 1, 1, 0.5))
 		ver.text = "this device: build %d" % BuildInfo.BUILD
 		vbox.add_child(ver)
-
-	var reset := Button.new()
-	reset.text = "Reset players to shelter"
-	reset.focus_mode = Control.FOCUS_NONE
-	reset.pressed.connect(func() -> void: reset_players_pressed.emit())
-	vbox.add_child(reset)
 
 	var qr := Button.new()
 	qr.text = "Show web-join QR  (friends join from their phone)"

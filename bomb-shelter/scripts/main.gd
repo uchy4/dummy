@@ -162,7 +162,6 @@ func _ready() -> void:
 	hud.setup(hud_colors, touch)
 	hud.restart_requested.connect(_on_restart_requested)
 	hud.settings_pressed.connect(_toggle_settings)
-	hud.reset_players_pressed.connect(_reset_players)
 	hud.player_color_changed.connect(_on_player_color_changed)
 	hud.start_requested.connect(_start_match)
 	if Settings.in_lobby and OS.get_environment("BOMB_SHELTER_SMOKE") == "1":
@@ -245,16 +244,6 @@ func _build_boundaries() -> void:
 		wall.position = Vector2(x, terrain.surface_y() - 700)
 		wall.add_child(cs)
 		world.add_child(wall)
-
-
-# Spread shelter positions out: players collide now, so they can't share one.
-func _shelter_slot(i: int) -> Vector2:
-	return terrain.shelter_spawn() + Vector2((i - (MAX_PLAYERS - 1) / 2.0) * 24.0, 0)
-
-
-func _reset_players() -> void:
-	for i in players.size():
-		players[i].teleport_to(_shelter_slot(i))
 
 
 func _build_finish() -> void:

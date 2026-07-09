@@ -33,7 +33,7 @@ func _ready() -> void:
 
 
 ## Called by the lead's kick loop for group "fixtures" nodes in range.
-func kicked() -> void:
+func kicked(_dir := Vector2.ZERO) -> void:
 	_break()
 
 
