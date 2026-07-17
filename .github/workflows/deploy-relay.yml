@@ -15,7 +15,7 @@ on:
     paths:
       - ".github/workflows/deploy-relay.yml"
 
-# deploy touch counter: 1
+# deploy touch counter: 2
 
 jobs:
   deploy:

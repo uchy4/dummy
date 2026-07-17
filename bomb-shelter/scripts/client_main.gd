@@ -190,6 +190,10 @@ func _handle(m: Dictionary) -> void:
 			if int(m.get("k", -1)) == 17:
 				terrain.add_ripple(Vector2(float(m.get("x", 0)), float(m.get("y", 0))),
 					float(m.get("p", 0.5)))
+		"nohost":
+			# Relay room with no live host: bail to the menu instead of
+			# sitting in a world that will never answer.
+			_leave("host is offline — ask for a fresh room code")
 		"win":
 			_win_label.text = "%s WINS!" % str(m.get("n", "?")).to_upper()
 			_win_label.add_theme_color_override(&"font_color",

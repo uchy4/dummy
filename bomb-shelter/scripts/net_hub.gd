@@ -35,6 +35,14 @@ const RELAY_HOST := "bombshelter-relay.uchy.workers.dev"
 ## Relay client ids live far above LAN ids so the two can share `clients`.
 const RELAY_ID_BASE := 100000
 
+## Heartbeat cadence on the host<->relay socket. Without traffic, NAT
+## mappings and Cloudflare's edge quietly drop the idle socket while the
+## app still shows the room code — guests then join a dead room, frozen.
+const RELAY_HB_SEND := 20.0
+## No relay traffic for this long = half-open link: reconnect (and reclaim
+## the same room code, so the code on the wall keeps working).
+const RELAY_RX_DEAD := 65.0
+
 signal relay_ready(code: String)
 
 var http_port := 0
@@ -44,9 +52,14 @@ var _icon_png := PackedByteArray()
 ## Online room state: an outbound WebSocket to the relay carrying enveloped
 ## guest traffic ({c,ev}/{c,m} in, {c,m}/{b,m} out).
 var relay_code := ""
+## Secret handed out with the room code; reconnecting with code+key
+## reclaims the same room after a dropped socket.
+var relay_key := ""
 var _relay_ws: WebSocketPeer = null
 var _relay_wanted := false
 var _relay_retry := 0.0
+var _relay_hb := 0.0   # countdown to the next outbound heartbeat
+var _relay_rx := 0.0   # seconds since anything arrived from the relay
 ## When true (hosting), broadcast a discovery beacon so other phones'
 ## "Join LAN game" screens can find this match.
 var advertising := false
@@ -116,7 +129,7 @@ Install: tap Share then <b>Add to Home Screen</b> to play like an app.</div></di
 <div id="swap">&#x21C4;</div>
 <div id="colorbtn"></div><div id="fs">&#x26F6;</div></div>
 <script>
-var ws=null,joined=false,st={a:0,j:0,k:0};
+var ws=null,joined=false,st={a:0,j:0,k:0},NOHOST=false;
 // Gesture input: AXV = analog move axis, JHELD = jump held (both fed by the
 // invisible thumb-joystick + tap gestures below).
 var AXV=0,JHELD=false,moveT=null,kickT=null,gestT=null,btnKickT=null,joinT=0,scrZoom=1;
@@ -222,9 +235,11 @@ function goEngine(){var n=(document.getElementById("name").value||"").trim()||"G
  location.href="/g/?ws="+WSURL.split(":").pop()+"&n="+encodeURIComponent(n);}
 function connect(){
  ws=new WebSocket(WSURL);
- ws.onopen=function(){document.getElementById("status").textContent="ready — pick a name and join";
+ ws.onopen=function(){NOHOST=false;document.getElementById("status").textContent="ready — pick a name and join";
   if(joined)sendJoin();};
- ws.onclose=function(){document.getElementById("status").textContent="reconnecting…";setTimeout(connect,1500);};
+ ws.onclose=function(){document.getElementById("status").textContent=
+  NOHOST?"room closed — waiting for the host…":"reconnecting…";
+  setTimeout(connect,NOHOST?5000:1500);};
  ws.onmessage=function(ev){var m=JSON.parse(ev.data);
   if(m.t==="s"){
    if(sc)for(var i=0;i<sc.p.length&&i<m.p.length;i++)
@@ -270,6 +285,8 @@ function connect(){
    renderSw();}}
   else if(m.t==="fx"){fxPlay(m);}
   else if(m.t==="hud"){HUDMSG=m.m||"";HTIME=(m.tm!=null)?m.tm:-1;}
+  else if(m.t==="nohost"){NOHOST=true;HUDMSG="host disconnected — waiting…";
+   document.getElementById("status").textContent="room closed — waiting for the host…";}
   else if(m.t==="win"){win=m;fanfare();}};
 }
 function key(o){return o.join("|");}
@@ -1173,7 +1190,15 @@ func start_relay() -> void:
 		return
 	_relay_wanted = true
 	_relay_ws = WebSocketPeer.new()
-	if _relay_ws.connect_to_url("wss://%s/host" % RELAY_HOST) != OK:
+	# Protocol-level pings: keep the TLS/NAT path warm and let a dead link
+	# surface as STATE_CLOSED instead of lingering half-open.
+	_relay_ws.heartbeat_interval = 15.0
+	var url := "wss://%s/host" % RELAY_HOST
+	if not relay_code.is_empty() and not relay_key.is_empty():
+		url += "?code=%s&key=%s" % [relay_code, relay_key]  # reclaim our room
+	_relay_hb = RELAY_HB_SEND
+	_relay_rx = 0.0
+	if _relay_ws.connect_to_url(url) != OK:
 		_relay_ws = null
 		_relay_retry = 4.0
 
@@ -1204,32 +1229,57 @@ func _poll_relay(delta: float) -> void:
 	_relay_ws.poll()
 	var state := _relay_ws.get_ready_state()
 	if state == WebSocketPeer.STATE_CLOSED:
-		# Relay dropped: every remote guest is gone; retry soon.
+		# Relay dropped: every remote guest is gone; retry soon. The room
+		# code/key are kept — the reconnect reclaims the same room, so the
+		# code on the bunker wall stays valid.
 		for id in clients.keys():
 			if int(id) >= RELAY_ID_BASE:
 				clients[id].connected = false
 				clients[id].axis = 0.0
 				clients[id].jump = false
-		relay_code = ""
 		_relay_ws = null
-		_relay_retry = 4.0
+		_relay_retry = 2.0
 		return
 	if state != WebSocketPeer.STATE_OPEN:
 		return
+	_relay_rx += delta
+	if _relay_rx > RELAY_RX_DEAD:
+		# Half-open link: nothing (not even our heartbeat echo) has arrived.
+		# Abandon the socket and reconnect; the reclaim keeps the code.
+		_relay_ws = null
+		_relay_retry = 1.0
+		return
+	_relay_hb -= delta
+	if _relay_hb <= 0.0:
+		_relay_hb = RELAY_HB_SEND
+		_relay_send({"t": "hb"})
 	while _relay_ws.get_available_packet_count() > 0:
+		_relay_rx = 0.0
 		var msg: Variant = JSON.parse_string(_relay_ws.get_packet().get_string_from_utf8())
 		if not (msg is Dictionary):
 			continue
 		var env := msg as Dictionary
-		if str(env.get("t", "")) == "room":
-			relay_code = str(env.get("code", ""))
-			# Ship the game page so the relay can serve it to guests.
-			var html := PAGE.replace("__WSURL__",
-				"wss://%s/join/%s" % [RELAY_HOST, relay_code]).replace(
-				"__WASM__", "none")  # /g/ is only reachable on the LAN host
-			_relay_send({"t": "page", "html": html})
-			relay_ready.emit(relay_code)
-			continue
+		match str(env.get("t", "")):
+			"hb":  # heartbeat echo: only proof-of-life (rx timer reset above)
+				continue
+			"badroom":
+				# Our reclaim was refused (relay redeployed, key lost):
+				# start over with a fresh room.
+				relay_code = ""
+				relay_key = ""
+				_relay_ws = null
+				_relay_retry = 1.0
+				return
+			"room":
+				relay_code = str(env.get("code", ""))
+				relay_key = str(env.get("key", ""))
+				# Ship the game page so the relay can serve it to guests.
+				var html := PAGE.replace("__WSURL__",
+					"wss://%s/join/%s" % [RELAY_HOST, relay_code]).replace(
+					"__WASM__", "none")  # /g/ is only reachable on the LAN host
+				_relay_send({"t": "page", "html": html})
+				relay_ready.emit(relay_code)
+				continue
 		if not env.has("c"):
 			continue
 		var key := _relay_key(int(env.get("c", 0)))
